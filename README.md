@@ -1,68 +1,73 @@
 # RealPunch 3D 🥊
 
-Juego de **boxeo con detección de movimiento por webcam**, para navegador.
-Colócate frente a la cámara y tu muñeco (en cian) replica tus golpes,
-esquivas y bloqueos para pelear contra el rival (en rojo).
+Juego de **boxeo con seguimiento de pose por webcam**, para navegador.
+Ponte frente a la cámara y tu muñeco (en cian) replica tu **tren superior
+completo — hombros, codos y muñecas —** para pelear contra el rival (rojo).
+Golpeas extendiendo el brazo, bloqueas subiendo las manos y esquivas
+inclinando el torso: movimientos reales.
 
-**Sin instalar nada, sin CDN y sin modelos de IA que descargar:** la
-detección de movimiento se hace en el propio navegador por *diferencia de
-fotogramas* (frame differencing) sobre el vídeo de la cámara. El vídeo
-**no sale de tu dispositivo**.
+La pose se calcula **en tu propio navegador** con
+[MediaPipe Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker).
+El vídeo **no sale de tu dispositivo**. Todo el juego está en un único
+archivo: [`index.html`](index.html).
 
-Todo el juego está en un único archivo: [`index.html`](index.html)
-(escena en pseudo-3D con Canvas 2D, audio sintetizado con WebAudio,
-detección de movimiento y bucle de juego).
+## ⚠️ Cómo probarlo (necesita cámara)
 
-## Cómo jugar
+El navegador **solo da permiso de cámara en un contexto seguro**: `https://`
+o `http://localhost`. Abrir el archivo con `file://` **no** funciona, y los
+visores tipo *sandbox* (p. ej. la vista previa de artifacts) **bloquean la
+cámara**. Usa una de estas dos opciones:
 
-1. Abre el juego (ver más abajo). Necesita **HTTPS o `localhost`** para que
-   el navegador conceda permiso de cámara.
-2. Pulsa **«Activar cámara y jugar»** y acepta el permiso.
-3. Ponte a 1–2 m, con el torso visible y buena luz.
-
-| Movimiento | Gesto ante la cámara | Teclado |
-|------------|----------------------|---------|
-| Jab izquierdo | Lanza el brazo **izquierdo** hacia delante | `J` |
-| Jab derecho | Lanza el brazo **derecho** hacia delante | `L` |
-| Esquivar | Inclina el cuerpo a un lado | `A` / `D` |
-| Bloquear | Sube las dos manos y quédate quieto | `K` / `Espacio` |
-
-Ajusta la **sensibilidad de golpe** en la pantalla de inicio según tu luz
-y distancia. También puedes jugar **solo con teclado** si no tienes cámara.
-
-## Ejecutar en local
-
-El acceso a la cámara requiere un contexto seguro, así que sírvelo por HTTP
-en `localhost` (abrir el `file://` directamente no da permiso de cámara en
-la mayoría de navegadores):
-
+### Opción A — En local (rápido)
 ```bash
 python3 -m http.server 8000
 ```
+Abre <http://localhost:8000> en Chrome o Edge y pulsa
+**«Activar cámara y jugar»**.
 
-Luego abre <http://localhost:8000> en Chrome o Edge.
+### Opción B — Publicar gratis con GitHub Pages (sin instalar nada)
+1. En GitHub: **Settings → Pages**.
+2. En *Build and deployment* elige **Deploy from a branch**.
+3. Branch: `claude/3d-boxing-motion-detection-5jdks5` · carpeta `/ (root)` · **Save**.
+4. En 1–2 min tendrás una URL `https://<usuario>.github.io/game/` con
+   cámara habilitada, que puedes abrir desde cualquier dispositivo.
 
-## Cómo funciona la detección
+> La primera vez descarga el modelo de pose (~6 MB) desde el CDN de
+> MediaPipe; necesita conexión a internet esa primera carga.
 
-- El fotograma de la webcam se reduce a una rejilla de 64×48 en escala de grises.
-- Se compara con el fotograma anterior: los píxeles que cambian por encima
-  de un umbral son **movimiento**.
-- Se mide la energía de movimiento por zonas (izquierda / derecha / arriba)
-  y el **centroide horizontal** del movimiento.
-  - Pico fuerte a la izquierda o derecha → **jab** de ese lado.
-  - Desplazamiento del centroide → **esquiva**.
-  - Movimiento alto en la zona superior sin dirección clara → **bloqueo**.
+## Controles
 
-Es un enfoque ligero y robusto que corre en cualquier navegador. Para una
-fidelidad tipo «el muñeco copia tu esqueleto completo» habría que pasar a
-seguimiento de pose (p. ej. MediaPipe/TensorFlow.js), que requiere descargar
-un modelo — ver la sección siguiente.
+| Movimiento | Gesto ante la cámara | Teclado |
+|------------|----------------------|---------|
+| Golpe izquierdo | Extiende el brazo **izquierdo** hacia delante | `J` |
+| Golpe derecho | Extiende el brazo **derecho** hacia delante | `L` |
+| Esquivar | Inclina el torso a un lado | `A` / `D` |
+| Bloquear | Sube las dos manos junto a la cara | `K` / `Espacio` |
+
+También hay **modo teclado** por si no tienes cámara. Colócate a 1,5–2,5 m
+con buena luz para que se vean torso y brazos.
+
+## Cómo funciona
+
+- MediaPipe detecta 33 puntos del cuerpo por fotograma; usamos los del tren
+  superior (nariz, orejas, hombros, codos, muñecas y caderas).
+- El muñeco del jugador se **dibuja directamente a partir de esos puntos**
+  (torso, cuello + cabeza, brazos articulados y guantes en las muñecas), así
+  que copia tu postura real.
+- La lógica de combate deriva de la pose:
+  - **Golpe:** la muñeca se aleja rápido del hombro (brazo extendido) → puñetazo de ese lado.
+  - **Bloqueo:** las dos muñecas suben junto a la cara.
+  - **Esquiva:** el eje hombros se desplaza respecto al de caderas.
+- El rival es una IA que telegrafía sus golpes (verás el aviso) para que
+  puedas bloquear o esquivar a tiempo.
 
 ## Siguientes pasos posibles
 
-- **Pose tracking real** con MediaPipe Pose / TF.js MoveNet para mapear
-  hombros, codos y muñecas al muñeco (jabs, crochets, uppercuts, guardia real).
-- Boxeador en **3D real** con Three.js y animaciones esqueléticas.
-- Modo VR/pass-through (WebXR) o export a app móvil/consola.
-- Más rivales, dificultad, rounds, entrenamiento y modo fitness.
+- **Golpes ricos**: distinguir jab / crochet / uppercut por la trayectoria
+  de la muñeca y el ángulo del codo.
+- **Boxeador 3D real** con Three.js y *rigging* esquelético mapeado a la pose.
+- **Profundidad**: usar la coordenada `z` de MediaPipe para golpes hacia
+  cámara y mejor detección de distancia.
+- Rondas, dificultad, varios rivales, modo entrenamiento/fitness y ranking online.
+- Empaquetado como app móvil (Capacitor) o experiencia WebXR/VR.
 ```
