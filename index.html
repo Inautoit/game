@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b1020" />
+  <title>Open Drive 3D</title>
+  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- Three.js vendored en el repo (sin CDN): funciona offline y directo en el navegador -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three.module.js",
+      "three/addons/": "./vendor/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="speedo">
+      <span id="speed">0</span><small>km/h</small>
+    </div>
+    <div class="hint" id="hint">
+      <strong>PC:</strong> W/S acelerar · A/D girar · Espacio freno de mano
+    </div>
+  </div>
+
+  <!-- Controles táctiles (solo visibles en móvil) -->
+  <div id="touch-controls">
+    <div class="pad pad-left">
+      <button class="tbtn" data-key="left">◀</button>
+      <button class="tbtn" data-key="right">▶</button>
+    </div>
+    <div class="pad pad-right">
+      <button class="tbtn gas" data-key="up">▲</button>
+      <button class="tbtn brake" data-key="down">▼</button>
+    </div>
+  </div>
+
+  <!-- Pantalla de carga -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>Cargando mundo…</p>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
