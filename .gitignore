@@ -1,4 +1,26 @@
+# Dependencias e instalables
 node_modules/
-package.json
-package-lock.json
 *.log
+
+# Carpeta web generada (se crea con: npm run build)
+www/
+
+# Salidas de compilación nativas (Android / iOS)
+android/app/build/
+android/build/
+android/.gradle/
+android/captures/
+android/local.properties
+ios/App/build/
+ios/App/Pods/
+ios/App/output/
+ios/DerivedData/
+**/*.xcuserstate
+
+# Firmas y secretos (NO subir nunca)
+*.keystore
+*.jks
+key.properties
+*.mobileprovision
+*.p8
+*.p12

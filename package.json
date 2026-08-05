@@ -1,0 +1,27 @@
+{
+  "name": "garaje-3d-tuning",
+  "version": "1.0.0",
+  "description": "Garaje 3D · Tuning Studio — configurador 3D de coches para web, Android e iOS",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/copy-web.mjs",
+    "sync": "npm run build && cap sync",
+    "assets": "capacitor-assets generate --iconBackgroundColor '#0d1220' --iconBackgroundColorDark '#0d1220' --splashBackgroundColor '#060811' --splashBackgroundColorDark '#060811'",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios",
+    "serve": "node scripts/copy-web.mjs && npx --yes http-server www -p 8000 -c-1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/ios": "^6.1.2",
+    "@capacitor/splash-screen": "^6.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.1.2",
+    "esbuild": "^0.28.1",
+    "playwright": "^1.62.1"
+  }
+}
