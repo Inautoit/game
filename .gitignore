@@ -1,26 +1,37 @@
-# Dependencias e instalables
-node_modules/
+# ---------- Flutter / Dart ----------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
 *.log
+coverage/
 
-# Carpeta web generada (se crea con: npm run build)
-www/
+# ---------- IDE ----------
+.idea/
+*.iml
+.vscode/
 
-# Salidas de compilación nativas (Android / iOS)
+# ---------- Android ----------
+android/.gradle/
 android/app/build/
 android/build/
-android/.gradle/
-android/captures/
 android/local.properties
-ios/App/build/
-ios/App/Pods/
-ios/App/output/
+android/key.properties
+android/app/upload-keystore.jks
+
+# ---------- iOS ----------
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
 ios/DerivedData/
 **/*.xcuserstate
 
-# Firmas y secretos (NO subir nunca)
-*.keystore
-*.jks
-key.properties
+# ---------- Firmas y secretos (NO subir nunca) ----------
+**/*.keystore
+**/*.jks
 *.mobileprovision
 *.p8
 *.p12
