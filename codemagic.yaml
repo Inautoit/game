@@ -1,0 +1,97 @@
+# Configuración de Codemagic para Lumen (Flutter).
+# Codemagic detecta este archivo automáticamente. Elige un workflow al lanzar
+# el build. Empieza por "android-test": no necesita ninguna firma ni secreto.
+#
+# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
+
+workflows:
+  # ─────────────────────────────────────────────────────────────
+  # 1) PRUEBA RÁPIDA (Android APK) — sin firmas, build verde seguro.
+  #    Genera un .apk que puedes instalar en tu móvil para probar.
+  # ─────────────────────────────────────────────────────────────
+  android-test:
+    name: Lumen · Android APK (prueba)
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      flutter: stable
+    scripts:
+      - name: Dependencias
+        script: flutter pub get
+      - name: Análisis y tests
+        script: |
+          flutter analyze
+          flutter test
+      - name: Build APK (release, firma de debug)
+        script: flutter build apk --release
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+
+  # ─────────────────────────────────────────────────────────────
+  # 2) GOOGLE PLAY (Android App Bundle .aab) — necesita tu keystore.
+  #    En Codemagic: Teams/App > Code signing identities > Android
+  #    keystores. Sube tu keystore con referencia "lumen_keystore".
+  # ─────────────────────────────────────────────────────────────
+  android-release:
+    name: Lumen · Android AAB (Play Store)
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      android_signing:
+        - lumen_keystore
+    scripts:
+      - name: Dependencias
+        script: flutter pub get
+      - name: key.properties desde el keystore de Codemagic
+        script: |
+          cat >> "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
+      - name: Build App Bundle
+        script: flutter build appbundle --release
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+    # Para publicar automáticamente, descomenta y configura la cuenta de
+    # servicio de Google Play (JSON) como variable de entorno:
+    # publishing:
+    #   google_play:
+    #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+    #     track: internal
+
+  # ─────────────────────────────────────────────────────────────
+  # 3) APP STORE (iOS .ipa) — necesita cuenta Apple Developer.
+  #    En Codemagic: conecta App Store Connect (API key) y activa
+  #    "Automatic code signing" para el bundle com.inautoit.lumen.
+  # ─────────────────────────────────────────────────────────────
+  ios-release:
+    name: Lumen · iOS IPA (App Store)
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      app_store_connect: CodemagicApiKey  # ← nombre de tu API key en Codemagic
+    environment:
+      flutter: stable
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.inautoit.lumen
+    scripts:
+      - name: Dependencias
+        script: flutter pub get
+      - name: Instalar CocoaPods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+      - name: Aplicar perfiles de firma
+        script: xcode-project use-profiles
+      - name: Build IPA
+        script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    # Para subir a TestFlight automáticamente, descomenta:
+    # publishing:
+    #   app_store_connect:
+    #     auth: integration
+    #     submit_to_testflight: true
