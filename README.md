@@ -1,61 +1,73 @@
-# Open Drive 3D 🏎️
+# Garaje 3D · Tuning Studio 🏎️🔧
 
-Juego de coches **3D de mundo abierto** para navegador (PC y móvil).
-Conduce libremente por una ciudad con carreteras, edificios y árboles,
-con cámara en tercera persona.
+Un **configurador 3D de coches tuning** para el navegador (PC y móvil). No es
+un juego de conducir: es un **garaje virtual** donde ves el coche en 3D, lo
+giras con el ratón/dedo y lo **tuneas por completo** — carrocería, pintura,
+llantas, suspensión, camber, kit aerodinámico, estilos JDM y cosas locas.
 
-Hecho con [Three.js](https://threejs.org/). Sin instalación ni build: se
-abre directamente en el navegador.
+Los coches son **modelos genéricos parecidos a los reales pero sin logos ni
+marcas**, para poder personalizarlos sin problemas de licencias.
 
-## Cómo jugar
+Hecho con [Three.js](https://threejs.org/) vendorizado (sin CDN, sin build):
+se abre directamente en el navegador y funciona offline.
 
-### PC (teclado)
-| Tecla | Acción |
-|-------|--------|
-| `W` / `↑` | Acelerar |
-| `S` / `↓` | Frenar / marcha atrás |
-| `A` / `←` | Girar a la izquierda |
-| `D` / `→` | Girar a la derecha |
-| `Espacio` | Freno de mano |
+## Qué puedes tunear
 
-### Móvil (táctil)
-Botones en pantalla: flechas de dirección (izquierda) y acelerar/frenar
-(derecha). Aparecen automáticamente en dispositivos táctiles.
+- **Carrocería**: coupé JDM, hatchback, berlina, muscle, superdeportivo, kei/van.
+- **Pintura**: paleta rápida + color personalizado, y acabados brillo,
+  metalizado, mate, perlado y cromado.
+- **Llantas**: 5 radios, malla, split 10, deep dish, acero; color y diámetro
+  (15"–20").
+- **Suspensión / estilo**: altura (del *slam* al *lift*), **camber** negativo y
+  **poke** de vía — la receta del *stance* JDM.
+- **Aerodinámica**: alerón (lip, ducktail, ala GT), splitter, taloneras,
+  **widebody** (ensanchado), capó con toma de aire o ventilado.
+- **Detalles**: tintado de lunas, color de pinzas de freno y **neón inferior**.
+- **Escena**: fondos de estudio/atardecer/noche/blanco y giro automático.
+
+## Extras
+
+- **Presets**: De serie, JDM Stance, Widebody GT, Drift Missile, Show Car, Lifted.
+- **Aleatorio** 🎲, **captura** 📸 (descarga PNG), **compartir** 🔗 (enlace con
+  tu configuración) y **reset**.
+- Tu último coche se **guarda solo** en el navegador.
+
+## Controles de cámara
+
+- **PC**: arrastra para girar, rueda del ratón para zoom.
+- **Móvil**: arrastra con un dedo para girar, pellizca para zoom. Botón 🔧 para
+  abrir/cerrar el panel.
 
 ## Ejecutar en local
 
-Necesitas servir los archivos por HTTP (los módulos ES no funcionan con
-`file://`). Con Python:
+Los módulos ES necesitan servirse por HTTP (no funcionan con `file://`):
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Luego abre <http://localhost:8000> en el navegador.
+Luego abre <http://localhost:8000>.
 
 ## Estructura
 
 ```
-index.html      Página y HUD
-styles.css      Estilos e interfaz táctil
+index.html      Página, cabecera y contenedores
+styles.css      Interfaz del panel de tuning
 src/
-  main.js       Escena, luces, cámara, bucle del juego
-  car.js        Coche + físicas de conducción
-  world.js      Mundo procedural (carreteras, edificios, árboles)
-  input.js      Entrada de teclado y táctil
-assets/         Modelos 3D (.glb) — ver assets/README.md
+  main.js       Escena, luces, suelo, neón, bucle y acciones
+  config.js     Estado, catálogos de opciones y presets
+  ui.js         Construye el panel de tuning
+  carModel.js   Ensambla el coche y aplica la postura (altura/camber/poke)
+  body.js       Carrocería paramétrica por tipo + cristales + kit
+  wheels.js     Llantas, neumáticos, disco y pinza de freno
+  env.js        Iluminación de estudio (reflejos) y fondos
+  orbit.js      Cámara orbital (ratón + táctil)
+vendor/         Three.js
 ```
 
-## Añadir tu coche 3D
+## Ideas para más adelante
 
-Exporta tu modelo como `assets/car.glb` y el juego lo usará
-automáticamente. Detalles en [`assets/README.md`](assets/README.md).
-
-## Próximas mejoras posibles
-
-- Coche importado con materiales reales
-- Tráfico y peatones
-- Minimapa
-- Sonido de motor
-- Objetos coleccionables / misiones
-- Día/noche y farolas
+- Más tipos de carrocería y piezas de kit.
+- Vinilos/livery y números.
+- Girar las ruedas / animación de arranque.
+- Modo comparación antes/después.
