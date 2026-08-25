@@ -34,7 +34,7 @@ export function LoginForm() {
     setState('sending');
     const { error } = await client.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: `${window.location.origin}/login/` },
     });
     if (error) {
       setState('error');

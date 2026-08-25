@@ -3,7 +3,7 @@
 const VERSION = 'v1';
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
-const OFFLINE = '/offline';
+const OFFLINE = '/offline/';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

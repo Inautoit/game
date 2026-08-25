@@ -8,6 +8,12 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+/** Una página por carta, generada en el build: enlaces compartibles e indexables. */
+export async function generateStaticParams() {
+  const catalog = await getCatalog(COLLECTION_SLUG);
+  return (catalog?.cards ?? []).map((card) => ({ id: card.id }));
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const found = await findCard(COLLECTION_SLUG, id);

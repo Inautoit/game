@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "album-precios",
+  "main": "index.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "triggers": {
+    // Una pasada al día. Los precios de cartas no se mueven por horas.
+    "crons": ["0 4 * * *"]
+  },
+  "vars": {
+    "CATALOG_URL": "https://TU-SITIO.pages.dev/catalog/liga-2025-26.json",
+    "EBAY_MARKETPLACE_ID": "EBAY_ES"
+  }
+  // Los secretos NO van aquí. Se suben con:
+  //   npx wrangler secret put SUPABASE_URL --config worker/wrangler.jsonc
+  //   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config worker/wrangler.jsonc
+  //   npx wrangler secret put PRICE_REFRESH_SECRET --config worker/wrangler.jsonc
+  //   npx wrangler secret put EBAY_CLIENT_ID --config worker/wrangler.jsonc
+  //   npx wrangler secret put EBAY_CLIENT_SECRET --config worker/wrangler.jsonc
+}

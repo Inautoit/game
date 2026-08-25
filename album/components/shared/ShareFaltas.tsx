@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { buildShareText, type SharePayload } from '@/lib/share/faltas';
+import { renderFaltasImage } from '@/lib/share/image';
 
 type State = 'idle' | 'working' | 'copied' | 'error';
 
@@ -22,20 +23,17 @@ export function ShareFaltas({ payload }: { payload: SharePayload }) {
   async function shareImage() {
     setState('working');
     try {
-      const res = await fetch('/api/share/faltas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const blob = await res.blob();
+      const blob = await renderFaltasImage(payload);
       const file = new File([blob], 'mis-faltas.png', { type: 'image/png' });
 
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], text: buildShareText(payload) });
       } else {
         const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'mis-faltas.png';
+        link.click();
         setTimeout(() => URL.revokeObjectURL(url), 30_000);
       }
       setState('idle');

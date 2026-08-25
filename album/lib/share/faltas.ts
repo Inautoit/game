@@ -41,10 +41,15 @@ export function toPayload(
  * Texto plano listo para pegar en WhatsApp. Sin esto la app no entra en el flujo
  * real de intercambio, que ocurre entero en grupos de WhatsApp.
  */
+/** El nombre de la colección ya suele llevar la temporada: no la repitas. */
+export function collectionLabel(title: string, season: string): string {
+  return title.includes(season) ? title : `${title} ${season}`;
+}
+
 export function buildShareText(payload: SharePayload): string {
   const missing = payload.total - payload.owned;
   const heading = payload.heading
-    ?? `Me faltan ${missing} de ${payload.total} · ${payload.title} ${payload.season}`;
+    ?? `Me faltan ${missing} de ${payload.total} · ${collectionLabel(payload.title, payload.season)}`;
   const lines = [heading, ''];
 
   for (const group of payload.groups) {

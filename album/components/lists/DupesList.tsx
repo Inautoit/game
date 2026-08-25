@@ -6,7 +6,7 @@ import { useCollection } from '@/components/shared/CollectionProvider';
 import { setQuantity, updateUserCard } from '@/lib/offline/collection';
 import { formatPrice } from '@/lib/prices/aggregate';
 import { usePrices } from '@/lib/prices/client';
-import { buildShareText } from '@/lib/share/faltas';
+import { buildShareText, collectionLabel } from '@/lib/share/faltas';
 import { ListFilters, type Filters } from './ListFilters';
 
 /** Tus repes: cuántas tienes, cuánto valen y cuáles das a cambio. */
@@ -48,8 +48,8 @@ export function DupesList() {
 
   async function copyList() {
     const text = buildShareText({
-      heading: `Doy a cambio ${totalExtras} cartas · ${index!.catalog.collection.name} ` +
-        `${index!.catalog.collection.season}`,
+      heading: `Doy a cambio ${totalExtras} cartas · ` +
+        collectionLabel(index!.catalog.collection.name, index!.catalog.collection.season),
       title: index!.catalog.collection.name,
       season: index!.catalog.collection.season,
       owned: 0,

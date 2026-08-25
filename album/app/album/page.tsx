@@ -1,6 +1,7 @@
-import { redirect } from 'next/navigation';
-import { firstAlbumHref } from '@/lib/server/routes';
+import { AlbumSheet } from '@/components/album/AlbumSheet';
+import { COLLECTION_SLUG } from '@/lib/config';
+import { firstView } from '@/lib/server/routes';
 
 export default async function AlbumIndex() {
-  redirect(await firstAlbumHref());
+  return <AlbumSheet collection={COLLECTION_SLUG} view={await firstView()} />;
 }

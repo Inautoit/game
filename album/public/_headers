@@ -1,0 +1,15 @@
+# Cloudflare Pages: cabeceras por ruta.
+
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/catalog/*
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/icons/*
+  Cache-Control: public, max-age=604800
+
+# El service worker nunca se cachea: si no, la app se queda congelada en una
+# versión vieja para siempre.
+/sw.js
+  Cache-Control: no-cache

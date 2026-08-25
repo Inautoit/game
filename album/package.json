@@ -5,16 +5,17 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run catalog && next build",
-    "start": "next start",
-    "lint": "next lint",
+    "preview": "npm run build && npx --yes serve out -l 4173",
+    "deploy": "npm run build && npx --yes wrangler pages deploy out",
+    "worker:deploy": "npx --yes wrangler deploy --config worker/wrangler.jsonc",
     "typecheck": "tsc --noEmit",
     "catalog": "tsx scripts/build-catalog.ts",
     "check:prices": "tsx scripts/check-prices.ts",
     "icons": "tsx scripts/make-icons.ts",
-    "import:checklist": "tsx scripts/import-checklist.ts"
+    "import:checklist": "tsx scripts/import-checklist.ts",
+    "worker:typecheck": "tsc --noEmit --project worker/tsconfig.json"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.58.0",
     "dexie": "^4.2.0",
     "dexie-react-hooks": "^4.2.0",
@@ -23,13 +24,14 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260825.1",
     "@tailwindcss/postcss": "^4.1.13",
     "@types/node": "^22.15.0",
+    "@types/papaparse": "^5.3.16",
     "@types/react": "^19.1.1",
     "@types/react-dom": "^19.1.1",
     "dotenv": "^17.2.0",
     "papaparse": "^5.5.3",
-    "@types/papaparse": "^5.3.16",
     "tailwindcss": "^4.1.13",
     "tsx": "^4.20.0",
     "typescript": "^5.9.2"

@@ -1,7 +1,7 @@
 'use client';
 
 import { supabase, isSupabaseConfigured } from '../db/supabase';
-import type { UserCard } from '../types';
+import type { CommunitySale, UserCard } from '../types';
 import { db, getMeta, setMeta } from './db';
 
 const LAST_PULL = 'sync:last_pull';
@@ -20,6 +20,7 @@ export async function requestSync(): Promise<void> {
   try {
     await push();
     await pull();
+    await pullSales();
     await pullPrices();
   } catch {
     // Reintentamos en la próxima escritura o al recuperar la conexión.
@@ -94,6 +95,27 @@ async function pull(): Promise<void> {
     });
   }
   await setMeta(LAST_PULL, new Date().toISOString());
+}
+
+/**
+ * Ventas de la comunidad para las cartas que tienes. Son de lectura pública, así
+ * que el precio de comunidad se calcula entero en el navegador: sin este paso
+ * solo verías tus propias ventas, y con él la app no necesita servidor alguno.
+ */
+async function pullSales(): Promise<void> {
+  const client = supabase();
+  if (!client) return;
+
+  const cardIds = [...new Set((await db().userCards.toArray()).map((r) => r.card_id))];
+  if (!cardIds.length) return;
+
+  const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+  for (let i = 0; i < cardIds.length; i += 200) {
+    const { data, error } = await client.from('community_sales')
+      .select('*').in('card_id', cardIds.slice(i, i + 200)).gte('sold_at', since);
+    if (error) throw error;
+    if (data?.length) await db().sales.bulkPut(data as CommunitySale[]);
+  }
 }
 
 /**

@@ -1,0 +1,21 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "@cloudflare/workers-types"
+    ],
+    "lib": [
+      "ES2022"
+    ],
+    "jsx": "react-jsx",
+    "plugins": []
+  },
+  "include": [
+    "index.ts",
+    "../lib/prices/**/*.ts",
+    "../lib/types.ts"
+  ],
+  "exclude": [
+    "../lib/prices/client.ts"
+  ]
+}
