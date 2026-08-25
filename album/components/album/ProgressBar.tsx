@@ -13,7 +13,7 @@ export function ProgressBar({ owned, total, label, compact }: Props) {
   const complete = total > 0 && owned === total;
 
   return (
-    <div className={compact ? '' : 'px-4 pb-2 pt-3'}>
+    <div className={compact ? '' : 'px-4 pb-2 pt-2'}>
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
         <span className="truncate text-sm text-muted">{label}</span>
         <span className="shrink-0 text-sm tnum">

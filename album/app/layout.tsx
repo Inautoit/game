@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Oswald } from 'next/font/google';
 import './globals.css';
 import { CollectionProvider } from '@/components/shared/CollectionProvider';
+import { ServiceWorker } from '@/components/shared/ServiceWorker';
 import { TabBar } from '@/components/shared/TabBar';
 
 const display = Oswald({ subsets: ['latin'], weight: ['500', '600'], variable: '--font-display-src' });
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <CollectionProvider>
           {children}
           <TabBar />
+          <ServiceWorker />
         </CollectionProvider>
       </body>
     </html>

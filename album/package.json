@@ -9,6 +9,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "catalog": "tsx scripts/build-catalog.ts",
+    "check:prices": "tsx scripts/check-prices.ts",
+    "icons": "tsx scripts/make-icons.ts",
     "import:checklist": "tsx scripts/import-checklist.ts"
   },
   "dependencies": {

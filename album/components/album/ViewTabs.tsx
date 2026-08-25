@@ -30,8 +30,8 @@ export function ViewTabs({ items, active, title }: Props) {
 
   return (
     <div>
-      {title && <p className="px-4 pb-1 text-[0.7rem] uppercase tracking-wider text-muted">{title}</p>}
-      <div ref={ref} className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-2">
+      {title && <p className="px-4 pb-0.5 text-[0.65rem] uppercase tracking-wider text-muted/80">{title}</p>}
+      <div ref={ref} className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-1.5">
         {items.map((item) => {
           const isActive = item.key === active;
           const done = item.total > 0 && item.owned === item.total;

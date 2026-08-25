@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { EmptySlotArt } from '@/components/album/EmptySlotArt';
+import { OwnedSlotArt } from '@/components/album/OwnedSlotArt';
 import { useCollection } from '@/components/shared/CollectionProvider';
 import { usePhotoUrl } from '@/components/shared/usePhotoUrl';
 import { CARD_ASPECT } from '@/lib/config';
@@ -67,6 +68,14 @@ export function CardDetail({ card, series, team, collection }: Props) {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={photo} alt={card.player_name ?? `Carta ${card.number}`}
                 className="h-full w-full object-cover" />
+            ) : quantity > 0 ? (
+              <OwnedSlotArt
+                number={card.number}
+                playerName={card.player_name}
+                teamName={team?.name}
+                color={team?.primary_color}
+                rare={rare}
+              />
             ) : (
               <EmptySlotArt
                 number={card.number}
@@ -101,14 +110,17 @@ export function CardDetail({ card, series, team, collection }: Props) {
 
         <div className="min-w-0 flex-1">
           <p className="text-xs uppercase tracking-wider text-muted">
-            {series.name} · {SERIES_KIND_LABEL[series.kind]}
+            {series.name === SERIES_KIND_LABEL[series.kind]
+              ? series.name
+              : `${series.name} · ${SERIES_KIND_LABEL[series.kind]}`}
           </p>
           <h1 className="font-display text-3xl leading-tight">
             <span className="tnum text-muted">{card.number}</span>{' '}
             {card.player_name ?? team?.name ?? 'Sin nombre'}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {[team?.name, card.position, collection.season].filter(Boolean).join(' · ')}
+            {[card.player_name ? team?.name : null, card.position, collection.season]
+              .filter(Boolean).join(' · ')}
           </p>
           {card.print_run ? (
             <p className="mt-1 text-sm text-gold tnum">Tirada limitada /{card.print_run}</p>

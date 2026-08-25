@@ -111,7 +111,7 @@ export function AlbumSheet({ collection, view }: Props) {
     const who = card.player_name ?? card.number;
     setFlash({
       id: nextFlashId(),
-      text: isNew ? `Nueva · ${who}` : `Repe · ${who} ×${quantity}`,
+      text: isNew ? `Nueva · ${who}` : `Repe ×${quantity} · ${who}`,
       tone: isNew ? 'new' : 'dupe',
     });
   };
@@ -121,10 +121,9 @@ export function AlbumSheet({ collection, view }: Props) {
       <header className="sticky top-0 z-30 border-b border-slot-edge/60 bg-leather/95 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto max-w-5xl">
           <div className="flex items-center justify-between px-4 pt-3">
-            <div>
-              <h1 className="font-display text-lg leading-tight">{index.catalog.collection.name}</h1>
-              <p className="text-xs text-muted">{index.catalog.collection.season}</p>
-            </div>
+            <h1 className="truncate font-display text-base leading-tight">
+              {index.catalog.collection.name}
+            </h1>
             <SyncBadge />
           </div>
           <ProgressBar owned={progress.owned} total={progress.total} label="Colección completa" />

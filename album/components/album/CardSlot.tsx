@@ -7,6 +7,7 @@ import { isRare, type Card, type Series, type Team } from '@/lib/types';
 import { usePhotoUrl } from '@/components/shared/usePhotoUrl';
 import type { Owned } from '@/components/shared/CollectionProvider';
 import { EmptySlotArt } from './EmptySlotArt';
+import { OwnedSlotArt } from './OwnedSlotArt';
 
 const LONG_PRESS_MS = 420;
 
@@ -117,7 +118,7 @@ export function CardSlot({ card, team, series, owned, onOpen, onMarked }: Props)
                 className="h-full w-full object-cover"
               />
             ) : (
-              <OwnedWithoutPhoto
+              <OwnedSlotArt
                 number={card.number}
                 playerName={card.player_name}
                 teamName={team?.name}
@@ -149,35 +150,6 @@ export function CardSlot({ card, team, series, owned, onOpen, onMarked }: Props)
       >
         ficha
       </button>
-    </div>
-  );
-}
-
-/** Tienes la carta pero aún no le has hecho foto: se ve llena, no vacía. */
-function OwnedWithoutPhoto({
-  number, playerName, teamName, color, rare,
-}: { number: string; playerName?: string | null; teamName?: string; color?: string; rare?: boolean }) {
-  const accent = color || '#7c8291';
-  return (
-    <div
-      className="relative h-full w-full overflow-hidden rounded-slot"
-      style={{ containerType: 'inline-size', background: `linear-gradient(155deg, ${accent} 0%, #0f231d 78%)` }}
-    >
-      <div className="absolute inset-0 bg-black/25" />
-      <div className="relative flex h-full flex-col justify-between p-[7cqw]">
-        <span className="font-display leading-none text-white/85 tnum" style={{ fontSize: '30cqw' }}>
-          {number}
-        </span>
-        <div className="min-w-0">
-          <p className="truncate font-display uppercase text-white" style={{ fontSize: '10cqw' }}>
-            {playerName ?? teamName ?? ''}
-          </p>
-          {playerName && (
-            <p className="truncate text-white/70" style={{ fontSize: '8cqw' }}>{teamName}</p>
-          )}
-        </div>
-      </div>
-      {rare && <div className="absolute inset-0 rounded-slot ring-1 ring-inset ring-gold/60" />}
     </div>
   );
 }
