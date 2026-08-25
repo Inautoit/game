@@ -1,0 +1,514 @@
+series_code,series_name,series_kind,number,player_name,team,position,variant,print_run,scarcity,requestable
+BASE,Base,base,1,,Alaves,,,,1,true
+BASE,Base,base,2,,Alaves,POR,,,1,true
+BASE,Base,base,3,,Alaves,POR,,,1,true
+BASE,Base,base,4,,Alaves,DEF,,,1,true
+BASE,Base,base,5,,Alaves,DEF,,,1,true
+BASE,Base,base,6,,Alaves,DEF,,,1,true
+BASE,Base,base,7,,Alaves,DEF,,,1,true
+BASE,Base,base,8,,Alaves,DEF,,,1,true
+BASE,Base,base,9,,Alaves,DEF,,,1,true
+BASE,Base,base,10,,Alaves,MED,,,1,true
+BASE,Base,base,11,,Alaves,MED,,,1,true
+BASE,Base,base,12,,Alaves,MED,,,1,true
+BASE,Base,base,13,,Alaves,MED,,,1,true
+BASE,Base,base,14,,Alaves,MED,,,1,true
+BASE,Base,base,15,,Alaves,MED,,,1,true
+BASE,Base,base,16,,Alaves,DEL,,,1,true
+BASE,Base,base,17,,Alaves,DEL,,,1,true
+BASE,Base,base,18,,Alaves,DEL,,,1,true
+BASE,Base,base,19,,Alaves,DEL,,,1,true
+BASE,Base,base,20,,Athletic Club,,,,1,true
+BASE,Base,base,21,,Athletic Club,POR,,,1,true
+BASE,Base,base,22,,Athletic Club,POR,,,1,true
+BASE,Base,base,23,,Athletic Club,DEF,,,1,true
+BASE,Base,base,24,,Athletic Club,DEF,,,1,true
+BASE,Base,base,25,,Athletic Club,DEF,,,1,true
+BASE,Base,base,26,,Athletic Club,DEF,,,1,true
+BASE,Base,base,27,,Athletic Club,DEF,,,1,true
+BASE,Base,base,28,,Athletic Club,DEF,,,1,true
+BASE,Base,base,29,,Athletic Club,MED,,,1,true
+BASE,Base,base,30,,Athletic Club,MED,,,1,true
+BASE,Base,base,31,,Athletic Club,MED,,,1,true
+BASE,Base,base,32,,Athletic Club,MED,,,1,true
+BASE,Base,base,33,,Athletic Club,MED,,,1,true
+BASE,Base,base,34,,Athletic Club,MED,,,1,true
+BASE,Base,base,35,,Athletic Club,DEL,,,1,true
+BASE,Base,base,36,,Athletic Club,DEL,,,1,true
+BASE,Base,base,37,,Athletic Club,DEL,,,1,true
+BASE,Base,base,38,,Athletic Club,DEL,,,1,true
+BASE,Base,base,39,,Atletico de Madrid,,,,1,true
+BASE,Base,base,40,,Atletico de Madrid,POR,,,1,true
+BASE,Base,base,41,,Atletico de Madrid,POR,,,1,true
+BASE,Base,base,42,,Atletico de Madrid,DEF,,,1,true
+BASE,Base,base,43,,Atletico de Madrid,DEF,,,1,true
+BASE,Base,base,44,,Atletico de Madrid,DEF,,,1,true
+BASE,Base,base,45,,Atletico de Madrid,DEF,,,1,true
+BASE,Base,base,46,,Atletico de Madrid,DEF,,,1,true
+BASE,Base,base,47,,Atletico de Madrid,DEF,,,1,true
+BASE,Base,base,48,,Atletico de Madrid,MED,,,1,true
+BASE,Base,base,49,,Atletico de Madrid,MED,,,1,true
+BASE,Base,base,50,,Atletico de Madrid,MED,,,1,true
+BASE,Base,base,51,,Atletico de Madrid,MED,,,1,true
+BASE,Base,base,52,,Atletico de Madrid,MED,,,1,true
+BASE,Base,base,53,,Atletico de Madrid,MED,,,1,true
+BASE,Base,base,54,,Atletico de Madrid,DEL,,,1,true
+BASE,Base,base,55,,Atletico de Madrid,DEL,,,1,true
+BASE,Base,base,56,,Atletico de Madrid,DEL,,,1,true
+BASE,Base,base,57,,Atletico de Madrid,DEL,,,1,true
+BASE,Base,base,58,,Barcelona,,,,1,true
+BASE,Base,base,59,,Barcelona,POR,,,1,true
+BASE,Base,base,60,,Barcelona,POR,,,1,true
+BASE,Base,base,61,,Barcelona,DEF,,,1,true
+BASE,Base,base,62,,Barcelona,DEF,,,1,true
+BASE,Base,base,63,,Barcelona,DEF,,,1,true
+BASE,Base,base,64,,Barcelona,DEF,,,1,true
+BASE,Base,base,65,,Barcelona,DEF,,,1,true
+BASE,Base,base,66,,Barcelona,DEF,,,1,true
+BASE,Base,base,67,,Barcelona,MED,,,1,true
+BASE,Base,base,68,,Barcelona,MED,,,1,true
+BASE,Base,base,69,,Barcelona,MED,,,1,true
+BASE,Base,base,70,,Barcelona,MED,,,1,true
+BASE,Base,base,71,,Barcelona,MED,,,1,true
+BASE,Base,base,72,,Barcelona,MED,,,1,true
+BASE,Base,base,73,,Barcelona,DEL,,,1,true
+BASE,Base,base,74,,Barcelona,DEL,,,1,true
+BASE,Base,base,75,,Barcelona,DEL,,,1,true
+BASE,Base,base,76,,Barcelona,DEL,,,1,true
+BASE,Base,base,77,,Celta de Vigo,,,,1,true
+BASE,Base,base,78,,Celta de Vigo,POR,,,1,true
+BASE,Base,base,79,,Celta de Vigo,POR,,,1,true
+BASE,Base,base,80,,Celta de Vigo,DEF,,,1,true
+BASE,Base,base,81,,Celta de Vigo,DEF,,,1,true
+BASE,Base,base,82,,Celta de Vigo,DEF,,,1,true
+BASE,Base,base,83,,Celta de Vigo,DEF,,,1,true
+BASE,Base,base,84,,Celta de Vigo,DEF,,,1,true
+BASE,Base,base,85,,Celta de Vigo,DEF,,,1,true
+BASE,Base,base,86,,Celta de Vigo,MED,,,1,true
+BASE,Base,base,87,,Celta de Vigo,MED,,,1,true
+BASE,Base,base,88,,Celta de Vigo,MED,,,1,true
+BASE,Base,base,89,,Celta de Vigo,MED,,,1,true
+BASE,Base,base,90,,Celta de Vigo,MED,,,1,true
+BASE,Base,base,91,,Celta de Vigo,MED,,,1,true
+BASE,Base,base,92,,Celta de Vigo,DEL,,,1,true
+BASE,Base,base,93,,Celta de Vigo,DEL,,,1,true
+BASE,Base,base,94,,Celta de Vigo,DEL,,,1,true
+BASE,Base,base,95,,Celta de Vigo,DEL,,,1,true
+BASE,Base,base,96,,Elche,,,,1,true
+BASE,Base,base,97,,Elche,POR,,,1,true
+BASE,Base,base,98,,Elche,POR,,,1,true
+BASE,Base,base,99,,Elche,DEF,,,1,true
+BASE,Base,base,100,,Elche,DEF,,,1,true
+BASE,Base,base,101,,Elche,DEF,,,1,true
+BASE,Base,base,102,,Elche,DEF,,,1,true
+BASE,Base,base,103,,Elche,DEF,,,1,true
+BASE,Base,base,104,,Elche,DEF,,,1,true
+BASE,Base,base,105,,Elche,MED,,,1,true
+BASE,Base,base,106,,Elche,MED,,,1,true
+BASE,Base,base,107,,Elche,MED,,,1,true
+BASE,Base,base,108,,Elche,MED,,,1,true
+BASE,Base,base,109,,Elche,MED,,,1,true
+BASE,Base,base,110,,Elche,MED,,,1,true
+BASE,Base,base,111,,Elche,DEL,,,1,true
+BASE,Base,base,112,,Elche,DEL,,,1,true
+BASE,Base,base,113,,Elche,DEL,,,1,true
+BASE,Base,base,114,,Elche,DEL,,,1,true
+BASE,Base,base,115,,Espanyol,,,,1,true
+BASE,Base,base,116,,Espanyol,POR,,,1,true
+BASE,Base,base,117,,Espanyol,POR,,,1,true
+BASE,Base,base,118,,Espanyol,DEF,,,1,true
+BASE,Base,base,119,,Espanyol,DEF,,,1,true
+BASE,Base,base,120,,Espanyol,DEF,,,1,true
+BASE,Base,base,121,,Espanyol,DEF,,,1,true
+BASE,Base,base,122,,Espanyol,DEF,,,1,true
+BASE,Base,base,123,,Espanyol,DEF,,,1,true
+BASE,Base,base,124,,Espanyol,MED,,,1,true
+BASE,Base,base,125,,Espanyol,MED,,,1,true
+BASE,Base,base,126,,Espanyol,MED,,,1,true
+BASE,Base,base,127,,Espanyol,MED,,,1,true
+BASE,Base,base,128,,Espanyol,MED,,,1,true
+BASE,Base,base,129,,Espanyol,MED,,,1,true
+BASE,Base,base,130,,Espanyol,DEL,,,1,true
+BASE,Base,base,131,,Espanyol,DEL,,,1,true
+BASE,Base,base,132,,Espanyol,DEL,,,1,true
+BASE,Base,base,133,,Espanyol,DEL,,,1,true
+BASE,Base,base,134,,Getafe,,,,1,true
+BASE,Base,base,135,,Getafe,POR,,,1,true
+BASE,Base,base,136,,Getafe,POR,,,1,true
+BASE,Base,base,137,,Getafe,DEF,,,1,true
+BASE,Base,base,138,,Getafe,DEF,,,1,true
+BASE,Base,base,139,,Getafe,DEF,,,1,true
+BASE,Base,base,140,,Getafe,DEF,,,1,true
+BASE,Base,base,141,,Getafe,DEF,,,1,true
+BASE,Base,base,142,,Getafe,DEF,,,1,true
+BASE,Base,base,143,,Getafe,MED,,,1,true
+BASE,Base,base,144,,Getafe,MED,,,1,true
+BASE,Base,base,145,,Getafe,MED,,,1,true
+BASE,Base,base,146,,Getafe,MED,,,1,true
+BASE,Base,base,147,,Getafe,MED,,,1,true
+BASE,Base,base,148,,Getafe,MED,,,1,true
+BASE,Base,base,149,,Getafe,DEL,,,1,true
+BASE,Base,base,150,,Getafe,DEL,,,1,true
+BASE,Base,base,151,,Getafe,DEL,,,1,true
+BASE,Base,base,152,,Getafe,DEL,,,1,true
+BASE,Base,base,153,,Girona,,,,1,true
+BASE,Base,base,154,,Girona,POR,,,1,true
+BASE,Base,base,155,,Girona,POR,,,1,true
+BASE,Base,base,156,,Girona,DEF,,,1,true
+BASE,Base,base,157,,Girona,DEF,,,1,true
+BASE,Base,base,158,,Girona,DEF,,,1,true
+BASE,Base,base,159,,Girona,DEF,,,1,true
+BASE,Base,base,160,,Girona,DEF,,,1,true
+BASE,Base,base,161,,Girona,DEF,,,1,true
+BASE,Base,base,162,,Girona,MED,,,1,true
+BASE,Base,base,163,,Girona,MED,,,1,true
+BASE,Base,base,164,,Girona,MED,,,1,true
+BASE,Base,base,165,,Girona,MED,,,1,true
+BASE,Base,base,166,,Girona,MED,,,1,true
+BASE,Base,base,167,,Girona,MED,,,1,true
+BASE,Base,base,168,,Girona,DEL,,,1,true
+BASE,Base,base,169,,Girona,DEL,,,1,true
+BASE,Base,base,170,,Girona,DEL,,,1,true
+BASE,Base,base,171,,Girona,DEL,,,1,true
+BASE,Base,base,172,,Levante,,,,1,true
+BASE,Base,base,173,,Levante,POR,,,1,true
+BASE,Base,base,174,,Levante,POR,,,1,true
+BASE,Base,base,175,,Levante,DEF,,,1,true
+BASE,Base,base,176,,Levante,DEF,,,1,true
+BASE,Base,base,177,,Levante,DEF,,,1,true
+BASE,Base,base,178,,Levante,DEF,,,1,true
+BASE,Base,base,179,,Levante,DEF,,,1,true
+BASE,Base,base,180,,Levante,DEF,,,1,true
+BASE,Base,base,181,,Levante,MED,,,1,true
+BASE,Base,base,182,,Levante,MED,,,1,true
+BASE,Base,base,183,,Levante,MED,,,1,true
+BASE,Base,base,184,,Levante,MED,,,1,true
+BASE,Base,base,185,,Levante,MED,,,1,true
+BASE,Base,base,186,,Levante,MED,,,1,true
+BASE,Base,base,187,,Levante,DEL,,,1,true
+BASE,Base,base,188,,Levante,DEL,,,1,true
+BASE,Base,base,189,,Levante,DEL,,,1,true
+BASE,Base,base,190,,Levante,DEL,,,1,true
+BASE,Base,base,191,,Mallorca,,,,1,true
+BASE,Base,base,192,,Mallorca,POR,,,1,true
+BASE,Base,base,193,,Mallorca,POR,,,1,true
+BASE,Base,base,194,,Mallorca,DEF,,,1,true
+BASE,Base,base,195,,Mallorca,DEF,,,1,true
+BASE,Base,base,196,,Mallorca,DEF,,,1,true
+BASE,Base,base,197,,Mallorca,DEF,,,1,true
+BASE,Base,base,198,,Mallorca,DEF,,,1,true
+BASE,Base,base,199,,Mallorca,DEF,,,1,true
+BASE,Base,base,200,,Mallorca,MED,,,1,true
+BASE,Base,base,200bis,,Mallorca,MED,,,1,true
+BASE,Base,base,201,,Mallorca,MED,,,1,true
+BASE,Base,base,202,,Mallorca,MED,,,1,true
+BASE,Base,base,203,,Mallorca,MED,,,1,true
+BASE,Base,base,204,,Mallorca,MED,,,1,true
+BASE,Base,base,205,,Mallorca,MED,,,1,true
+BASE,Base,base,206,,Mallorca,DEL,,,1,true
+BASE,Base,base,207,,Mallorca,DEL,,,1,true
+BASE,Base,base,208,,Mallorca,DEL,,,1,true
+BASE,Base,base,209,,Mallorca,DEL,,,1,true
+BASE,Base,base,210,,Osasuna,,,,1,true
+BASE,Base,base,211,,Osasuna,POR,,,1,true
+BASE,Base,base,212,,Osasuna,POR,,,1,true
+BASE,Base,base,213,,Osasuna,DEF,,,1,true
+BASE,Base,base,214,,Osasuna,DEF,,,1,true
+BASE,Base,base,215,,Osasuna,DEF,,,1,true
+BASE,Base,base,216,,Osasuna,DEF,,,1,true
+BASE,Base,base,217,,Osasuna,DEF,,,1,true
+BASE,Base,base,218,,Osasuna,DEF,,,1,true
+BASE,Base,base,219,,Osasuna,MED,,,1,true
+BASE,Base,base,220,,Osasuna,MED,,,1,true
+BASE,Base,base,221,,Osasuna,MED,,,1,true
+BASE,Base,base,222,,Osasuna,MED,,,1,true
+BASE,Base,base,223,,Osasuna,MED,,,1,true
+BASE,Base,base,224,,Osasuna,MED,,,1,true
+BASE,Base,base,225,,Osasuna,DEL,,,1,true
+BASE,Base,base,226,,Osasuna,DEL,,,1,true
+BASE,Base,base,227,,Osasuna,DEL,,,1,true
+BASE,Base,base,228,,Osasuna,DEL,,,1,true
+BASE,Base,base,229,,Rayo Vallecano,,,,1,true
+BASE,Base,base,230,,Rayo Vallecano,POR,,,1,true
+BASE,Base,base,231,,Rayo Vallecano,POR,,,1,true
+BASE,Base,base,232,,Rayo Vallecano,DEF,,,1,true
+BASE,Base,base,233,,Rayo Vallecano,DEF,,,1,true
+BASE,Base,base,234,,Rayo Vallecano,DEF,,,1,true
+BASE,Base,base,235,,Rayo Vallecano,DEF,,,1,true
+BASE,Base,base,236,,Rayo Vallecano,DEF,,,1,true
+BASE,Base,base,237,,Rayo Vallecano,DEF,,,1,true
+BASE,Base,base,238,,Rayo Vallecano,MED,,,1,true
+BASE,Base,base,239,,Rayo Vallecano,MED,,,1,true
+BASE,Base,base,240,,Rayo Vallecano,MED,,,1,true
+BASE,Base,base,241,,Rayo Vallecano,MED,,,1,true
+BASE,Base,base,242,,Rayo Vallecano,MED,,,1,true
+BASE,Base,base,243,,Rayo Vallecano,MED,,,1,true
+BASE,Base,base,244,,Rayo Vallecano,DEL,,,1,true
+BASE,Base,base,245,,Rayo Vallecano,DEL,,,1,true
+BASE,Base,base,246,,Rayo Vallecano,DEL,,,1,true
+BASE,Base,base,247,,Rayo Vallecano,DEL,,,1,true
+BASE,Base,base,248,,Real Betis,,,,1,true
+BASE,Base,base,249,,Real Betis,POR,,,1,true
+BASE,Base,base,250,,Real Betis,POR,,,1,true
+BASE,Base,base,251,,Real Betis,DEF,,,1,true
+BASE,Base,base,252,,Real Betis,DEF,,,1,true
+BASE,Base,base,253,,Real Betis,DEF,,,1,true
+BASE,Base,base,254,,Real Betis,DEF,,,1,true
+BASE,Base,base,255,,Real Betis,DEF,,,1,true
+BASE,Base,base,256,,Real Betis,DEF,,,1,true
+BASE,Base,base,257,,Real Betis,MED,,,1,true
+BASE,Base,base,258,,Real Betis,MED,,,1,true
+BASE,Base,base,259,,Real Betis,MED,,,1,true
+BASE,Base,base,260,,Real Betis,MED,,,1,true
+BASE,Base,base,261,,Real Betis,MED,,,1,true
+BASE,Base,base,262,,Real Betis,MED,,,1,true
+BASE,Base,base,263,,Real Betis,DEL,,,1,true
+BASE,Base,base,264,,Real Betis,DEL,,,1,true
+BASE,Base,base,265,,Real Betis,DEL,,,1,true
+BASE,Base,base,266,,Real Betis,DEL,,,1,true
+BASE,Base,base,267,,Real Madrid,,,,1,true
+BASE,Base,base,268,,Real Madrid,POR,,,1,true
+BASE,Base,base,269,,Real Madrid,POR,,,1,true
+BASE,Base,base,270,,Real Madrid,DEF,,,1,true
+BASE,Base,base,271,,Real Madrid,DEF,,,1,true
+BASE,Base,base,272,,Real Madrid,DEF,,,1,true
+BASE,Base,base,273,,Real Madrid,DEF,,,1,true
+BASE,Base,base,274,,Real Madrid,DEF,,,1,true
+BASE,Base,base,275,,Real Madrid,DEF,,,1,true
+BASE,Base,base,276,,Real Madrid,MED,,,1,true
+BASE,Base,base,277,,Real Madrid,MED,,,1,true
+BASE,Base,base,278,,Real Madrid,MED,,,1,true
+BASE,Base,base,279,,Real Madrid,MED,,,1,true
+BASE,Base,base,280,,Real Madrid,MED,,,1,true
+BASE,Base,base,281,,Real Madrid,MED,,,1,true
+BASE,Base,base,282,,Real Madrid,DEL,,,1,true
+BASE,Base,base,283,,Real Madrid,DEL,,,1,true
+BASE,Base,base,284,,Real Madrid,DEL,,,1,true
+BASE,Base,base,285,,Real Madrid,DEL,,,1,true
+BASE,Base,base,286,,Real Oviedo,,,,1,true
+BASE,Base,base,287,,Real Oviedo,POR,,,1,true
+BASE,Base,base,288,,Real Oviedo,POR,,,1,true
+BASE,Base,base,289,,Real Oviedo,DEF,,,1,true
+BASE,Base,base,290,,Real Oviedo,DEF,,,1,true
+BASE,Base,base,291,,Real Oviedo,DEF,,,1,true
+BASE,Base,base,292,,Real Oviedo,DEF,,,1,true
+BASE,Base,base,293,,Real Oviedo,DEF,,,1,true
+BASE,Base,base,294,,Real Oviedo,DEF,,,1,true
+BASE,Base,base,295,,Real Oviedo,MED,,,1,true
+BASE,Base,base,296,,Real Oviedo,MED,,,1,true
+BASE,Base,base,297,,Real Oviedo,MED,,,1,true
+BASE,Base,base,298,,Real Oviedo,MED,,,1,true
+BASE,Base,base,299,,Real Oviedo,MED,,,1,true
+BASE,Base,base,300,,Real Oviedo,MED,,,1,true
+BASE,Base,base,301,,Real Oviedo,DEL,,,1,true
+BASE,Base,base,302,,Real Oviedo,DEL,,,1,true
+BASE,Base,base,303,,Real Oviedo,DEL,,,1,true
+BASE,Base,base,304,,Real Oviedo,DEL,,,1,true
+BASE,Base,base,305,,Real Sociedad,,,,1,true
+BASE,Base,base,306,,Real Sociedad,POR,,,1,true
+BASE,Base,base,307,,Real Sociedad,POR,,,1,true
+BASE,Base,base,308,,Real Sociedad,DEF,,,1,true
+BASE,Base,base,309,,Real Sociedad,DEF,,,1,true
+BASE,Base,base,310,,Real Sociedad,DEF,,,1,true
+BASE,Base,base,311,,Real Sociedad,DEF,,,1,true
+BASE,Base,base,312,,Real Sociedad,DEF,,,1,true
+BASE,Base,base,313,,Real Sociedad,DEF,,,1,true
+BASE,Base,base,314,,Real Sociedad,MED,,,1,true
+BASE,Base,base,315,,Real Sociedad,MED,,,1,true
+BASE,Base,base,316,,Real Sociedad,MED,,,1,true
+BASE,Base,base,317,,Real Sociedad,MED,,,1,true
+BASE,Base,base,318,,Real Sociedad,MED,,,1,true
+BASE,Base,base,319,,Real Sociedad,MED,,,1,true
+BASE,Base,base,320,,Real Sociedad,DEL,,,1,true
+BASE,Base,base,321,,Real Sociedad,DEL,,,1,true
+BASE,Base,base,322,,Real Sociedad,DEL,,,1,true
+BASE,Base,base,323,,Real Sociedad,DEL,,,1,true
+BASE,Base,base,324,,Sevilla,,,,1,true
+BASE,Base,base,325,,Sevilla,POR,,,1,true
+BASE,Base,base,326,,Sevilla,POR,,,1,true
+BASE,Base,base,327,,Sevilla,DEF,,,1,true
+BASE,Base,base,328,,Sevilla,DEF,,,1,true
+BASE,Base,base,329,,Sevilla,DEF,,,1,true
+BASE,Base,base,330,,Sevilla,DEF,,,1,true
+BASE,Base,base,331,,Sevilla,DEF,,,1,true
+BASE,Base,base,332,,Sevilla,DEF,,,1,true
+BASE,Base,base,333,,Sevilla,MED,,,1,true
+BASE,Base,base,334,,Sevilla,MED,,,1,true
+BASE,Base,base,335,,Sevilla,MED,,,1,true
+BASE,Base,base,336,,Sevilla,MED,,,1,true
+BASE,Base,base,337,,Sevilla,MED,,,1,true
+BASE,Base,base,338,,Sevilla,MED,,,1,true
+BASE,Base,base,339,,Sevilla,DEL,,,1,true
+BASE,Base,base,340,,Sevilla,DEL,,,1,true
+BASE,Base,base,341,,Sevilla,DEL,,,1,true
+BASE,Base,base,342,,Sevilla,DEL,,,1,true
+BASE,Base,base,343,,Valencia,,,,1,true
+BASE,Base,base,344,,Valencia,POR,,,1,true
+BASE,Base,base,345,,Valencia,POR,,,1,true
+BASE,Base,base,346,,Valencia,DEF,,,1,true
+BASE,Base,base,347,,Valencia,DEF,,,1,true
+BASE,Base,base,348,,Valencia,DEF,,,1,true
+BASE,Base,base,349,,Valencia,DEF,,,1,true
+BASE,Base,base,350,,Valencia,DEF,,,1,true
+BASE,Base,base,351,,Valencia,DEF,,,1,true
+BASE,Base,base,352,,Valencia,MED,,,1,true
+BASE,Base,base,353,,Valencia,MED,,,1,true
+BASE,Base,base,354,,Valencia,MED,,,1,true
+BASE,Base,base,355,,Valencia,MED,,,1,true
+BASE,Base,base,356,,Valencia,MED,,,1,true
+BASE,Base,base,357,,Valencia,MED,,,1,true
+BASE,Base,base,358,,Valencia,DEL,,,1,true
+BASE,Base,base,359,,Valencia,DEL,,,1,true
+BASE,Base,base,360,,Valencia,DEL,,,1,true
+BASE,Base,base,361,,Valencia,DEL,,,1,true
+BASE,Base,base,362,,Villarreal,,,,1,true
+BASE,Base,base,363,,Villarreal,POR,,,1,true
+BASE,Base,base,364,,Villarreal,POR,,,1,true
+BASE,Base,base,365,,Villarreal,DEF,,,1,true
+BASE,Base,base,366,,Villarreal,DEF,,,1,true
+BASE,Base,base,367,,Villarreal,DEF,,,1,true
+BASE,Base,base,368,,Villarreal,DEF,,,1,true
+BASE,Base,base,369,,Villarreal,DEF,,,1,true
+BASE,Base,base,370,,Villarreal,DEF,,,1,true
+BASE,Base,base,371,,Villarreal,MED,,,1,true
+BASE,Base,base,372,,Villarreal,MED,,,1,true
+BASE,Base,base,373,,Villarreal,MED,,,1,true
+BASE,Base,base,374,,Villarreal,MED,,,1,true
+BASE,Base,base,375,,Villarreal,MED,,,1,true
+BASE,Base,base,376,,Villarreal,MED,,,1,true
+BASE,Base,base,377,,Villarreal,DEL,,,1,true
+BASE,Base,base,378,,Villarreal,DEL,,,1,true
+BASE,Base,base,379,,Villarreal,DEL,,,1,true
+BASE,Base,base,380,,Villarreal,DEL,,,1,true
+MOM,Momentos,insert,MOM1,,Alaves,,,,2,true
+MOM,Momentos,insert,MOM2,,Athletic Club,,,,2,true
+MOM,Momentos,insert,MOM3,,Atletico de Madrid,,,,2,true
+MOM,Momentos,insert,MOM4,,Barcelona,,,,2,true
+MOM,Momentos,insert,MOM5,,Celta de Vigo,,,,2,true
+MOM,Momentos,insert,MOM6,,Elche,,,,2,true
+MOM,Momentos,insert,MOM7,,Espanyol,,,,2,true
+MOM,Momentos,insert,MOM8,,Getafe,,,,2,true
+MOM,Momentos,insert,MOM9,,Girona,,,,2,true
+MOM,Momentos,insert,MOM10,,Levante,,,,2,true
+MOM,Momentos,insert,MOM11,,Mallorca,,,,2,true
+MOM,Momentos,insert,MOM12,,Osasuna,,,,2,true
+MOM,Momentos,insert,MOM13,,Rayo Vallecano,,,,2,true
+MOM,Momentos,insert,MOM14,,Real Betis,,,,2,true
+MOM,Momentos,insert,MOM15,,Real Madrid,,,,2,true
+MOM,Momentos,insert,MOM16,,Real Oviedo,,,,2,true
+MOM,Momentos,insert,MOM17,,Real Sociedad,,,,2,true
+MOM,Momentos,insert,MOM18,,Sevilla,,,,2,true
+MOM,Momentos,insert,MOM19,,Valencia,,,,2,true
+MOM,Momentos,insert,MOM20,,Villarreal,,,,2,true
+MOM,Momentos,insert,MOM21,,Alaves,,,,2,true
+MOM,Momentos,insert,MOM22,,Athletic Club,,,,2,true
+MOM,Momentos,insert,MOM23,,Atletico de Madrid,,,,2,true
+MOM,Momentos,insert,MOM24,,Barcelona,,,,2,true
+MOM,Momentos,insert,MOM25,,Celta de Vigo,,,,2,true
+MOM,Momentos,insert,MOM26,,Elche,,,,2,true
+MOM,Momentos,insert,MOM27,,Espanyol,,,,2,true
+MOM,Momentos,insert,MOM28,,Getafe,,,,2,true
+MOM,Momentos,insert,MOM29,,Girona,,,,2,true
+MOM,Momentos,insert,MOM30,,Levante,,,,2,true
+MVP,MVP,insert,MVP1,,Alaves,,,,2,true
+MVP,MVP,insert,MVP2,,Athletic Club,,,,2,true
+MVP,MVP,insert,MVP3,,Atletico de Madrid,,,,2,true
+MVP,MVP,insert,MVP4,,Barcelona,,,,2,true
+MVP,MVP,insert,MVP5,,Celta de Vigo,,,,2,true
+MVP,MVP,insert,MVP6,,Elche,,,,2,true
+MVP,MVP,insert,MVP7,,Espanyol,,,,2,true
+MVP,MVP,insert,MVP8,,Getafe,,,,2,true
+MVP,MVP,insert,MVP9,,Girona,,,,2,true
+MVP,MVP,insert,MVP10,,Levante,,,,2,true
+MVP,MVP,insert,MVP11,,Mallorca,,,,2,true
+MVP,MVP,insert,MVP12,,Osasuna,,,,2,true
+MVP,MVP,insert,MVP13,,Rayo Vallecano,,,,2,true
+MVP,MVP,insert,MVP14,,Real Betis,,,,2,true
+MVP,MVP,insert,MVP15,,Real Madrid,,,,2,true
+MVP,MVP,insert,MVP16,,Real Oviedo,,,,2,true
+MVP,MVP,insert,MVP17,,Real Sociedad,,,,2,true
+MVP,MVP,insert,MVP18,,Sevilla,,,,2,true
+MVP,MVP,insert,MVP19,,Valencia,,,,2,true
+MVP,MVP,insert,MVP20,,Villarreal,,,,2,true
+ELITE,Elite,insert,E1,,Alaves,,,,3,false
+ELITE,Elite,insert,E2,,Athletic Club,,,,3,false
+ELITE,Elite,insert,E3,,Atletico de Madrid,,,,3,false
+ELITE,Elite,insert,E4,,Barcelona,,,,3,false
+ELITE,Elite,insert,E5,,Celta de Vigo,,,,3,false
+ELITE,Elite,insert,E6,,Elche,,,,3,false
+ELITE,Elite,insert,E7,,Espanyol,,,,3,false
+ELITE,Elite,insert,E8,,Getafe,,,,3,false
+ELITE,Elite,insert,E9,,Girona,,,,3,false
+ELITE,Elite,insert,E10,,Levante,,,,3,false
+ELITE,Elite,insert,E11,,Mallorca,,,,3,false
+ELITE,Elite,insert,E12,,Osasuna,,,,3,false
+ELITE,Elite,insert,E13,,Rayo Vallecano,,,,3,false
+ELITE,Elite,insert,E14,,Real Betis,,,,3,false
+ELITE,Elite,insert,E15,,Real Madrid,,,,3,false
+ELITE,Elite,insert,E16,,Real Oviedo,,,,3,false
+ELITE,Elite,insert,E17,,Real Sociedad,,,,3,false
+ELITE,Elite,insert,E18,,Sevilla,,,,3,false
+ELITE,Elite,insert,E19,,Valencia,,,,3,false
+ELITE,Elite,insert,E20,,Villarreal,,,,3,false
+GOLD,Gold,parallel,G1,,Alaves,,gold,100,4,false
+GOLD,Gold,parallel,G2,,Athletic Club,,gold,100,4,false
+GOLD,Gold,parallel,G3,,Atletico de Madrid,,gold,100,4,false
+GOLD,Gold,parallel,G4,,Barcelona,,gold,100,4,false
+GOLD,Gold,parallel,G5,,Celta de Vigo,,gold,100,4,false
+GOLD,Gold,parallel,G6,,Elche,,gold,100,4,false
+GOLD,Gold,parallel,G7,,Espanyol,,gold,100,4,false
+GOLD,Gold,parallel,G8,,Getafe,,gold,100,4,false
+GOLD,Gold,parallel,G9,,Girona,,gold,100,4,false
+GOLD,Gold,parallel,G10,,Levante,,gold,100,4,false
+GOLD,Gold,parallel,G11,,Mallorca,,gold,100,4,false
+GOLD,Gold,parallel,G12,,Osasuna,,gold,100,4,false
+GOLD,Gold,parallel,G13,,Rayo Vallecano,,gold,100,4,false
+GOLD,Gold,parallel,G14,,Real Betis,,gold,100,4,false
+GOLD,Gold,parallel,G15,,Real Madrid,,gold,100,4,false
+GOLD,Gold,parallel,G16,,Real Oviedo,,gold,100,4,false
+GOLD,Gold,parallel,G17,,Real Sociedad,,gold,100,4,false
+GOLD,Gold,parallel,G18,,Sevilla,,gold,100,4,false
+GOLD,Gold,parallel,G19,,Valencia,,gold,100,4,false
+GOLD,Gold,parallel,G20,,Villarreal,,gold,100,4,false
+GOLD,Gold,parallel,G21,,Alaves,,gold,100,4,false
+GOLD,Gold,parallel,G22,,Athletic Club,,gold,100,4,false
+GOLD,Gold,parallel,G23,,Atletico de Madrid,,gold,100,4,false
+GOLD,Gold,parallel,G24,,Barcelona,,gold,100,4,false
+GOLD,Gold,parallel,G25,,Celta de Vigo,,gold,100,4,false
+GOLD,Gold,parallel,G26,,Elche,,gold,100,4,false
+GOLD,Gold,parallel,G27,,Espanyol,,gold,100,4,false
+GOLD,Gold,parallel,G28,,Getafe,,gold,100,4,false
+GOLD,Gold,parallel,G29,,Girona,,gold,100,4,false
+GOLD,Gold,parallel,G30,,Levante,,gold,100,4,false
+GOLD,Gold,parallel,G31,,Mallorca,,gold,100,4,false
+GOLD,Gold,parallel,G32,,Osasuna,,gold,100,4,false
+GOLD,Gold,parallel,G33,,Rayo Vallecano,,gold,100,4,false
+GOLD,Gold,parallel,G34,,Real Betis,,gold,100,4,false
+GOLD,Gold,parallel,G35,,Real Madrid,,gold,100,4,false
+GOLD,Gold,parallel,G36,,Real Oviedo,,gold,100,4,false
+GOLD,Gold,parallel,G37,,Real Sociedad,,gold,100,4,false
+GOLD,Gold,parallel,G38,,Sevilla,,gold,100,4,false
+GOLD,Gold,parallel,G39,,Valencia,,gold,100,4,false
+GOLD,Gold,parallel,G40,,Villarreal,,gold,100,4,false
+LEG,Leyendas,limited,LE1,,Barcelona,,,500,4,false
+LEG,Leyendas,limited,LE2,,Espanyol,,,500,4,false
+LEG,Leyendas,limited,LE3,,Levante,,,500,4,false
+LEG,Leyendas,limited,LE4,,Rayo Vallecano,,,500,4,false
+LEG,Leyendas,limited,LE5,,Real Oviedo,,,500,4,false
+LEG,Leyendas,limited,LE6,,Valencia,,,500,4,false
+LEG,Leyendas,limited,LE7,,Athletic Club,,,500,4,false
+LEG,Leyendas,limited,LE8,,Celta de Vigo,,,500,4,false
+LEG,Leyendas,limited,LE9,,Getafe,,,500,4,false
+LEG,Leyendas,limited,LE10,,Mallorca,,,500,4,false
+AUTO,Autografos,autograph,A1,,Elche,,,25,5,false
+AUTO,Autografos,autograph,A2,,Mallorca,,,25,5,false
+AUTO,Autografos,autograph,A3,,Real Oviedo,,,25,5,false
+AUTO,Autografos,autograph,A4,,Alaves,,,25,5,false
+AUTO,Autografos,autograph,A5,,Elche,,,25,5,false
+AUTO,Autografos,autograph,A6,,Mallorca,,,25,5,false
+AUTO,Autografos,autograph,A7,,Real Oviedo,,,25,5,false
+AUTO,Autografos,autograph,A8,,Alaves,,,25,5,false
+AUTO,Autografos,autograph,A9,,Elche,,,25,5,false
+AUTO,Autografos,autograph,A10,,Mallorca,,,25,5,false
+AUTO,Autografos,autograph,A11,,Real Oviedo,,,25,5,false
+AUTO,Autografos,autograph,A12,,Alaves,,,25,5,false

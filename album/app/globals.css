@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  /* Un archivador de fundas sobre la mesa, no un panel de administración. */
+  --color-ink: #07120e;
+  --color-leather: #0b1a15;
+  --color-sheet: #10241d;
+  --color-slot: #16302a;
+  --color-slot-edge: #24473e;
+  --color-cream: #ecf1ee;
+  --color-muted: #8aa79c;
+  /* El único acento metálico. Reservado a lo raro. */
+  --color-gold: #c9a227;
+  --color-gold-dim: #7d661c;
+
+  --font-display: var(--font-display-src), "Archivo Narrow", "Impact", sans-serif;
+  --font-sans: var(--font-sans-src), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-slot: 0.55rem;
+}
+
+html {
+  background: var(--color-ink);
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(120% 80% at 50% 0%, #12261f 0%, var(--color-leather) 55%, var(--color-ink) 100%);
+  color: var(--color-cream);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+/* Números protagonistas: tabulares en todo contador y precio. */
+.tnum { font-variant-numeric: tabular-nums; }
+
+.font-display { font-family: var(--font-display); letter-spacing: 0.01em; }
+
+/* Textura de funda de plástico sobre el hueco vacío. */
+.sleeve {
+  background-image:
+    linear-gradient(115deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 38%),
+    linear-gradient(300deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 42%);
+}
+
+/* El único movimiento del producto: el hueco se rellena de abajo arriba. */
+@keyframes slot-fill {
+  from { clip-path: inset(100% 0 0 0); opacity: 0.4; }
+  to { clip-path: inset(0 0 0 0); opacity: 1; }
+}
+
+.animate-slot-fill { animation: slot-fill 380ms cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.06); } 100% { transform: scale(1); } }
+.animate-pop { animation: pop 260ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-slot-fill, .animate-pop { animation: none; }
+  * { transition-duration: 1ms !important; }
+}
+
+/* Scrollbar discreta en las pestañas horizontales */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
