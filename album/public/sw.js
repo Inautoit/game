@@ -3,10 +3,12 @@
 const VERSION = 'v1';
 const SHELL = `shell-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
+const OFFLINE = '/offline';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(SHELL).then((cache) => cache.addAll(['/', '/faltas', '/repes', '/valor', '/sobre']))
+    caches.open(SHELL)
+      .then((cache) => cache.addAll([OFFLINE, '/manifest.webmanifest']))
       .catch(() => undefined)
       .then(() => self.skipWaiting()),
   );
@@ -22,7 +24,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/** Estático (catálogo, chunks, iconos): cache primero, refresco en segundo plano. */
+/** Estático (catálogo, chunks, iconos): caché primero, refresco en segundo plano. */
 function staleWhileRevalidate(request) {
   return caches.open(ASSETS).then((cache) =>
     cache.match(request).then((cached) => {
@@ -37,15 +39,27 @@ function staleWhileRevalidate(request) {
   );
 }
 
-/** Navegación: red primero para ver cambios, caché si no hay cobertura. */
-function networkFirst(request) {
-  return fetch(request)
-    .then((response) => {
-      const copy = response.clone();
-      caches.open(SHELL).then((cache) => cache.put(request, copy));
-      return response;
-    })
-    .catch(() => caches.match(request).then((cached) => cached || caches.match('/')));
+/**
+ * Navegación: red primero para ver los cambios, caché si no hay cobertura.
+ * Nunca devuelve vacío: si no hay nada guardado, cae en /offline.
+ */
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request);
+    if (response.ok && !response.redirected) {
+      const cache = await caches.open(SHELL);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+    const fallback = await caches.match(OFFLINE);
+    return fallback || new Response('Sin conexión', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
 }
 
 self.addEventListener('fetch', (event) => {
