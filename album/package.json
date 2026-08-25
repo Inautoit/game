@@ -13,7 +13,8 @@
     "check:prices": "tsx scripts/check-prices.ts",
     "icons": "tsx scripts/make-icons.ts",
     "import:checklist": "tsx scripts/import-checklist.ts",
-    "worker:typecheck": "tsc --noEmit --project worker/tsconfig.json"
+    "worker:typecheck": "tsc --noEmit --project worker/tsconfig.json",
+    "preview:build": "tsx scripts/build-preview.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",

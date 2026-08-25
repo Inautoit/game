@@ -1,0 +1,951 @@
+<title>Hoja</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Inter:wght@400;500;600;700&display=swap">
+
+<style>
+/* Un archivador de fundas sobre la mesa. Es el mismo sistema visual que la app:
+   fondo de cuero verde botella, huecos más claros y un solo acento metálico
+   reservado a lo raro. Se compromete con un único tema a propósito. */
+:root {
+  --ink: #07120e;
+  --leather: #0b1a15;
+  --sheet: #10241d;
+  --slot: #16302a;
+  --edge: #24473e;
+  --cream: #ecf1ee;
+  --muted: #8aa79c;
+  --gold: #c9a227;
+  --gold-dim: #7d661c;
+  --radius: 0.55rem;
+  --display: "Oswald", "Archivo Narrow", Impact, sans-serif;
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(120% 80% at 50% 0%, #12261f 0%, var(--leather) 55%, var(--ink) 100%)
+    var(--ink);
+  color: var(--cream);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tnum { font-variant-numeric: tabular-nums; }
+.display { font-family: var(--display); font-weight: 500; letter-spacing: 0.01em; }
+
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: none; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.shell { margin: 0 auto; max-width: 62rem; padding-bottom: 5.5rem; }
+
+/* ---------------------------------------------------------------- aviso */
+.notice {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem;
+  border-bottom: 1px solid var(--edge);
+  background: #0a1712;
+  padding: 0.55rem 1rem;
+  font-size: 0.78rem; color: var(--muted);
+}
+.notice strong { color: var(--cream); font-weight: 600; }
+
+/* ---------------------------------------------------------------- cabecera */
+.head {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(11, 26, 21, 0.96);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(36, 71, 62, 0.7);
+}
+.head-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: 0.7rem 1rem 0;
+}
+.head-top h1 { margin: 0; font-size: 1rem; font-weight: 500; }
+.chip {
+  border: 1px solid var(--edge); border-radius: 999px;
+  padding: 0.25rem 0.65rem; font-size: 0.7rem; color: var(--muted);
+}
+
+.progress { padding: 0.5rem 1rem 0.5rem; }
+.progress-line {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 0.75rem; margin-bottom: 0.35rem; font-size: 0.85rem; color: var(--muted);
+}
+.progress-line b { font-family: var(--display); font-size: 1rem; color: var(--cream); }
+.bar { height: 6px; border-radius: 999px; background: var(--slot); overflow: hidden; }
+.bar > i {
+  display: block; height: 100%; border-radius: 999px;
+  background: rgba(236, 241, 238, 0.72);
+  transition: width 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bar.done > i { background: var(--gold); }
+
+.tabs-label {
+  padding: 0 1rem 0.15rem; font-size: 0.62rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: rgba(138, 167, 156, 0.8);
+}
+.tabs {
+  display: flex; gap: 0.5rem; overflow-x: auto;
+  padding: 0 1rem 0.4rem; scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  display: flex; align-items: center; gap: 0.5rem; flex: 0 0 auto;
+  border: 1px solid var(--edge); border-radius: 999px;
+  background: var(--sheet); color: rgba(236, 241, 238, 0.85);
+  padding: 0.35rem 0.75rem; font-size: 0.85rem; white-space: nowrap;
+  transition: border-color 150ms ease;
+}
+.tab:hover { border-color: rgba(236, 241, 238, 0.4); }
+.tab[aria-current="true"] {
+  background: var(--cream); color: var(--ink); border-color: var(--cream);
+}
+.tab .dot { width: 0.55rem; height: 0.55rem; border-radius: 999px; flex: 0 0 auto; }
+.tab .count { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tab[aria-current="true"] .count { color: rgba(7, 18, 14, 0.6); }
+.tab .count.full { color: var(--gold); }
+
+/* ---------------------------------------------------------------- la hoja */
+main { padding: 1rem; }
+.sheet-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1rem; margin-bottom: 0.75rem;
+}
+.sheet-head h2 { margin: 0; font-family: var(--display); font-size: 1.35rem; font-weight: 500; }
+.sheet-head span { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.grid {
+  display: grid; gap: 0.6rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (min-width: 30rem) { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; } }
+@media (min-width: 60rem) { .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+.cell { position: relative; }
+.stack, .stack2 {
+  position: absolute; inset: 0; border-radius: var(--radius); pointer-events: none;
+}
+.stack { transform: translate(3px, 3px); background: rgba(0, 0, 0, 0.45); }
+.stack2 { transform: translate(1.5px, 1.5px); background: rgba(36, 71, 62, 0.7); }
+
+.slot {
+  position: relative; display: block; width: 100%; padding: 0;
+  aspect-ratio: 63 / 88; border-radius: var(--radius); overflow: hidden;
+  container-type: inline-size;
+  touch-action: manipulation; transition: transform 150ms ease;
+}
+.slot:active { transform: scale(0.97); }
+.slot.rare { box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.45); }
+
+/* El hueco vacío: no una foto gris, una ficha diseñada con el color del club. */
+.art { position: absolute; inset: 0; background: var(--slot); }
+.art .tint { position: absolute; inset: 0; opacity: 0.18; }
+.art .ring {
+  position: absolute; inset: 0; border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+.slot.rare .art .ring { box-shadow: inset 0 0 0 1px rgba(125, 102, 28, 0.75); }
+.art .dash {
+  position: absolute; inset: 6cqw; border-radius: 3cqw;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.art .band { position: absolute; left: 0; top: 0; height: 100%; width: 3.5cqw; }
+.art .body {
+  position: relative; height: 100%; display: flex; flex-direction: column;
+  justify-content: space-between; padding: 7cqw 7cqw 7cqw 10cqw; text-align: left;
+}
+.art .foot { min-width: 0; }
+.art .who, .art .team, .art .run { display: block; max-width: 100%; }
+.art .num {
+  font-family: var(--display); font-size: 40cqw; line-height: 0.82;
+  color: rgba(255, 255, 255, 0.22); font-variant-numeric: tabular-nums;
+}
+.art .who {
+  font-family: var(--display); font-size: 10cqw; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.art .team {
+  font-size: 8cqw; color: rgba(138, 167, 156, 0.7);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.art .run { font-size: 7.5cqw; color: rgba(201, 162, 39, 0.7); font-variant-numeric: tabular-nums; }
+
+/* Tenida: el hueco está ocupado y se ve desde el otro lado de la mesa. */
+.art.have .num { color: rgba(255, 255, 255, 0.88); font-size: 30cqw; }
+.art.have .who { color: #fff; }
+.art.have .team { color: rgba(255, 255, 255, 0.7); }
+.art.have .dash, .art.have .band { display: none; }
+.art.have .shade { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.25); }
+.art.have .ring { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
+.slot.rare .art.have .ring { box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.6); }
+
+.badge {
+  position: absolute; right: 0.25rem; top: 0.25rem; z-index: 2;
+  border-radius: 999px; background: rgba(0, 0, 0, 0.7);
+  padding: 0.1rem 0.4rem; font-size: 0.65rem; font-variant-numeric: tabular-nums;
+}
+
+/* El único movimiento del producto. */
+@keyframes fill { from { clip-path: inset(100% 0 0 0); opacity: 0.4; } to { clip-path: inset(0 0 0 0); opacity: 1; } }
+.filling { animation: fill 380ms cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.05); } 100% { transform: scale(1); } }
+.popping { animation: pop 260ms ease-out; }
+
+.hint { margin: 1.5rem 0 0; text-align: center; font-size: 0.75rem; color: var(--muted); }
+
+/* ---------------------------------------------------------------- listas */
+.card {
+  border: 1px solid var(--edge); border-radius: 0.75rem;
+  background: var(--sheet); overflow: hidden;
+}
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows > li {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.5rem 0.75rem; border-top: 1px solid rgba(36, 71, 62, 0.6);
+}
+.rows > li:first-child { border-top: none; }
+.rows .flag { width: 3px; align-self: stretch; min-height: 1.6rem; border-radius: 999px; flex: 0 0 auto; }
+.rows .no { font-family: var(--display); font-size: 1rem; font-variant-numeric: tabular-nums; }
+.rows .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; }
+.rows .sub { font-size: 0.75rem; color: var(--muted); }
+
+.group { margin-top: 1.25rem; }
+.group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; }
+.group-head h3 { margin: 0; font-family: var(--display); font-size: 1.05rem; font-weight: 500; }
+.pill {
+  border: 1px solid var(--edge); border-radius: 999px;
+  padding: 0.1rem 0.5rem; font-size: 0.7rem; color: var(--muted);
+}
+.pill.yes { border-color: rgba(201, 162, 39, 0.5); color: var(--gold); }
+
+.btn {
+  border: 1px solid var(--edge); border-radius: 999px;
+  padding: 0.35rem 0.8rem; font-size: 0.85rem; transition: border-color 150ms ease;
+}
+.btn:hover { border-color: rgba(236, 241, 238, 0.4); }
+.btn.gold { background: var(--gold); border-color: var(--gold); color: var(--ink); font-weight: 600; }
+.btn.small { padding: 0.2rem 0.55rem; font-size: 0.75rem; }
+.btn.on { background: var(--gold); border-color: var(--gold); color: var(--ink); }
+.btn[disabled] { opacity: 0.4; cursor: default; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
+select.filter {
+  border: 1px solid var(--edge); border-radius: 999px; background: var(--sheet);
+  padding: 0.35rem 0.7rem; font-size: 0.85rem;
+}
+
+h2.screen { margin: 0; font-family: var(--display); font-size: 1.5rem; font-weight: 500; }
+.screen-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.screen-head span { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.empty { margin: 4rem 0; text-align: center; color: var(--muted); }
+
+.total {
+  border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--sheet);
+  padding: 1.15rem; margin-top: 0.75rem;
+}
+.total .big { font-family: var(--display); font-size: 2.6rem; font-variant-numeric: tabular-nums; }
+.total .sub { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.warn {
+  margin-top: 0.75rem; border: 1px solid rgba(201, 162, 39, 0.3);
+  border-radius: 0.5rem; background: rgba(201, 162, 39, 0.05);
+  padding: 0.55rem 0.75rem; font-size: 0.75rem; color: rgba(236, 241, 238, 0.8);
+}
+
+/* ---------------------------------------------------------------- sobre */
+.pack { max-width: 26rem; margin: 0 auto; }
+.pack input.big {
+  width: 100%; border: 1px solid var(--edge); border-radius: 1rem;
+  background: var(--sheet); padding: 1.4rem 1rem; margin-top: 0.9rem;
+  font-family: var(--display); font-size: 2.6rem; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pack input.big:focus { outline: none; border-color: var(--gold); }
+.result {
+  margin-top: 0.9rem; border: 1px solid var(--edge); border-radius: 0.75rem;
+  background: var(--sheet); padding: 0.9rem; text-align: center;
+}
+.result.new { background: var(--gold); border-color: var(--gold); color: var(--ink); }
+.result .verdict { font-family: var(--display); font-size: 1.25rem; }
+.result .sub { font-size: 0.75rem; color: var(--muted); }
+.result.new .sub { color: rgba(7, 18, 14, 0.7); }
+
+/* ---------------------------------------------------------------- ficha */
+dialog {
+  border: none; padding: 0; margin: auto; width: min(34rem, 100%);
+  max-height: 92dvh; background: transparent; color: var(--cream);
+}
+dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
+.detail {
+  border: 1px solid var(--edge); border-top-left-radius: 1rem; border-top-right-radius: 1rem;
+  border-radius: 1rem; background: var(--leather); padding: 1.1rem;
+  max-height: 92dvh; overflow-y: auto;
+}
+.detail-top { display: flex; gap: 1rem; }
+.detail-art { width: 8.5rem; flex: 0 0 auto; }
+.detail-art .slot { pointer-events: none; }
+.detail h3 { margin: 0.35rem 0 0; font-family: var(--display); font-size: 1.5rem; font-weight: 500; }
+.detail .eyebrow { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.detail .meta { margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--muted); }
+.stepper {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  border: 1px solid var(--edge); border-radius: 999px; padding: 0.2rem 0.35rem; margin-top: 0.75rem;
+}
+.stepper button { width: 1.9rem; height: 1.9rem; border-radius: 999px; font-size: 1.1rem; line-height: 1; }
+.stepper button:hover { background: var(--slot); }
+.stepper .q { min-width: 1.75rem; text-align: center; font-family: var(--display); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+
+.price-box { margin-top: 1rem; border: 1px solid var(--edge); border-radius: 0.75rem; background: var(--sheet); padding: 0.9rem; }
+.price-box .big { font-family: var(--display); font-size: 2rem; font-variant-numeric: tabular-nums; }
+.price-box .sub { font-size: 0.8rem; color: var(--muted); }
+.source-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; padding: 0.6rem 0.75rem; }
+.source-row .sub { display: block; }
+.sale-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin-top: 0.75rem; }
+.sale-form label { font-size: 0.7rem; color: var(--muted); display: block; }
+.sale-form input, .sale-form select {
+  border: 1px solid var(--edge); border-radius: 0.5rem; background: var(--sheet);
+  padding: 0.4rem 0.6rem; font-size: 0.9rem;
+}
+.sale-form input { width: 6rem; font-variant-numeric: tabular-nums; }
+.links { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.links a { color: var(--cream); text-decoration: none; }
+
+/* ---------------------------------------------------------------- pie */
+.tabbar {
+  position: fixed; inset: auto 0 0 0; z-index: 40;
+  display: flex; margin: 0 auto; max-width: 62rem;
+  border-top: 1px solid rgba(36, 71, 62, 0.7);
+  background: rgba(11, 26, 21, 0.96); backdrop-filter: blur(8px);
+}
+.tabbar button {
+  flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  padding: 0.6rem 0 0.7rem; font-size: 0.7rem; color: var(--muted);
+}
+.tabbar button[aria-current="true"] { color: var(--gold); }
+.tabbar .ico { font-size: 1rem; line-height: 1; }
+
+.flash {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: 4.75rem; z-index: 50; pointer-events: none;
+  border: 1px solid var(--edge); border-radius: 999px; background: var(--sheet);
+  padding: 0.45rem 1rem; font-size: 0.85rem; font-weight: 500;
+  opacity: 0; transition: opacity 200ms ease;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.flash.show { opacity: 1; }
+.flash.new { background: var(--gold); border-color: var(--gold); color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .filling, .popping { animation: none; }
+  * { transition-duration: 1ms !important; }
+}
+</style>
+
+<div class="shell">
+  <p class="notice">
+    <strong>Vista previa jugable.</strong>
+    Es el álbum de verdad con el catálogo real: toca los huecos, abre un sobre, mira tus faltas.
+    Lo que marques se guarda solo en este navegador.
+  </p>
+
+  <header class="head" id="head"></header>
+  <main id="main"></main>
+</div>
+
+<nav class="tabbar" id="tabbar"></nav>
+<div class="flash" id="flash" role="status" aria-live="polite"></div>
+
+<dialog id="detail"><div class="detail" id="detail-body"></div></dialog>
+
+<script type="application/json" id="catalog">/*__CATALOG__*/</script>
+<script>
+(() => {
+  'use strict';
+
+  const CAT = JSON.parse(document.getElementById('catalog').textContent);
+  const { collection, teams, series, cards } = CAT;
+
+  /* ------------------------------------------------------------ estado */
+  const STORE = 'hoja-preview-v1';
+  const state = { owned: {}, sales: {}, view: 'album', seriesIdx: 0, teamIdx: 0, pack: [], filters: { series: '', team: '' } };
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE) || '{}');
+    state.owned = saved.owned || {};
+    state.sales = saved.sales || {};
+  } catch { /* navegador sin almacenamiento: la sesión funciona igual, no persiste */ }
+
+  function save() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({ owned: state.owned, sales: state.sales }));
+    } catch { /* sin almacenamiento: seguimos en memoria */ }
+  }
+
+  /* ------------------------------------------------------------ índices */
+  const baseIdx = series.findIndex((s) => s.kind === 'base');
+  const bySeries = series.map(() => []);
+  const byTeamBase = teams.map(() => []);
+  cards.forEach((card, i) => {
+    card.i = i;
+    bySeries[card.s].push(card);
+    if (card.s === baseIdx && card.t >= 0) byTeamBase[card.t].push(card);
+  });
+
+  const key = (card) => series[card.s].code + '-' + card.number;
+  const qty = (card) => state.owned[key(card)] || 0;
+  const rare = (s) => s.scarcity >= 3 || s.kind === 'parallel' || s.kind === 'autograph' || s.kind === 'limited';
+  const teamOf = (card) => (card.t >= 0 ? teams[card.t] : null);
+  const nameOf = (card) => card.player || (teamOf(card) ? teamOf(card).name : '');
+  const countOwned = (list) => list.reduce((n, c) => n + (qty(c) > 0 ? 1 : 0), 0);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const euros = (n) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: n >= 100 ? 0 : 2 }).format(n);
+
+  const totalOwned = () => cards.reduce((n, c) => n + (qty(c) > 0 ? 1 : 0), 0);
+
+  /* --------------------------------------------------- precio comunidad */
+  const median = (v) => {
+    if (!v.length) return null;
+    const s = [...v].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  /* Mediana recortada al 10%: una carta regalada a 0,50 y otra de un vendedor
+     optimista a 300 no pueden mover el precio de toda la comunidad. */
+  const trimmedMedian = (v) => {
+    if (v.length < 5) return median(v);
+    const s = [...v].sort((a, b) => a - b);
+    const cut = Math.floor(s.length * 0.1);
+    return median(s.slice(cut, s.length - cut));
+  };
+  function priceOf(card) {
+    const list = state.sales[key(card)] || [];
+    if (!list.length) return null;
+    const prices = list.map((x) => x.price);
+    return { value: Math.round(trimmedMedian(prices) * 100) / 100, n: prices.length,
+      min: Math.min(...prices), max: Math.max(...prices) };
+  }
+
+  /* ------------------------------------------------------------ pintado */
+  const el = { head: document.getElementById('head'), main: document.getElementById('main'),
+    tabbar: document.getElementById('tabbar'), flash: document.getElementById('flash'),
+    dialog: document.getElementById('detail'), detail: document.getElementById('detail-body') };
+
+  function artHTML(card, big) {
+    const team = teamOf(card);
+    const color = team ? team.color : '#7c8291';
+    const n = qty(card);
+    const have = n > 0;
+    const who = card.player || (have ? (team ? team.name : '') : (card.pos || 'Sin nombre'));
+    const sub = have ? (card.player && team ? team.name : '') : (team ? team.name : '');
+    const bg = have
+      ? 'background: linear-gradient(155deg, ' + color + ' 0%, #0f231d 78%)'
+      : '';
+    return '<div class="art' + (have ? ' have' : '') + '" style="' + bg + '">'
+      + (have ? '<div class="shade"></div>'
+              : '<div class="tint" style="background: linear-gradient(160deg,' + color + ' 0%, transparent 62%)"></div>')
+      + '<div class="ring"></div><div class="dash"></div>'
+      + '<div class="band" style="background:' + color + '"></div>'
+      + '<div class="body">'
+      + '<span class="num tnum">' + esc(card.number) + '</span>'
+      + '<span class="foot"><span class="who">' + esc(who) + '</span>'
+      + (sub ? '<span class="team">' + esc(sub) + '</span>' : '')
+      + (!have && card.run ? '<span class="run">/' + card.run + '</span>' : '')
+      + '</span></div></div>';
+  }
+
+  function slotHTML(card) {
+    const n = qty(card);
+    const s = series[card.s];
+    const label = 'Carta ' + card.number + ', ' + (nameOf(card) || '') + ', '
+      + (n === 0 ? 'te falta' : n > 1 ? 'tienes ' + n : 'la tienes');
+    return '<div class="cell">'
+      + (n > 1 ? '<div class="stack"></div><div class="stack2"></div>' : '')
+      + '<button class="slot' + (rare(s) ? ' rare' : '') + '" data-card="' + card.i + '" aria-label="' + esc(label) + '">'
+      + artHTML(card)
+      + (n > 1 ? '<span class="badge tnum">×' + n + '</span>' : '')
+      + '</button></div>';
+  }
+
+  function headHTML() {
+    const owned = totalOwned();
+    const pct = Math.round((owned / cards.length) * 100);
+    const done = owned === cards.length;
+
+    let html = '<div class="head-top"><h1 class="display">' + esc(collection.name) + '</h1>'
+      + '<span class="chip">solo en este navegador</span></div>'
+      + '<div class="progress"><div class="progress-line"><span>Colección completa</span>'
+      + '<span class="tnum"><b>' + owned + '</b> / ' + cards.length
+      + ' <span style="margin-left:.4rem;color:' + (done ? 'var(--gold)' : 'var(--muted)') + '">' + pct + '%</span></span></div>'
+      + '<div class="bar' + (done ? ' done' : '') + '"><i style="width:' + pct + '%"></i></div></div>';
+
+    if (state.view !== 'album') return html;
+
+    html += '<p class="tabs-label">Series</p><div class="tabs">'
+      + series.map((s, i) => {
+          const list = bySeries[i];
+          const o = countOwned(list);
+          return '<button class="tab" data-series="' + i + '" aria-current="' + (i === state.seriesIdx) + '">'
+            + esc(s.name) + '<span class="count' + (o === list.length ? ' full' : '') + '">' + o + '/' + list.length + '</span></button>';
+        }).join('') + '</div>';
+
+    if (state.seriesIdx === baseIdx) {
+      html += '<p class="tabs-label">Equipos</p><div class="tabs">'
+        + teams.map((t, i) => {
+            const list = byTeamBase[i];
+            const o = countOwned(list);
+            return '<button class="tab" data-team="' + i + '" aria-current="' + (i === state.teamIdx) + '">'
+              + '<span class="dot" style="background:' + t.color + '"></span>' + esc(t.name)
+              + '<span class="count' + (o === list.length ? ' full' : '') + '">' + o + '/' + list.length + '</span></button>';
+          }).join('') + '</div>';
+    }
+    return html;
+  }
+
+  function albumHTML() {
+    const isBase = state.seriesIdx === baseIdx;
+    const list = isBase ? byTeamBase[state.teamIdx] : bySeries[state.seriesIdx];
+    const title = isBase ? teams[state.teamIdx].name : series[state.seriesIdx].name;
+
+    let html = '';
+    if (totalOwned() === 0) {
+      html += '<div class="card" data-welcome="1" style="padding:1rem;margin-bottom:1.15rem;border-color:rgba(201,162,39,.4)">'
+        + '<p class="display" style="margin:0;font-size:1.15rem">Tu álbum está entero por llenar.</p>'
+        + '<p style="margin:.35rem 0 .75rem;font-size:.85rem;color:var(--muted)">Marca cartas tocando los huecos, o mete un sobre entero de una vez.</p>'
+        + '<button class="btn gold" data-go="sobre">Abre tu primer sobre</button></div>';
+    }
+
+    html += '<div class="sheet-head"><h2>' + esc(title) + '</h2>'
+      + '<span>' + countOwned(list) + ' / ' + list.length + '</span></div>'
+      + '<div class="grid">' + list.map(slotHTML).join('') + '</div>'
+      + '<p class="hint">Toque corto para marcar · toque largo para abrir la ficha</p>';
+    return html;
+  }
+
+  function filtersHTML(withRequestable) {
+    return '<div class="toolbar">'
+      + '<select class="filter" data-filter="series" aria-label="Filtrar por serie"><option value="">Todas las series</option>'
+      + series.map((s) => '<option value="' + s.code + '"' + (state.filters.series === s.code ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('')
+      + '</select>'
+      + '<select class="filter" data-filter="team" aria-label="Filtrar por equipo"><option value="">Todos los equipos</option>'
+      + teams.map((t, i) => '<option value="' + i + '"' + (state.filters.team === String(i) ? ' selected' : '') + '>' + esc(t.name) + '</option>').join('')
+      + '</select>'
+      + (withRequestable ? '<button class="btn" data-copy="faltas">Copiar lista</button>' : '')
+      + '</div>';
+  }
+
+  function passesFilter(card) {
+    if (state.filters.series && series[card.s].code !== state.filters.series) return false;
+    if (state.filters.team !== '' && String(card.t) !== state.filters.team) return false;
+    return true;
+  }
+
+  function missingHTML() {
+    const groups = series.map((s, i) => ({
+      s, list: bySeries[i].filter((c) => qty(c) === 0 && passesFilter(c)),
+    })).filter((g) => g.list.length);
+
+    const missing = cards.length - totalOwned();
+    let html = '<div class="screen-head"><h2 class="screen">Faltas</h2><span>' + missing + ' en total</span></div>'
+      + filtersHTML(true);
+
+    if (!groups.length) return html + '<p class="empty">Nada que pedir con este filtro. Buena señal.</p>';
+
+    html += groups.map((g) => '<section class="group"><div class="group-head"><h3>' + esc(g.s.name) + '</h3>'
+      + '<span><span class="pill' + (g.s.requestable ? ' yes' : '') + '">'
+      + (g.s.requestable ? 'pedible' : 'no pedible') + '</span> '
+      + '<span class="tnum" style="color:var(--muted);font-size:.75rem">' + g.list.length + '</span></span></div>'
+      + '<div class="card"><ul class="rows">'
+      + g.list.slice(0, 60).map((c) => {
+          const t = teamOf(c);
+          return '<li><span class="flag" style="background:' + (t ? t.color : '#7c8291') + '"></span>'
+            + '<button class="no" data-card="' + c.i + '" data-open="1">' + esc(c.number) + '</button>'
+            + '<span class="name">' + esc(nameOf(c)) + '</span>'
+            + '<button class="btn small" data-mark="' + c.i + '">La tengo</button></li>';
+        }).join('')
+      + (g.list.length > 60 ? '<li><span class="sub">…y ' + (g.list.length - 60) + ' más. Filtra por equipo para verlas.</span></li>' : '')
+      + '</ul></div></section>').join('');
+    return html;
+  }
+
+  function dupesHTML() {
+    const rows = cards.filter((c) => qty(c) > 1 && passesFilter(c));
+    const extras = rows.reduce((n, c) => n + qty(c) - 1, 0);
+    const priced = rows.map((c) => ({ c, p: priceOf(c) })).filter((r) => r.p);
+    const value = priced.reduce((n, r) => n + r.p.value * (qty(r.c) - 1), 0);
+
+    let html = '<div class="screen-head"><h2 class="screen">Repes</h2><span>' + extras + ' para cambiar</span></div>'
+      + filtersHTML(false);
+
+    if (!rows.length) return html + '<p class="empty">Todavía no tienes repes. Llegarán solas.</p>';
+
+    html += '<div class="card"><ul class="rows">'
+      + rows.map((c) => {
+          const t = teamOf(c);
+          const p = priceOf(c);
+          return '<li><span class="flag" style="background:' + (t ? t.color : '#7c8291') + '"></span>'
+            + '<button class="no" data-card="' + c.i + '" data-open="1">' + esc(c.number) + '</button>'
+            + '<span class="name">' + esc(nameOf(c))
+            + '<span class="sub" style="display:block">tienes ' + qty(c) + ' · sobran ' + (qty(c) - 1)
+            + (p ? ' · ' + euros(p.value) + ' cada una' : ' · sin precio') + '</span></span>'
+            + '<button class="btn small" data-unmark="' + c.i + '" aria-label="Quitar una copia">−</button></li>';
+        }).join('')
+      + '</ul></div>'
+      + '<div class="total"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem">'
+      + '<span class="sub">Tus repes valen aproximadamente</span>'
+      + '<span class="big">' + euros(value) + '</span></div>'
+      + '<p class="sub" style="margin:.4rem 0 0">Solo cuentan las ' + priced.length + ' de ' + rows.length
+      + ' con ventas reportadas. Es una estimación, no una tasación.</p></div>';
+    return html;
+  }
+
+  function valueHTML() {
+    const mine = cards.filter((c) => qty(c) > 0);
+    if (!mine.length) {
+      return '<h2 class="screen">Valor</h2><p class="empty">Aún no tienes ninguna carta.<br>'
+        + '<button class="btn gold" style="margin-top:1rem" data-go="sobre">Abre tu primer sobre</button></p>';
+    }
+
+    const rows = mine.map((c) => ({ c, p: priceOf(c) }));
+    const priced = rows.filter((r) => r.p);
+    const total = priced.reduce((n, r) => n + r.p.value * qty(r.c), 0);
+
+    const kinds = {};
+    rows.forEach((r) => {
+      const k = series[r.c.s].kind;
+      kinds[k] = kinds[k] || { value: 0, n: 0 };
+      kinds[k].value += r.p ? r.p.value * qty(r.c) : 0;
+      kinds[k].n += qty(r.c);
+    });
+    const LABEL = { base: 'Base', insert: 'Inserts', parallel: 'Paralelas', autograph: 'Autógrafos', limited: 'Tiradas limitadas' };
+
+    const top = priced.sort((a, b) => b.p.value - a.p.value).slice(0, 10);
+
+    return '<h2 class="screen">Valor</h2>'
+      + '<div class="total"><div class="big">' + euros(total) + '</div>'
+      + '<div class="sub">' + priced.length + ' de ' + mine.length + ' cartas con datos de precio</div></div>'
+      + '<p class="warn">Es una <strong>estimación</strong> a partir de las ventas que reporta la comunidad. '
+      + 'No es una tasación y no sirve como garantía de venta.</p>'
+      + '<div class="group"><div class="group-head"><h3>Por tipo de carta</h3></div><div class="card"><ul class="rows">'
+      + Object.keys(kinds).sort((a, b) => kinds[b].value - kinds[a].value).map((k) =>
+          '<li><span class="name">' + LABEL[k] + '</span><span class="tnum display">' + euros(kinds[k].value)
+          + '</span><span class="sub tnum">' + kinds[k].n + ' ejemplares</span></li>').join('')
+      + '</ul></div></div>'
+      + '<div class="group"><div class="group-head"><h3>Tus 10 más valiosas</h3></div>'
+      + (top.length
+          ? '<div class="card"><ul class="rows">' + top.map((r, i) => {
+              const t = teamOf(r.c);
+              return '<li><span class="sub tnum" style="width:1rem">' + (i + 1) + '</span>'
+                + '<span class="flag" style="background:' + (t ? t.color : '#7c8291') + '"></span>'
+                + '<button class="no" data-card="' + r.c.i + '" data-open="1">' + esc(r.c.number) + '</button>'
+                + '<span class="name">' + esc(nameOf(r.c)) + '</span>'
+                + '<span class="tnum display">' + euros(r.p.value) + '</span></li>';
+            }).join('') + '</ul></div>'
+          : '<p class="sub">Ninguna de tus cartas tiene precio todavía. Abre una ficha y reporta una venta.</p>')
+      + '</div>';
+  }
+
+  function packHTML() {
+    const last = state.pack[0];
+    const news = state.pack.filter((e) => e.isNew).length;
+    let html = '<div class="pack"><h2 class="screen">Abrir sobre</h2>'
+      + '<p class="sub" style="margin:.35rem 0 0;color:var(--muted)">Escribe el número y pulsa intro. Una detrás de otra.</p>'
+      + '<div class="tabs" style="padding:.75rem 0 0">'
+      + series.map((s, i) => '<button class="tab" data-packseries="' + i + '" aria-current="' + (i === state.seriesIdx) + '">' + esc(s.name) + '</button>').join('')
+      + '</div>'
+      + '<input class="big tnum" id="pack-input" inputmode="text" autocomplete="off" enterkeyhint="done" '
+      + 'placeholder="' + (series[state.seriesIdx].kind === 'base' ? '128' : 'MVP7') + '" aria-label="Número de carta">';
+
+    if (state.packError) {
+      html += '<p style="margin:.75rem 0 0;text-align:center;color:#fca5a5;font-size:.85rem">' + esc(state.packError) + '</p>';
+    }
+    if (last) {
+      html += '<div class="result popping' + (last.isNew ? ' new' : '') + '">'
+        + '<div class="verdict">' + (last.isNew ? 'Nueva' : 'Repe ×' + last.q) + '</div>'
+        + '<div>' + esc(last.number) + ' · ' + esc(last.who) + '</div>'
+        + '<div class="sub">' + esc(last.team) + '</div></div>';
+    }
+    html += '<div class="toolbar" style="justify-content:space-between">'
+      + '<span class="sub tnum" style="color:var(--muted)">' + state.pack.length + ' en esta sesión · ' + news + (news === 1 ? ' nueva' : ' nuevas') + '</span>'
+      + '<button class="btn" data-undo="1"' + (state.pack.length ? '' : ' disabled') + '>Deshacer</button></div>';
+
+    if (state.pack.length > 1) {
+      html += '<div class="card"><ul class="rows">'
+        + state.pack.slice(1, 10).map((e) => '<li><span class="no tnum">' + esc(e.number) + '</span>'
+          + '<span class="name">' + esc(e.who) + '</span>'
+          + '<span class="sub" style="color:' + (e.isNew ? 'var(--gold)' : 'var(--muted)') + '">'
+          + (e.isNew ? 'nueva' : '×' + e.q) + '</span></li>').join('')
+        + '</ul></div>';
+    }
+    return html + '</div>';
+  }
+
+  const VIEWS = [
+    { id: 'album', label: 'Álbum', ico: '▦' },
+    { id: 'faltas', label: 'Faltas', ico: '◇' },
+    { id: 'repes', label: 'Repes', ico: '❐' },
+    { id: 'valor', label: 'Valor', ico: '€' },
+    { id: 'sobre', label: 'Sobre', ico: '＋' },
+  ];
+
+  function render(keepFocus) {
+    el.head.innerHTML = headHTML();
+    el.main.innerHTML = state.view === 'album' ? albumHTML()
+      : state.view === 'faltas' ? missingHTML()
+      : state.view === 'repes' ? dupesHTML()
+      : state.view === 'valor' ? valueHTML()
+      : packHTML();
+    el.tabbar.innerHTML = VIEWS.map((v) => '<button data-go="' + v.id + '" aria-current="' + (v.id === state.view) + '">'
+      + '<span class="ico" aria-hidden="true">' + v.ico + '</span>' + v.label + '</button>').join('');
+    if (state.view === 'sobre' && keepFocus !== false) {
+      const input = document.getElementById('pack-input');
+      if (input) input.focus();
+    }
+  }
+
+  /* Marcar una carta redibuja esa carta, no la hoja entera: en un móvil con
+     380 huecos la diferencia entre eso y un innerHTML completo se nota. */
+  function refreshCard(card) {
+    const slot = el.main.querySelector('.slot[data-card="' + card.i + '"]');
+    const cell = slot && slot.closest('.cell');
+    if (!cell) { render(); return null; }
+    cell.outerHTML = slotHTML(card);
+    el.head.innerHTML = headHTML();
+    const welcome = el.main.querySelector('[data-welcome]');
+    if (welcome && totalOwned() > 0) welcome.remove();
+    const count = el.main.querySelector('.sheet-head span');
+    if (count) {
+      const isBase = state.seriesIdx === baseIdx;
+      const list = isBase ? byTeamBase[state.teamIdx] : bySeries[state.seriesIdx];
+      count.textContent = countOwned(list) + ' / ' + list.length;
+    }
+    return el.main.querySelector('.slot[data-card="' + card.i + '"] .art');
+  }
+
+  /* ------------------------------------------------------------ acciones */
+  let flashTimer;
+  function flash(text, isNew) {
+    el.flash.textContent = text;
+    el.flash.className = 'flash show' + (isNew ? ' new' : '');
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { el.flash.className = 'flash'; }, 1500);
+  }
+
+  function mark(card, silent) {
+    const k = key(card);
+    const before = state.owned[k] || 0;
+    state.owned[k] = before + 1;
+    save();
+    if (navigator.vibrate) navigator.vibrate(before === 0 ? 18 : 8);
+    if (!silent) {
+      const who = nameOf(card) || card.number;
+      flash(before === 0 ? 'Nueva · ' + who : 'Repe ×' + (before + 1) + ' · ' + who, before === 0);
+    }
+    return { q: before + 1, isNew: before === 0 };
+  }
+
+  function setQty(card, n) {
+    const k = key(card);
+    if (n <= 0) delete state.owned[k]; else state.owned[k] = n;
+    save();
+  }
+
+  /* ------------------------------------------------------------ la ficha */
+  let openCard = null;
+
+  function detailHTML(card) {
+    const s = series[card.s];
+    const t = teamOf(card);
+    const n = qty(card);
+    const p = priceOf(card);
+    const q = encodeURIComponent([collection.name, card.player || (t ? t.name : ''), card.number].filter(Boolean).join(' '));
+
+    return '<div class="detail-top"><div class="detail-art">'
+      + '<div class="slot' + (rare(s) ? ' rare' : '') + '">' + artHTML(card, true) + '</div></div>'
+      + '<div style="min-width:0;flex:1 1 auto">'
+      + '<span class="eyebrow">' + esc(s.name) + '</span>'
+      + '<h3>' + esc(card.number) + ' ' + esc(nameOf(card)) + '</h3>'
+      + '<p class="meta">' + esc([card.player && t ? t.name : '', card.pos, collection.season].filter(Boolean).join(' · ')) + '</p>'
+      + (card.run ? '<p class="meta" style="color:var(--gold)">Tirada limitada /' + card.run + '</p>' : '')
+      + '<div class="stepper"><button data-step="-1" aria-label="Quitar una">−</button>'
+      + '<span class="q tnum">' + n + '</span>'
+      + '<button data-step="1" aria-label="Añadir una">+</button></div>'
+      + (n > 1 ? '<p class="meta tnum">Tienes ' + n + ': ' + (n - 1) + (n - 1 === 1 ? ' repe' : ' repes') + '.</p>' : '')
+      + '</div></div>'
+
+      + '<div class="price-box"><div class="big">' + (p ? euros(p.value) : '—') + '</div>'
+      + '<div class="sub">' + (p ? 'Mediana recortada sobre ' + p.n + (p.n === 1 ? ' venta reportada' : ' ventas reportadas')
+                                 : 'Sin datos de precio todavía') + '</div></div>'
+      + (p ? '<div class="card" style="margin-top:.5rem"><div class="source-row">'
+             + '<span>Comunidad<span class="sub">ventas cerradas de la comunidad</span></span>'
+             + '<span style="text-align:right"><span class="display tnum">' + euros(p.value) + '</span>'
+             + '<span class="sub tnum" style="display:block">' + euros(p.min) + ' – ' + euros(p.max) + '</span></span>'
+             + '</div></div>'
+           : '')
+      + '<p class="sub" style="margin:.6rem 0 0;color:var(--muted)">Nunca un precio sin decir de dónde sale, '
+      + 'de cuándo es y sobre cuántos datos. Es una estimación, no una tasación.</p>'
+
+      + '<form class="sale-form" data-sale="1">'
+      + '<span><label for="sale-price">¿Por cuánto se vendió?</label>'
+      + '<input id="sale-price" inputmode="decimal" placeholder="4,50" required></span>'
+      + '<button class="btn gold" type="submit">Reportar venta</button></form>'
+
+      + '<div class="links">'
+      + '<a class="btn" href="https://es.wallapop.com/app/search?keywords=' + q + '" target="_blank" rel="noopener noreferrer">Buscar en Wallapop ↗</a>'
+      + '<a class="btn" href="https://www.ebay.es/sch/i.html?_nkw=' + q + '" target="_blank" rel="noopener noreferrer">Buscar en eBay ↗</a>'
+      + '</div>'
+      + '<div style="margin-top:1rem;text-align:right"><button class="btn" data-close="1">Cerrar</button></div>';
+  }
+
+  function openDetail(card) {
+    openCard = card;
+    el.detail.innerHTML = detailHTML(card);
+    if (!el.dialog.open) el.dialog.showModal();
+  }
+
+  /* ------------------------------------------------------------ eventos */
+  let pressTimer = null;
+  let longPressed = false;
+
+  el.main.addEventListener('pointerdown', (e) => {
+    const slot = e.target.closest('.slot[data-card]');
+    if (!slot) return;
+    longPressed = false;
+    pressTimer = setTimeout(() => {
+      longPressed = true;
+      if (navigator.vibrate) navigator.vibrate(12);
+      openDetail(cards[+slot.dataset.card]);
+    }, 420);
+  });
+
+  const cancelPress = () => { clearTimeout(pressTimer); };
+  el.main.addEventListener('pointerleave', cancelPress, true);
+  el.main.addEventListener('pointercancel', cancelPress, true);
+
+  el.main.addEventListener('pointerup', (e) => {
+    const slot = e.target.closest('.slot[data-card]');
+    if (!slot) return;
+    clearTimeout(pressTimer);
+    if (longPressed) return;
+    const card = cards[+slot.dataset.card];
+    const before = qty(card);
+    mark(card);
+    const art = refreshCard(card);
+    if (art && before === 0) art.classList.add('filling');
+  });
+
+  el.main.addEventListener('contextmenu', (e) => { if (e.target.closest('.slot')) e.preventDefault(); });
+
+  document.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-go]');
+    if (go) { state.view = go.dataset.go; state.pack = []; state.packError = null; render(); return; }
+
+    const s = e.target.closest('[data-series]');
+    if (s) { state.seriesIdx = +s.dataset.series; render(); return; }
+
+    const t = e.target.closest('[data-team]');
+    if (t) { state.teamIdx = +t.dataset.team; render(); return; }
+
+    const ps = e.target.closest('[data-packseries]');
+    if (ps) { state.seriesIdx = +ps.dataset.packseries; render(); return; }
+
+    const open = e.target.closest('[data-open]');
+    if (open) { openDetail(cards[+open.dataset.card]); return; }
+
+    const m = e.target.closest('[data-mark]');
+    if (m) { mark(cards[+m.dataset.mark]); render(); return; }
+
+    const u = e.target.closest('[data-unmark]');
+    if (u) { const c = cards[+u.dataset.unmark]; setQty(c, qty(c) - 1); render(); return; }
+
+    const undo = e.target.closest('[data-undo]');
+    if (undo) {
+      const last = state.pack.shift();
+      if (last) { const c = cards[last.i]; setQty(c, qty(c) - 1); }
+      render();
+      return;
+    }
+
+    const copy = e.target.closest('[data-copy]');
+    if (copy) {
+      const groups = series.map((sr, i) => ({ sr, list: bySeries[i].filter((c) => qty(c) === 0 && passesFilter(c)) }))
+        .filter((g) => g.list.length);
+      const text = ['Me faltan ' + (cards.length - totalOwned()) + ' de ' + cards.length + ' · ' + collection.name, '']
+        .concat(groups.map((g) => g.sr.name + (g.sr.requestable ? '' : ' (no pedibles)') + ': '
+          + g.list.map((c) => c.number).join(', '))).join('\n');
+      navigator.clipboard.writeText(text).then(() => flash('Lista copiada', false), () => flash('No se pudo copiar', false));
+      return;
+    }
+
+    const step = e.target.closest('[data-step]');
+    if (step && openCard) {
+      setQty(openCard, qty(openCard) + Number(step.dataset.step));
+      openDetail(openCard);
+      render();
+      return;
+    }
+
+    if (e.target.closest('[data-close]')) { el.dialog.close(); return; }
+  });
+
+  document.addEventListener('change', (e) => {
+    const f = e.target.closest('[data-filter]');
+    if (!f) return;
+    state.filters[f.dataset.filter] = f.value;
+    render();
+  });
+
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('[data-sale]');
+    if (form) {
+      e.preventDefault();
+      const value = Number(form.querySelector('#sale-price').value.replace(',', '.'));
+      if (!isFinite(value) || value <= 0 || !openCard) return;
+      const k = key(openCard);
+      state.sales[k] = (state.sales[k] || []).concat({ price: value, date: new Date().toISOString().slice(0, 10) });
+      save();
+      openDetail(openCard);
+      render();
+      flash('Venta reportada', false);
+    }
+  });
+
+  /* Entrada rápida: el foco no se pierde nunca. */
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const input = e.target.closest('#pack-input');
+    if (!input) return;
+    e.preventDefault();
+
+    const raw = input.value.trim().toLowerCase();
+    if (!raw) return;
+    const matches = cards.filter((c) => c.number.toLowerCase() === raw);
+    const card = matches.find((c) => c.s === state.seriesIdx) || matches[0];
+
+    if (!card) {
+      state.packError = 'No existe la carta ' + input.value.trim() + ' en esta colección';
+      if (navigator.vibrate) navigator.vibrate([12, 40, 12]);
+      render();
+      return;
+    }
+
+    state.packError = null;
+    const r = mark(card, true);
+    const t = teamOf(card);
+    state.pack.unshift({ i: card.i, number: card.number, who: nameOf(card), team: t ? t.name : '', q: r.q, isNew: r.isNew });
+    render();
+  });
+
+  el.dialog.addEventListener('close', () => { openCard = null; });
+  el.dialog.addEventListener('click', (e) => { if (e.target === el.dialog) el.dialog.close(); });
+
+  render();
+})();
+</script>

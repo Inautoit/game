@@ -21,6 +21,20 @@ Sin configurar nada funciona en **modo local**: todo se guarda en IndexedDB de
 ese navegador. Para sincronizar entre dispositivos, copia `.env.example` a
 `.env.local` y rellena las claves de Supabase.
 
+## Verlo sin instalar nada
+
+`preview/index.html` es una **vista previa de una sola página**: el álbum con el
+catálogo real dentro, sin build ni servidor. Se abre haciendo doble clic en el
+fichero, o se publica como página suelta en cualquier sitio.
+
+```bash
+npm run preview:build    # catálogo -> preview/index.html
+```
+
+Es una vista previa, no la app: sirve para enseñársela a alguien por un enlace.
+Lo que se marca ahí se guarda en `localStorage` de ese navegador y no sale de
+él. La app de verdad es todo lo demás de este directorio.
+
 ## Publicar en Cloudflare Pages
 
 ```bash
@@ -74,6 +88,7 @@ lib/
   prices/       adaptadores de precio, mediana recortada y agregación
   share/        texto para WhatsApp e imagen dibujada en canvas
   server/       lectura del catálogo en tiempo de build (páginas de carta)
+preview/        vista previa de una sola página (plantilla + generado)
 scripts/        catálogo, importación, iconos, comprobaciones de precio
 worker/         Worker opcional de precios (Cloudflare cron) — ver abajo
 supabase/       migraciones SQL con RLS
