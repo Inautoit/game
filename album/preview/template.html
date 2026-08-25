@@ -147,7 +147,13 @@ main { padding: 1rem; }
 
 /* El hueco vacío: no una foto gris, una ficha diseñada con el color del club. */
 .art { position: absolute; inset: 0; background: var(--slot); }
-.art .tint { position: absolute; inset: 0; opacity: 0.18; }
+.art .kit { position: absolute; inset: 0; opacity: 0.22; }
+.art .scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(7,18,14,0.55) 0%, rgba(7,18,14,0.82) 100%);
+}
+.art.have .kit { opacity: 1; }
+.art.have .scrim { background: linear-gradient(180deg, rgba(7,18,14,0.12) 0%, rgba(7,18,14,0.88) 78%); }
 .art .ring {
   position: absolute; inset: 0; border-radius: var(--radius);
   box-shadow: inset 0 0 0 1px var(--edge);
@@ -157,17 +163,18 @@ main { padding: 1rem; }
   position: absolute; inset: 6cqw; border-radius: 3cqw;
   border: 1px dashed rgba(255, 255, 255, 0.08);
 }
-.art .band { position: absolute; left: 0; top: 0; height: 100%; width: 3.5cqw; }
+
 .art .body {
   position: relative; height: 100%; display: flex; flex-direction: column;
-  justify-content: space-between; padding: 7cqw 7cqw 7cqw 10cqw; text-align: left;
+  justify-content: space-between; padding: 7cqw; text-align: left;
 }
 .art .foot { min-width: 0; }
 .art .who, .art .team, .art .run { display: block; max-width: 100%; }
 .art .num {
   font-family: var(--display); font-size: 40cqw; line-height: 0.82;
-  color: rgba(255, 255, 255, 0.22); font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.25); font-variant-numeric: tabular-nums;
 }
+.art.have .num { text-shadow: 0 1px 6px rgba(7, 18, 14, 0.6); }
 .art .who {
   font-family: var(--display); font-size: 10cqw; text-transform: uppercase;
   color: rgba(255, 255, 255, 0.55);
@@ -183,8 +190,7 @@ main { padding: 1rem; }
 .art.have .num { color: rgba(255, 255, 255, 0.88); font-size: 30cqw; }
 .art.have .who { color: #fff; }
 .art.have .team { color: rgba(255, 255, 255, 0.7); }
-.art.have .dash, .art.have .band { display: none; }
-.art.have .shade { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.25); }
+.art.have .dash { display: none; }
 .art.have .ring { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
 .slot.rare .art.have .ring { box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.6); }
 
@@ -335,6 +341,16 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
 .links a { color: var(--cream); text-decoration: none; }
 
 /* ---------------------------------------------------------------- pie */
+.run { text-align: center; }
+.run-art { width: 11rem; margin: 0.75rem auto 0; }
+.run-art .slot { pointer-events: none; }
+.run-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.run h3 { margin: 0; font-family: var(--display); font-size: 1.35rem; font-weight: 500; }
+.run .of { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.run-actions { display: flex; gap: 0.5rem; justify-content: center; margin-top: 0.9rem; }
+.run-actions .btn { flex: 0 1 auto; }
+.run-note { margin: 0.6rem 0 0; font-size: 0.75rem; color: var(--muted); }
+
 .tabbar {
   position: fixed; inset: auto 0 0 0; z-index: 40;
   display: flex; margin: 0 auto; max-width: 62rem;
@@ -489,6 +505,22 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
     if (card.s === baseIdx && card.t >= 0) byTeamBase[card.t].push(card);
   });
 
+  /* El patrón de la camiseta del club, con sus dos colores. No es el escudo de
+     nadie: son franjas y bandas generadas a partir de dos colores, y es lo que
+     hace que la hoja del Athletic no se parezca a la del Betis aunque no haya
+     todavía ni una foto. */
+  function kitOf(team) {
+    if (!team) return 'linear-gradient(158deg, #7c8291 0%, #ffffff 190%)';
+    const a = team.color, b = team.color2 || '#ffffff';
+    switch (team.pattern) {
+      case 'stripes': return 'repeating-linear-gradient(90deg,' + a + ' 0 14%,' + b + ' 14% 28%)';
+      case 'hoops': return 'repeating-linear-gradient(180deg,' + a + ' 0 12%,' + b + ' 12% 24%)';
+      case 'halves': return 'linear-gradient(90deg,' + a + ' 0 50%,' + b + ' 50% 100%)';
+      case 'sash': return 'linear-gradient(118deg,' + b + ' 0 34%,' + a + ' 34% 58%,' + b + ' 58% 100%)';
+      default: return 'linear-gradient(158deg,' + a + ' 0%,' + b + ' 190%)';
+    }
+  }
+
   const key = (card) => series[card.s].code + '-' + card.number;
   const qty = (card) => state.owned[key(card)] || 0;
   const rare = (s) => s.scarcity >= 3 || s.kind === 'parallel' || s.kind === 'autograph' || s.kind === 'limited';
@@ -534,6 +566,7 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
     const n = qty(card);
     const have = n > 0;
     const photo = have ? photoURL.get(key(card)) : null;
+    void color;
 
     if (photo) {
       return '<div class="art have photo-in">'
@@ -542,14 +575,10 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
     }
     const who = card.player || (have ? (team ? team.name : '') : (card.pos || 'Sin nombre'));
     const sub = have ? (card.player && team ? team.name : '') : (team ? team.name : '');
-    const bg = have
-      ? 'background: linear-gradient(155deg, ' + color + ' 0%, #0f231d 78%)'
-      : '';
-    return '<div class="art' + (have ? ' have' : '') + '" style="' + bg + '">'
-      + (have ? '<div class="shade"></div>'
-              : '<div class="tint" style="background: linear-gradient(160deg,' + color + ' 0%, transparent 62%)"></div>')
+    return '<div class="art' + (have ? ' have' : '') + '">'
+      + '<div class="kit" style="background:' + kitOf(team) + '"></div>'
+      + '<div class="scrim"></div>'
       + '<div class="ring"></div><div class="dash"></div>'
-      + '<div class="band" style="background:' + color + '"></div>'
       + '<div class="body">'
       + '<span class="num tnum">' + esc(card.number) + '</span>'
       + '<span class="foot"><span class="who">' + esc(who) + '</span>'
@@ -619,8 +648,12 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
         + '<button class="btn gold" data-go="sobre">Abre tu primer sobre</button></div>';
     }
 
+    const pending = list.filter((c) => !photoURL.get(key(c))).length;
     html += '<div class="sheet-head"><h2>' + esc(title) + '</h2>'
       + '<span>' + countOwned(list) + ' / ' + list.length + '</span></div>'
+      + (pending
+          ? '<div class="toolbar"><button class="btn" data-run="1">Fotos seguidas · ' + pending + ' sin foto</button></div>'
+          : '<div class="toolbar"><span class="sub" style="color:var(--muted)">Todas las cartas de esta hoja tienen foto.</span></div>')
       + '<div class="grid">' + list.map(slotHTML).join('') + '</div>'
       + '<p class="hint">Toque corto para marcar · toque largo para abrir la ficha</p>';
     return html;
@@ -916,6 +949,55 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
     if (!el.dialog.open) el.dialog.showModal();
   }
 
+  /* ---------------------------------------------------------- fotos seguidas
+     Una a una con 513 cartas no lo hace nadie. Aquí se dispara, se guarda y
+     salta sola a la siguiente; en el ordenador puedes soltar varias imágenes
+     de golpe y se reparten en orden. */
+  let run = null;
+
+  function runHTML() {
+    const card = cards[run.list[run.pos]];
+    const s2 = series[card.s];
+    const t = teamOf(card);
+    return '<div class="run">'
+      + '<div class="run-head"><h3>Fotos seguidas</h3>'
+      + '<span class="of">' + (run.pos + 1) + ' de ' + run.list.length + '</span></div>'
+      + '<div class="run-art"><div class="slot' + (rare(s2) ? ' rare' : '') + '">' + artHTML(card) + '</div></div>'
+      + '<p class="run-note">' + esc(card.number + ' · ' + (nameOf(card) || (t ? t.name : ''))) + '</p>'
+      + '<div class="run-actions">'
+      + '<label class="btn gold">Hacer foto'
+      + '<input type="file" accept="image/*" capture="environment" multiple data-run-photo="1" hidden></label>'
+      + '<button class="btn" data-run-skip="1">Saltar</button>'
+      + '<button class="btn" data-run-exit="1">Salir</button>'
+      + '</div>'
+      + '<p class="run-note">Al guardar salta sola a la siguiente. Marca la carta como tuya.</p>'
+      + '</div>';
+  }
+
+  function startRun() {
+    const isBase = state.seriesIdx === baseIdx;
+    const list = (isBase ? byTeamBase[state.teamIdx] : bySeries[state.seriesIdx])
+      .filter((c) => !photoURL.get(key(c)))
+      .map((c) => c.i);
+    if (!list.length) return;
+    run = { list, pos: 0, done: 0 };
+    showRun();
+  }
+
+  function showRun() {
+    if (!run) return;
+    if (run.pos >= run.list.length) {
+      const done = run.done;
+      run = null;
+      el.dialog.close();
+      render();
+      flash(done ? done + (done === 1 ? ' foto guardada' : ' fotos guardadas') : 'Tirada terminada', false);
+      return;
+    }
+    el.detail.innerHTML = runHTML();
+    if (!el.dialog.open) el.dialog.showModal();
+  }
+
   /* ------------------------------------------------------------ eventos */
   let pressTimer = null;
   let longPressed = false;
@@ -998,6 +1080,19 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
       return;
     }
 
+    if (e.target.closest('[data-run]')) { startRun(); return; }
+
+    if (e.target.closest('[data-run-skip]') && run) { run.pos += 1; showRun(); return; }
+
+    if (e.target.closest('[data-run-exit]') && run) {
+      const done = run.done;
+      run = null;
+      el.dialog.close();
+      render();
+      if (done) flash(done + (done === 1 ? ' foto guardada' : ' fotos guardadas'), false);
+      return;
+    }
+
     if (e.target.closest('[data-drop-photo]') && openCard) {
       dropPhoto(key(openCard));
       openDetail(openCard);
@@ -1009,6 +1104,27 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
   });
 
   document.addEventListener('change', async (e) => {
+    const runInput = e.target.closest('[data-run-photo]');
+    if (runInput && run) {
+      const files = Array.from(runInput.files || []);
+      runInput.value = '';
+      if (!files.length) return;
+      for (const file of files) {
+        if (run.pos >= run.list.length) break;
+        const card = cards[run.list[run.pos]];
+        try {
+          putPhoto(key(card), await processPhoto(file));
+          if (qty(card) === 0) setQty(card, 1);
+          run.done += 1;
+        } catch {
+          flash('No se pudo leer esa imagen', false);
+        }
+        run.pos += 1;
+      }
+      showRun();
+      return;
+    }
+
     const photoInput = e.target.closest('[data-photo]');
     if (photoInput && openCard) {
       const file = photoInput.files && photoInput.files[0];
@@ -1075,7 +1191,7 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
     render();
   });
 
-  el.dialog.addEventListener('close', () => { openCard = null; });
+  el.dialog.addEventListener('close', () => { openCard = null; if (run) { run = null; render(); } });
   el.dialog.addEventListener('click', (e) => { if (e.target === el.dialog) el.dialog.close(); });
 
   render();

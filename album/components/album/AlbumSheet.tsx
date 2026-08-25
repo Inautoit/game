@@ -8,6 +8,7 @@ import { Flash, nextFlashId, type FlashMessage } from '@/components/shared/Flash
 import { SyncBadge } from '@/components/shared/SyncBadge';
 import type { Card } from '@/lib/types';
 import { CardSlot } from './CardSlot';
+import { PhotoRun } from './PhotoRun';
 import { ProgressBar } from './ProgressBar';
 import { ViewTabs, type TabItem } from './ViewTabs';
 
@@ -21,6 +22,10 @@ export function AlbumSheet({ collection, view }: Props) {
   const { index, loading, error, owned, progress } = useCollection();
   const router = useRouter();
   const [flash, setFlash] = useState<FlashMessage | null>(null);
+  /* La lista se congela al empezar: si se recalculara en vivo, cada foto sacaría
+     su carta de la lista y el índice saltaría a la siguiente, dejándose una sin
+     fotografiar en cada paso. */
+  const [photoRun, setPhotoRun] = useState<Card[] | null>(null);
 
   const resolved = useMemo(() => {
     if (!index) return null;
@@ -106,6 +111,7 @@ export function AlbumSheet({ collection, view }: Props) {
 
   const activeSeries = resolved.series;
   const isBase = index.baseSeries?.id === activeSeries.id;
+  const withoutPhoto = resolved.cards.filter((c) => !owned.get(c.id)?.photo_path);
 
   const onMarked = (card: Card, quantity: number, isNew: boolean) => {
     const who = card.player_name ?? card.number;
@@ -142,6 +148,20 @@ export function AlbumSheet({ collection, view }: Props) {
           </span>
         </div>
 
+        <div className="mb-3">
+          {withoutPhoto.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setPhotoRun(withoutPhoto)}
+              className="rounded-full border border-slot-edge px-3 py-1.5 text-sm hover:border-cream/40"
+            >
+              Fotos seguidas · {withoutPhoto.length} sin foto
+            </button>
+          ) : (
+            <p className="text-sm text-muted">Todas las cartas de esta hoja tienen foto.</p>
+          )}
+        </div>
+
         <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6">
           {resolved.cards.map((card) => (
             <CardSlot
@@ -160,6 +180,24 @@ export function AlbumSheet({ collection, view }: Props) {
           Toque corto para marcar · toque largo para abrir la ficha
         </p>
       </main>
+
+      {photoRun && (
+        <PhotoRun
+          cards={photoRun}
+          series={activeSeries}
+          teamOf={(c) => (c.team_id ? index.teamById.get(c.team_id) : undefined)}
+          onDone={(savedCount) => {
+            setPhotoRun(null);
+            if (savedCount) {
+              setFlash({
+                id: nextFlashId(),
+                text: savedCount === 1 ? '1 foto guardada' : `${savedCount} fotos guardadas`,
+                tone: 'info',
+              });
+            }
+          }}
+        />
+      )}
 
       <Flash message={flash} />
     </div>

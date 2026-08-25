@@ -31,7 +31,7 @@ interface ChecklistRow {
 
 interface TeamRow {
   key: string; name: string; slug: string;
-  primary_color: string; secondary_color: string; sort_order: string;
+  primary_color: string; secondary_color: string; pattern: string; sort_order: string;
 }
 
 function parseCsv<T>(file: string): T[] {
@@ -59,6 +59,7 @@ export function readCatalog(): Catalog {
     slug: t.slug,
     primary_color: t.primary_color || '#7c8291',
     secondary_color: t.secondary_color || '#ffffff',
+    pattern: t.pattern || 'plain',
     sort_order: Number(t.sort_order || 0),
   }));
   const teamByKey = new Map(teamRows.map((t, i) => [t.key, teams[i]]));

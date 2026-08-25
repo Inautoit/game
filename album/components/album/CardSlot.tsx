@@ -104,7 +104,7 @@ export function CardSlot({ card, team, series, owned, onOpen, onMarked }: Props)
             playerName={card.player_name}
             teamName={team?.name}
             position={card.position}
-            color={team?.primary_color}
+            team={team}
             rare={rare}
             printRun={card.print_run}
           />
@@ -122,7 +122,7 @@ export function CardSlot({ card, team, series, owned, onOpen, onMarked }: Props)
                 number={card.number}
                 playerName={card.player_name}
                 teamName={team?.name}
-                color={team?.primary_color}
+                team={team}
                 rare={rare}
               />
             )}

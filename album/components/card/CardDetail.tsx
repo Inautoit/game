@@ -73,7 +73,7 @@ export function CardDetail({ card, series, team, collection }: Props) {
                 number={card.number}
                 playerName={card.player_name}
                 teamName={team?.name}
-                color={team?.primary_color}
+                team={team}
                 rare={rare}
               />
             ) : (
@@ -82,7 +82,7 @@ export function CardDetail({ card, series, team, collection }: Props) {
                 playerName={card.player_name}
                 teamName={team?.name}
                 position={card.position}
-                color={team?.primary_color}
+                team={team}
                 rare={rare}
                 printRun={card.print_run}
               />

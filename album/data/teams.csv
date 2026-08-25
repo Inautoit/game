@@ -1,21 +1,21 @@
-key,name,slug,primary_color,secondary_color,sort_order
-Alaves,Deportivo Alavés,alaves,#0761AF,#FFFFFF,1
-Athletic Club,Athletic Club,athletic-club,#EE2523,#FFFFFF,2
-Atletico de Madrid,Atlético de Madrid,atletico-madrid,#CB3524,#272E61,3
-Barcelona,Barcelona,barcelona,#A50044,#004D98,4
-Celta de Vigo,Celta de Vigo,celta-vigo,#8AC3EE,#E5254E,5
-Elche,Elche,elche,#00693E,#FFFFFF,6
-Espanyol,Espanyol,espanyol,#0072CE,#FFFFFF,7
-Getafe,Getafe,getafe,#005999,#FFFFFF,8
-Girona,Girona,girona,#D6001C,#FFFFFF,9
-Levante,Levante,levante,#005CA9,#9B1C31,10
-Mallorca,Mallorca,mallorca,#E20613,#1A1A1A,11
-Osasuna,Osasuna,osasuna,#D91A21,#0A346F,12
-Rayo Vallecano,Rayo Vallecano,rayo-vallecano,#E53027,#FFFFFF,13
-Real Betis,Real Betis,real-betis,#00954C,#FFFFFF,14
-Real Madrid,Real Madrid,real-madrid,#E8E8E8,#FEBE10,15
-Real Oviedo,Real Oviedo,real-oviedo,#0A4EA2,#FFFFFF,16
-Real Sociedad,Real Sociedad,real-sociedad,#0067B1,#FFFFFF,17
-Sevilla,Sevilla,sevilla,#D81920,#FFFFFF,18
-Valencia,Valencia,valencia,#F18E00,#1A1A1A,19
-Villarreal,Villarreal,villarreal,#FFE667,#005187,20
+key,name,slug,primary_color,secondary_color,pattern,sort_order
+Alaves,Deportivo Alavés,alaves,#0761AF,#FFFFFF,stripes,1
+Athletic Club,Athletic Club,athletic-club,#EE2523,#FFFFFF,stripes,2
+Atletico de Madrid,Atlético de Madrid,atletico-madrid,#CB3524,#FFFFFF,stripes,3
+Barcelona,Barcelona,barcelona,#A50044,#004D98,stripes,4
+Celta de Vigo,Celta de Vigo,celta-vigo,#8AC3EE,#FFFFFF,plain,5
+Elche,Elche,elche,#00693E,#FFFFFF,plain,6
+Espanyol,Espanyol,espanyol,#0072CE,#FFFFFF,stripes,7
+Getafe,Getafe,getafe,#005999,#FFFFFF,plain,8
+Girona,Girona,girona,#D6001C,#FFFFFF,stripes,9
+Levante,Levante,levante,#005CA9,#9B1C31,stripes,10
+Mallorca,Mallorca,mallorca,#E20613,#1A1A1A,plain,11
+Osasuna,Osasuna,osasuna,#D91A21,#0A346F,plain,12
+Rayo Vallecano,Rayo Vallecano,rayo-vallecano,#E53027,#FFFFFF,sash,13
+Real Betis,Real Betis,real-betis,#00954C,#FFFFFF,stripes,14
+Real Madrid,Real Madrid,real-madrid,#E8E8E8,#FEBE10,plain,15
+Real Oviedo,Real Oviedo,real-oviedo,#0A4EA2,#FFFFFF,plain,16
+Real Sociedad,Real Sociedad,real-sociedad,#0067B1,#FFFFFF,stripes,17
+Sevilla,Sevilla,sevilla,#D81920,#FFFFFF,plain,18
+Valencia,Valencia,valencia,#F18E00,#1A1A1A,plain,19
+Villarreal,Villarreal,villarreal,#FFE667,#005187,plain,20

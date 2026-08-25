@@ -20,7 +20,10 @@ const seriesIndex = new Map(catalog.series.map((s, i) => [s.id, i]));
 // para nada y multiplican por cuatro el peso de la página.
 const compact = {
   collection: { name: catalog.collection.name, season: catalog.collection.season },
-  teams: catalog.teams.map((t) => ({ name: t.name, slug: t.slug, color: t.primary_color })),
+  teams: catalog.teams.map((t) => ({
+    name: t.name, slug: t.slug,
+    color: t.primary_color, color2: t.secondary_color, pattern: t.pattern,
+  })),
   series: catalog.series.map((s) => ({
     code: s.code, name: s.name, kind: s.kind,
     scarcity: s.scarcity, requestable: s.requestable,

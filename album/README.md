@@ -112,9 +112,16 @@ publica ninguna:
 - **Tu foto** — lo que se ve en los huecos que tienes es la foto que haces tú,
   en tu cuenta. Recortada a 63×88 y comprimida en el cliente antes de subirla.
 - **Hueco vacío** — no es una imagen: es un componente generado con el número,
-  el jugador, el equipo y el color del club. Diseño propio.
-- **Sin foto todavía** — mismo tratamiento generado, pero lleno y con el color
-  del club, para que se vea que ese hueco ya está ocupado.
+  el jugador, el equipo y el **patrón de la camiseta** del club (franjas, banda,
+  liso) dibujado con sus dos colores. No es el escudo ni la equipación de nadie:
+  son dos colores y una geometría nuestra. Pero hace que la hoja del Athletic no
+  se parezca a la del Betis aunque no haya todavía ni una foto.
+- **Sin foto todavía** — el mismo patrón, encendido, para que se vea desde el
+  otro lado de la mesa que ese hueco ya está ocupado.
+
+Para meter tus fotos sin morir en el intento hay **fotos seguidas**: desde
+cualquier hoja del álbum, dispara y salta sola a la siguiente carta. Desde el
+ordenador puedes soltar varias imágenes de golpe y se reparten en orden.
 
 ### Los precios
 

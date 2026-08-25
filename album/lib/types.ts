@@ -33,6 +33,8 @@ export interface Team {
   slug: string;
   primary_color: string;
   secondary_color: string;
+  /** Patrón de la camiseta: stripes | halves | sash | hoops | plain */
+  pattern: string;
   sort_order: number;
 }
 
