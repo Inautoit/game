@@ -188,6 +188,22 @@ main { padding: 1rem; }
 .art.have .ring { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
 .slot.rare .art.have .ring { box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.6); }
 
+.art .photo {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+/* Reflejo de la funda de plástico sobre la foto. */
+.art.photo-in .ring::after {
+  content: ""; position: absolute; inset: 0; border-radius: var(--radius);
+  background:
+    linear-gradient(115deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 38%),
+    linear-gradient(300deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 42%);
+}
+
+.photo-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+.photo-actions .btn { flex: 1 1 auto; text-align: center; white-space: nowrap; }
+.photo-note { margin: 0.3rem 0 0; font-size: 0.68rem; line-height: 1.3; color: var(--muted); text-align: center; }
+
 .badge {
   position: absolute; right: 0.25rem; top: 0.25rem; z-index: 2;
   border-radius: 999px; background: rgba(0, 0, 0, 0.7);
@@ -352,8 +368,8 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
 <div class="shell">
   <p class="notice">
     <strong>Vista previa jugable.</strong>
-    Es el álbum de verdad con el catálogo real: toca los huecos, abre un sobre, mira tus faltas.
-    Lo que marques se guarda solo en este navegador.
+    Es el álbum de verdad con el catálogo real: toca los huecos, abre un sobre, hazle una foto a
+    tus cartas. Lo que marques y las fotos se quedan en este navegador.
   </p>
 
   <header class="head" id="head"></header>
@@ -387,6 +403,80 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
     try {
       localStorage.setItem(STORE, JSON.stringify({ owned: state.owned, sales: state.sales }));
     } catch { /* sin almacenamiento: seguimos en memoria */ }
+  }
+
+  /* ------------------------------------------------------------- fotos
+     Las fotos son del usuario y se quedan en su navegador: IndexedDB guarda
+     el blob y aquí solo se maneja la URL para pintarla. Si el navegador no
+     deja abrir la base (modo privado), se sigue trabajando en memoria: se
+     ven durante la visita y se pierden al cerrar. */
+  const photoURL = new Map();
+  let photoDB = null;
+
+  function openPhotos() {
+    return new Promise((resolve) => {
+      if (!self.indexedDB) return resolve(null);
+      let req;
+      try { req = indexedDB.open('hoja-preview-fotos', 1); } catch { return resolve(null); }
+      req.onupgradeneeded = () => { req.result.createObjectStore('fotos'); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+  }
+
+  function photoTx(mode) {
+    return photoDB ? photoDB.transaction('fotos', mode).objectStore('fotos') : null;
+  }
+
+  async function loadPhotos() {
+    photoDB = await openPhotos();
+    const store = photoTx('readonly');
+    if (!store) return;
+    await new Promise((resolve) => {
+      const req = store.openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return resolve();
+        photoURL.set(cursor.key, URL.createObjectURL(cursor.value));
+        cursor.continue();
+      };
+      req.onerror = () => resolve();
+    });
+  }
+
+  function putPhoto(k, blob) {
+    const old = photoURL.get(k);
+    if (old) URL.revokeObjectURL(old);
+    photoURL.set(k, URL.createObjectURL(blob));
+    const store = photoTx('readwrite');
+    if (store) store.put(blob, k);
+  }
+
+  function dropPhoto(k) {
+    const old = photoURL.get(k);
+    if (old) URL.revokeObjectURL(old);
+    photoURL.delete(k);
+    const store = photoTx('readwrite');
+    if (store) store.delete(k);
+  }
+
+  /* Recorte a la proporción de la carta y compresión, igual que en la app:
+     subir 4 MB de foto de móvil para verla a 120 px es tirar datos. */
+  async function processPhoto(file) {
+    const bitmap = await createImageBitmap(file);
+    const w = 900;
+    const h = Math.round(w / (63 / 88));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    const scale = Math.max(w / bitmap.width, h / bitmap.height);
+    const dw = bitmap.width * scale;
+    const dh = bitmap.height * scale;
+    ctx.drawImage(bitmap, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    bitmap.close();
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('sin blob'))), 'image/webp', 0.85);
+    });
   }
 
   /* ------------------------------------------------------------ índices */
@@ -443,6 +533,13 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
     const color = team ? team.color : '#7c8291';
     const n = qty(card);
     const have = n > 0;
+    const photo = have ? photoURL.get(key(card)) : null;
+
+    if (photo) {
+      return '<div class="art have photo-in">'
+        + '<img class="photo" src="' + photo + '" alt="' + esc('Tu foto de la carta ' + card.number) + '">'
+        + '<div class="ring"></div></div>';
+    }
     const who = card.player || (have ? (team ? team.name : '') : (card.pos || 'Sin nombre'));
     const sub = have ? (card.player && team ? team.name : '') : (team ? team.name : '');
     const bg = have
@@ -767,8 +864,17 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
     const p = priceOf(card);
     const q = encodeURIComponent([collection.name, card.player || (t ? t.name : ''), card.number].filter(Boolean).join(' '));
 
+    const hasPhoto = Boolean(photoURL.get(key(card)));
+
     return '<div class="detail-top"><div class="detail-art">'
-      + '<div class="slot' + (rare(s) ? ' rare' : '') + '">' + artHTML(card, true) + '</div></div>'
+      + '<div class="slot' + (rare(s) ? ' rare' : '') + '">' + artHTML(card, true) + '</div>'
+      + '<div class="photo-actions">'
+      + '<label class="btn small">' + (hasPhoto ? 'Cambiar' : 'Subir foto')
+      + '<input type="file" accept="image/*" capture="environment" data-photo="1" hidden></label>'
+      + (hasPhoto ? '<button class="btn small" data-drop-photo="1">Quitar</button>' : '')
+      + '</div>'
+      + '<p class="photo-note">Tu foto, recortada a 63×88. No sale de aquí.</p>'
+      + '</div>'
       + '<div style="min-width:0;flex:1 1 auto">'
       + '<span class="eyebrow">' + esc(s.name) + '</span>'
       + '<h3>' + esc(card.number) + ' ' + esc(nameOf(card)) + '</h3>'
@@ -892,10 +998,36 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
       return;
     }
 
+    if (e.target.closest('[data-drop-photo]') && openCard) {
+      dropPhoto(key(openCard));
+      openDetail(openCard);
+      render();
+      return;
+    }
+
     if (e.target.closest('[data-close]')) { el.dialog.close(); return; }
   });
 
-  document.addEventListener('change', (e) => {
+  document.addEventListener('change', async (e) => {
+    const photoInput = e.target.closest('[data-photo]');
+    if (photoInput && openCard) {
+      const file = photoInput.files && photoInput.files[0];
+      photoInput.value = '';
+      if (!file) return;
+      const card = openCard;
+      try {
+        putPhoto(key(card), await processPhoto(file));
+      } catch {
+        flash('No se pudo leer esa imagen', false);
+        return;
+      }
+      if (qty(card) === 0) setQty(card, 1);
+      openDetail(card);
+      render();
+      flash('Foto guardada', false);
+      return;
+    }
+
     const f = e.target.closest('[data-filter]');
     if (!f) return;
     state.filters[f.dataset.filter] = f.value;
@@ -947,5 +1079,6 @@ dialog::backdrop { background: rgba(4, 10, 8, 0.72); }
   el.dialog.addEventListener('click', (e) => { if (e.target === el.dialog) el.dialog.close(); });
 
   render();
+  loadPhotos().then(() => { if (photoURL.size) render(); });
 })();
 </script>

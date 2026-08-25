@@ -31,9 +31,14 @@ fichero, o se publica como página suelta en cualquier sitio.
 npm run preview:build    # catálogo -> preview/index.html
 ```
 
-Es una vista previa, no la app: sirve para enseñársela a alguien por un enlace.
-Lo que se marca ahí se guarda en `localStorage` de ese navegador y no sale de
-él. La app de verdad es todo lo demás de este directorio.
+Cubre álbum, sobre, faltas, repes, valor, la ficha con precio de comunidad y las
+fotos de tus cartas (recorte a 63×88 y compresión en el navegador, igual que en
+la app). Lo marcado vive en `localStorage` y las fotos en IndexedDB, las dos
+cosas en ese navegador y en ningún sitio más.
+
+Es una vista previa, no la app: no hay cuenta, ni sincronización entre
+dispositivos, ni PWA instalable. La app de verdad es todo lo demás de este
+directorio.
 
 ## Publicar en Cloudflare Pages
 
