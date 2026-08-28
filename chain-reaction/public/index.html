@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>Reacción en cadena</title>
+<style>
+  :root {
+    --fondo: #0b0d12;
+    --panel: #141822;
+    --casilla: #1b2130;
+    --borde: #262d3d;
+    --texto: #e6e9f0;
+    --tenue: #8d95a8;
+    --rojo: #ff2d55;
+    --azul: #2f7bff;
+    --dur: 150ms;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--fondo);
+    color: var(--texto);
+    font: 16px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .oculto { display: none !important; }
+
+  /* ---------- pantalla inicial ---------- */
+  #inicio { text-align: center; max-width: 340px; width: 100%; }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; }
+  h1 em { font-style: normal; color: var(--rojo); }
+  h1 i { font-style: normal; color: var(--azul); }
+  .lema { color: var(--tenue); font-size: 14px; margin-bottom: 28px; }
+  button {
+    font: inherit; color: var(--texto); background: var(--panel);
+    border: 1px solid var(--borde); border-radius: 10px;
+    padding: 12px 18px; cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  button:hover { background: #1d2434; border-color: #38415a; }
+  button.primario { background: var(--rojo); border-color: var(--rojo); color: #fff; font-weight: 600; }
+  button.primario:hover { filter: brightness(1.1); background: var(--rojo); }
+  .botones { display: grid; gap: 10px; }
+  .fila-union { display: flex; gap: 8px; }
+  input {
+    flex: 1; min-width: 0; font: inherit; text-transform: uppercase; letter-spacing: 4px;
+    text-align: center; background: var(--panel); color: var(--texto);
+    border: 1px solid var(--borde); border-radius: 10px; padding: 12px;
+  }
+  input:focus { outline: none; border-color: var(--azul); }
+
+  /* ---------- juego ---------- */
+  #juego { width: 100%; max-width: min(92vw, 46vh); display: grid; gap: 12px; }
+  .barra { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  #marcador {
+    flex: 1; min-width: 0; overflow: hidden; border-radius: 10px; padding: 10px 12px;
+    font-weight: 600; font-size: 15px;
+    background: var(--panel); border: 1px solid var(--borde);
+    transition: background .25s, border-color .25s, color .25s;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  #marcador.rojo { background: var(--rojo); border-color: var(--rojo); color: #fff; }
+  #marcador.azul { background: var(--azul); border-color: var(--azul); color: #fff; }
+  #estado-turno { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #sala { font-size: 12px; opacity: .8; letter-spacing: 2px; font-weight: 500; white-space: nowrap; }
+  #copiar { flex: 0 0 auto; padding: 10px 12px; font-size: 13px; white-space: nowrap; }
+
+  #tablero {
+    position: relative; width: 100%; aspect-ratio: 6 / 9;
+    display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(9, 1fr);
+    gap: 5px; touch-action: manipulation;
+  }
+  #tablero.bloqueado { pointer-events: none; }
+  .casilla {
+    position: relative; background: var(--casilla); border: 1px solid var(--borde);
+    border-radius: 8px; cursor: pointer; transition: background .12s, border-color .12s, transform .12s;
+  }
+  #tablero.mio .casilla.jugable:hover { border-color: currentColor; background: #222a3b; }
+  .casilla.explotando { transform: scale(.86); }
+  .fichas { position: absolute; inset: 0; }
+  .fichas.peligro { animation: girar 1.6s linear infinite; }
+  .fichas.invisible { opacity: 0; }
+  @keyframes girar { to { transform: rotate(360deg); } }
+  .ficha {
+    position: absolute; width: 26%; aspect-ratio: 1; border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: currentColor; box-shadow: 0 0 8px currentColor;
+  }
+  .rojo { color: var(--rojo); }
+  .azul { color: var(--azul); }
+
+  #capa { position: absolute; inset: 0; pointer-events: none; }
+  .volando {
+    position: absolute; border-radius: 50%; background: currentColor;
+    box-shadow: 0 0 10px currentColor;
+    transform: translate(-50%, -50%); transition: transform var(--dur) ease-in;
+  }
+
+  /* ---------- avisos y victoria ---------- */
+  #aviso { min-height: 20px; text-align: center; font-size: 13px; color: var(--tenue); }
+  #aviso.malo { color: var(--rojo); }
+  #victoria {
+    position: fixed; inset: 0; background: rgba(11, 13, 18, .92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    text-align: center; padding: 20px; z-index: 10;
+  }
+  #victoria h2 { font-size: 30px; }
+  #victoria p { color: var(--tenue); font-size: 14px; margin-top: -10px; }
+  #victoria h2.rojo { color: var(--rojo); }
+  #victoria h2.azul { color: var(--azul); }
+</style>
+</head>
+<body>
+
+<section id="inicio">
+  <h1>Reacción <em>en</em> <i>cadena</i></h1>
+  <p class="lema">Dos jugadores, un tablero de 6 × 9. Haz explotar al rival.</p>
+  <div class="botones">
+    <button class="primario" id="btn-crear">Crear partida</button>
+    <div class="fila-union">
+      <input id="codigo" maxlength="4" placeholder="CÓDIGO" autocomplete="off" spellcheck="false">
+      <button id="btn-unirse">Unirse</button>
+    </div>
+  </div>
+  <p id="aviso-inicio" class="lema" style="margin-top:18px"></p>
+</section>
+
+<section id="juego" class="oculto">
+  <div class="barra">
+    <div id="marcador"><span id="estado-turno">Conectando…</span><span id="sala"></span></div>
+    <button id="copiar">Copiar enlace</button>
+  </div>
+  <div id="tablero"><div id="capa"></div></div>
+  <p id="aviso"></p>
+</section>
+
+<div id="victoria" class="oculto">
+  <h2 id="texto-victoria"></h2>
+  <p id="detalle-victoria"></p>
+  <button class="primario" id="btn-revancha">Revancha</button>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const COLS = 6, FILAS = 9, DUR = 150;
+  const $ = (id) => document.getElementById(id);
+  const tablero = $("tablero"), capa = $("capa");
+
+  const masaCritica = (fila, col) =>
+    (fila > 0) + (fila < FILAS - 1) + (col > 0) + (col < COLS - 1);
+
+  /* ---------- construcción del tablero ---------- */
+  const casillas = [];
+  for (let fila = 0; fila < FILAS; fila++) {
+    for (let col = 0; col < COLS; col++) {
+      const div = document.createElement("div");
+      div.className = "casilla";
+      div.dataset.fila = fila;
+      div.dataset.col = col;
+      const fichas = document.createElement("div");
+      fichas.className = "fichas";
+      div.appendChild(fichas);
+      div.addEventListener("click", () => jugar(fila, col));
+      tablero.insertBefore(div, capa);
+      casillas.push({ div, fichas, critica: masaCritica(fila, col) });
+    }
+  }
+
+  /* ---------- pintado ---------- */
+  const POSICIONES = {
+    1: [[50, 50]],
+    2: [[33, 33], [67, 67]],
+    3: [[50, 28], [30, 69], [70, 69]],
+    4: [[32, 32], [68, 32], [32, 68], [68, 68]],
+  };
+
+  let pintado = null;   // último tablero pintado (el que manda el servidor)
+  let miColor = null, turno = null, jugadores = 0;
+
+  function pintar(celdas) {
+    pintado = celdas;
+    for (let i = 0; i < celdas.length; i++) {
+      const { n, jugador } = celdas[i];
+      const c = casillas[i];
+      c.div.classList.remove("explotando");
+      c.div.className = "casilla" + (jugador ? " " + jugador : "");
+      const peligro = n > 0 && n === c.critica - 1;
+      let pos = POSICIONES[Math.min(n, 4)] || [];
+      if (peligro && n === 1) pos = [[50, 32]];
+      c.fichas.className = "fichas" + (peligro ? " peligro" : "");
+      c.fichas.innerHTML = "";
+      for (const [x, y] of pos) {
+        const f = document.createElement("div");
+        f.className = "ficha";
+        f.style.left = x + "%";
+        f.style.top = y + "%";
+        c.fichas.appendChild(f);
+      }
+      const jugable = !turno || turno !== miColor ? false : (!jugador || jugador === miColor);
+      if (jugable) c.div.classList.add("jugable");
+    }
+    tablero.classList.toggle("mio", turno === miColor && jugadores === 2);
+  }
+
+  /* ---------- animación de las oleadas ---------- */
+  function centro(i) {
+    const d = casillas[i].div;
+    return { x: d.offsetLeft + d.offsetWidth / 2, y: d.offsetTop + d.offsetHeight / 2, r: d.offsetWidth * 0.26 };
+  }
+
+  function animarOleada(explotan) {
+    return new Promise((resolve) => {
+      const puntos = [];
+      for (const { fila, col } of explotan) {
+        const i = fila * COLS + col;
+        const color = (pintado && pintado[i].jugador) || miColor || "rojo";
+        const desde = centro(i);
+        casillas[i].div.classList.add("explotando");
+        casillas[i].fichas.classList.add("invisible");
+        const vecinos = [[fila - 1, col], [fila + 1, col], [fila, col - 1], [fila, col + 1]];
+        for (const [vf, vc] of vecinos) {
+          if (vf < 0 || vf >= FILAS || vc < 0 || vc >= COLS) continue;
+          const hasta = centro(vf * COLS + vc);
+          const punto = document.createElement("div");
+          punto.className = "volando " + color;
+          punto.style.width = punto.style.height = desde.r + "px";
+          punto.style.left = desde.x + "px";
+          punto.style.top = desde.y + "px";
+          capa.appendChild(punto);
+          puntos.push([punto, hasta.x - desde.x, hasta.y - desde.y]);
+        }
+      }
+      requestAnimationFrame(() => {
+        for (const [punto, dx, dy] of puntos) {
+          punto.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px)`;
+        }
+        setTimeout(() => {
+          capa.innerHTML = "";
+          resolve();
+        }, DUR);
+      });
+    });
+  }
+
+  let cola = Promise.resolve();
+
+  function encolar(estado) {
+    cola = cola.then(async () => {
+      miColor = estado.tuColor;
+      jugadores = estado.jugadores;
+      const oleadas = estado.explosiones || [];
+      if (oleadas.length) {
+        tablero.classList.add("bloqueado");
+        turno = null;
+        for (const oleada of oleadas) {
+          await animarOleada(oleada.explotan);
+          pintar(oleada.celdas);
+        }
+        tablero.classList.remove("bloqueado");
+      }
+      turno = estado.turno;
+      pintar(estado.celdas);
+      actualizarMarcador(estado);
+    });
+  }
+
+  /* ---------- interfaz ---------- */
+  function actualizarMarcador(estado) {
+    const marcador = $("marcador");
+    marcador.className = estado.ganador ? "" : (estado.turno || "");
+    if (jugadores < 2) {
+      $("estado-turno").textContent = "Esperando rival…";
+      marcador.className = "";
+    } else if (estado.ganador) {
+      $("estado-turno").textContent = "Partida terminada";
+    } else {
+      $("estado-turno").textContent = estado.turno === miColor ? "Es tu turno" : "Turno del rival";
+    }
+    $("sala").textContent = (miColor === "rojo" ? "ROJO" : "AZUL") + " · " + sala;
+
+    const victoria = $("victoria");
+    if (estado.ganador) {
+      victoria.classList.remove("oculto");
+      const h2 = $("texto-victoria");
+      h2.className = estado.ganador;
+      h2.textContent = estado.ganador === miColor ? "¡Has ganado!" : "Gana el " + estado.ganador;
+      $("detalle-victoria").textContent =
+        "El " + (estado.ganador === "rojo" ? "azul" : "rojo") + " se quedó sin fichas.";
+    } else {
+      victoria.classList.add("oculto");
+    }
+  }
+
+  function aviso(texto, malo) {
+    const el = $("aviso");
+    el.textContent = texto || "";
+    el.className = malo ? "malo" : "";
+  }
+
+  /* ---------- conexión ---------- */
+  let ws = null, sala = "", reintento = null;
+
+  function jugar(fila, col) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (turno !== miColor || jugadores < 2) return;
+    ws.send(JSON.stringify({ tipo: "jugar", fila, col }));
+  }
+
+  function conectar(codigo) {
+    sala = codigo;
+    location.hash = codigo;
+    $("inicio").classList.add("oculto");
+    $("juego").classList.remove("oculto");
+    aviso("Conectando…");
+
+    const protocolo = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${protocolo}://${location.host}/ws?sala=${codigo}`);
+
+    ws.addEventListener("open", () => aviso(""));
+    ws.addEventListener("message", (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.tipo === "estado") {
+        aviso(msg.jugadores < 2 ? "Comparte el enlace para que entre tu rival." : "");
+        encolar(msg);
+      }
+      else if (msg.tipo === "error") aviso(msg.mensaje, true);
+    });
+    ws.addEventListener("close", (ev) => {
+      if (ev.code === 4001) {
+        volverAlInicio("Esa sala ya tiene dos jugadores.");
+        return;
+      }
+      aviso("Sin conexión. Reintentando…", true);
+      clearTimeout(reintento);
+      reintento = setTimeout(() => conectar(codigo), 1500);
+    });
+  }
+
+  function volverAlInicio(mensaje) {
+    ws = null;
+    location.hash = "";
+    $("juego").classList.add("oculto");
+    $("victoria").classList.add("oculto");
+    $("inicio").classList.remove("oculto");
+    $("aviso-inicio").textContent = mensaje || "";
+  }
+
+  const codigoAlAzar = () =>
+    Array.from({ length: 4 }, () => "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)]).join("");
+
+  $("btn-crear").addEventListener("click", () => conectar(codigoAlAzar()));
+  $("btn-unirse").addEventListener("click", () => {
+    const codigo = $("codigo").value.trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(codigo)) {
+      $("aviso-inicio").textContent = "El código son cuatro letras.";
+      return;
+    }
+    conectar(codigo);
+  });
+  $("codigo").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btn-unirse").click(); });
+
+  $("copiar").addEventListener("click", async () => {
+    const enlace = location.origin + location.pathname + "#" + sala;
+    try {
+      await navigator.clipboard.writeText(enlace);
+    } catch {
+      const t = document.createElement("textarea");
+      t.value = enlace; document.body.appendChild(t); t.select();
+      document.execCommand("copy"); t.remove();
+    }
+    $("copiar").textContent = "¡Copiado!";
+    setTimeout(() => ($("copiar").textContent = "Copiar enlace"), 1500);
+  });
+
+  $("btn-revancha").addEventListener("click", () => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ tipo: "revancha" }));
+  });
+
+  pintar(Array.from({ length: FILAS * COLS }, () => ({ n: 0, jugador: null })));
+
+  const inicial = location.hash.replace("#", "").toUpperCase();
+  if (/^[A-Z]{4}$/.test(inicial)) conectar(inicial);
+})();
+</script>
+</body>
+</html>

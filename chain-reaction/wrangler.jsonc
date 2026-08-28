@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "reaccion-en-cadena",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SALA",
+        "class_name": "Sala"
+      }
+    ]
+  },
+  // new_sqlite_classes: necesario para usar Durable Objects en el plan gratuito.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Sala"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
