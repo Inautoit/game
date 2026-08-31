@@ -68,6 +68,21 @@
   #sala { font-size: 12px; opacity: .8; letter-spacing: 2px; font-weight: 500; white-space: nowrap; }
   #copiar { flex: 0 0 auto; padding: 10px 12px; font-size: 13px; white-space: nowrap; }
 
+  /* panel con el código, visible mientras esperas al rival */
+  #panel-codigo {
+    background: var(--panel); border: 1px solid var(--borde); border-radius: 12px;
+    padding: 16px; text-align: center;
+  }
+  #panel-codigo p { color: var(--tenue); font-size: 13px; margin-bottom: 12px; }
+  #codigo-grande { display: flex; gap: 8px; justify-content: center; }
+  #codigo-grande span {
+    flex: 0 1 62px; aspect-ratio: 4 / 5; display: flex; align-items: center; justify-content: center;
+    background: var(--casilla); border: 1px solid var(--borde); border-radius: 10px;
+    font-size: 30px; font-weight: 700; letter-spacing: 1px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  #panel-codigo .o-bien { margin: 14px 0 0; font-size: 12px; }
+
   #tablero {
     position: relative; width: 100%; aspect-ratio: 6 / 9;
     display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(9, 1fr);
@@ -121,7 +136,7 @@
   <div class="botones">
     <button class="primario" id="btn-crear">Crear partida</button>
     <div class="fila-union">
-      <input id="codigo" maxlength="4" placeholder="CÓDIGO" autocomplete="off" spellcheck="false">
+      <input id="codigo" maxlength="80" placeholder="CÓDIGO" autocomplete="off" spellcheck="false">
       <button id="btn-unirse">Unirse</button>
     </div>
   </div>
@@ -132,6 +147,11 @@
   <div class="barra">
     <div id="marcador"><span id="estado-turno">Conectando…</span><span id="sala"></span></div>
     <button id="copiar">Copiar enlace</button>
+  </div>
+  <div id="panel-codigo" class="oculto">
+    <p>Dile este código a tu rival, o pásale el enlace</p>
+    <div id="codigo-grande"></div>
+    <p class="o-bien">Tiene que abrir la web y pulsar «Unirse»</p>
   </div>
   <div id="tablero"><div id="capa"></div></div>
   <p id="aviso"></p>
@@ -283,6 +303,20 @@
     }
     $("sala").textContent = (miColor === "rojo" ? "ROJO" : "AZUL") + " · " + sala;
 
+    // Mientras estés solo, el código bien grande para poder dictarlo.
+    const panel = $("panel-codigo");
+    if (jugadores < 2 && !estado.ganador) {
+      $("codigo-grande").innerHTML = "";
+      for (const letra of sala) {
+        const casilla = document.createElement("span");
+        casilla.textContent = letra;
+        $("codigo-grande").appendChild(casilla);
+      }
+      panel.classList.remove("oculto");
+    } else {
+      panel.classList.add("oculto");
+    }
+
     const victoria = $("victoria");
     if (estado.ganador) {
       victoria.classList.remove("oculto");
@@ -325,7 +359,7 @@
     ws.addEventListener("message", (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.tipo === "estado") {
-        aviso(msg.jugadores < 2 ? "Comparte el enlace para que entre tu rival." : "");
+        aviso("");
         encolar(msg);
       }
       else if (msg.tipo === "error") aviso(msg.mensaje, true);
@@ -350,17 +384,31 @@
     $("aviso-inicio").textContent = mensaje || "";
   }
 
+  // Sin B/V, M/N, P ni I/Y: se confunden al dictar el código en voz alta.
+  const LETRAS = "ACDEFGHJKLRSTUXZ";
   const codigoAlAzar = () =>
-    Array.from({ length: 4 }, () => "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)]).join("");
+    Array.from({ length: 4 }, () => LETRAS[Math.floor(Math.random() * LETRAS.length)]).join("");
+
+  /** Admite "abcd", "A B C D" o un enlace pegado entero. */
+  function extraerCodigo(texto) {
+    const t = String(texto || "");
+    const trozo = t.includes("#") ? t.slice(t.lastIndexOf("#") + 1) : t;
+    return trozo.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4);
+  }
 
   $("btn-crear").addEventListener("click", () => conectar(codigoAlAzar()));
   $("btn-unirse").addEventListener("click", () => {
-    const codigo = $("codigo").value.trim().toUpperCase();
-    if (!/^[A-Z]{4}$/.test(codigo)) {
+    const codigo = extraerCodigo($("codigo").value);
+    if (codigo.length !== 4) {
       $("aviso-inicio").textContent = "El código son cuatro letras.";
       return;
     }
     conectar(codigo);
+  });
+  $("codigo").addEventListener("input", (e) => {
+    const limpio = extraerCodigo(e.target.value);
+    if (limpio !== e.target.value) e.target.value = limpio;
+    $("aviso-inicio").textContent = "";
   });
   $("codigo").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btn-unirse").click(); });
 
