@@ -23,8 +23,10 @@
     background: var(--fondo);
     color: var(--texto);
     font: 16px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    height: 100dvh;
+    overflow: hidden;                /* el juego cabe entero: nunca hay scroll */
     display: flex; align-items: center; justify-content: center;
-    padding: 16px;
+    padding: 10px;
     -webkit-tap-highlight-color: transparent;
   }
   .oculto { display: none !important; }
@@ -34,13 +36,14 @@
   h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; }
   h1 em { font-style: normal; color: var(--rojo); }
   h1 i { font-style: normal; color: var(--azul); }
-  .lema { color: var(--tenue); font-size: 14px; margin-bottom: 28px; }
+  .lema { color: var(--tenue); font-size: 14px; margin-bottom: 26px; }
   button {
     font: inherit; color: var(--texto); background: var(--panel);
     border: 1px solid var(--borde); border-radius: 10px;
-    padding: 12px 18px; cursor: pointer; transition: background .15s, border-color .15s;
+    padding: 12px 18px; cursor: pointer; transition: background .15s, border-color .15s, transform .08s;
   }
   button:hover { background: #1d2434; border-color: #38415a; }
+  button:active { transform: scale(.96); }
   button.primario { background: var(--rojo); border-color: var(--rojo); color: #fff; font-weight: 600; }
   button.primario:hover { filter: brightness(1.1); background: var(--rojo); }
   .botones { display: grid; gap: 10px; }
@@ -52,11 +55,14 @@
   }
   input:focus { outline: none; border-color: var(--azul); }
 
-  /* ---------- juego ---------- */
-  #juego { width: 100%; max-width: min(92vw, 46vh); display: grid; gap: 12px; }
-  .barra { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  /* ---------- juego: columna que ocupa justo la pantalla ---------- */
+  #juego {
+    width: min(100%, 440px); height: 100%;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .barra { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 0 auto; }
   #marcador {
-    flex: 1; min-width: 0; overflow: hidden; border-radius: 10px; padding: 10px 12px;
+    flex: 1; min-width: 0; overflow: hidden; border-radius: 10px; padding: 9px 12px;
     font-weight: 600; font-size: 15px;
     background: var(--panel); border: 1px solid var(--borde);
     transition: background .25s, border-color .25s, color .25s;
@@ -64,39 +70,66 @@
   }
   #marcador.rojo { background: var(--rojo); border-color: var(--rojo); color: #fff; }
   #marcador.azul { background: var(--azul); border-color: var(--azul); color: #fff; }
+  #marcador.late { animation: latido 500ms ease-out; }
+  @keyframes latido {
+    0% { transform: scale(1); } 35% { transform: scale(1.035); } 100% { transform: scale(1); }
+  }
   #estado-turno { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #sala { font-size: 12px; opacity: .8; letter-spacing: 2px; font-weight: 500; white-space: nowrap; }
-  #copiar { flex: 0 0 auto; padding: 10px 12px; font-size: 13px; white-space: nowrap; }
-
-  /* panel con el código, visible mientras esperas al rival */
-  #panel-codigo {
-    background: var(--panel); border: 1px solid var(--borde); border-radius: 12px;
-    padding: 16px; text-align: center;
+  .icono {
+    flex: 0 0 auto; width: 40px; height: 40px; padding: 0; font-size: 17px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
   }
-  #panel-codigo p { color: var(--tenue); font-size: 13px; margin-bottom: 12px; }
-  #codigo-grande { display: flex; gap: 8px; justify-content: center; }
+
+  /* ---------- código de sala, compacto ---------- */
+  #panel-codigo {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px;
+    background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px;
+  }
+  #panel-codigo .etiqueta { color: var(--tenue); font-size: 12px; white-space: nowrap; }
+  #codigo-grande { display: flex; gap: 5px; }
   #codigo-grande span {
-    flex: 0 1 62px; aspect-ratio: 4 / 5; display: flex; align-items: center; justify-content: center;
-    background: var(--casilla); border: 1px solid var(--borde); border-radius: 10px;
-    font-size: 30px; font-weight: 700; letter-spacing: 1px;
+    min-width: 26px; padding: 3px 0; text-align: center;
+    background: var(--casilla); border: 1px solid var(--borde); border-radius: 6px;
+    font-size: 19px; font-weight: 700;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
-  #panel-codigo .o-bien { margin: 14px 0 0; font-size: 12px; }
 
+  /* ---------- tablero: se ajusta al hueco que queda ---------- */
+  #zona { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; container-type: size; }
   #tablero {
-    position: relative; width: 100%; aspect-ratio: 6 / 9;
+    position: relative;
+    width: min(100%, 58vh);                        /* respaldo */
+    width: min(100cqw, calc(100cqh * 6 / 9));      /* encaje exacto en el hueco */
+    aspect-ratio: 6 / 9;
     display: grid; grid-template-columns: repeat(6, 1fr); grid-template-rows: repeat(9, 1fr);
-    gap: 5px; touch-action: manipulation;
+    gap: 4px; touch-action: manipulation;
   }
   #tablero.bloqueado { pointer-events: none; }
+  #tablero.sacude { animation: sacude 220ms ease-in-out; }
+  @keyframes sacude {
+    0%, 100% { transform: translate(0, 0); }
+    20% { transform: translate(-3px, 2px); }
+    45% { transform: translate(3px, -2px); }
+    70% { transform: translate(-2px, -2px); }
+  }
   .casilla {
     position: relative; background: var(--casilla); border: 1px solid var(--borde);
-    border-radius: 8px; cursor: pointer; transition: background .12s, border-color .12s, transform .12s;
+    border-radius: 7px; cursor: pointer;
+    transition: background .12s, border-color .12s, box-shadow .12s;
   }
   #tablero.mio .casilla.jugable:hover { border-color: currentColor; background: #222a3b; }
-  .casilla.explotando { transform: scale(.86); }
+  #tablero.mio .casilla.jugable:active { transform: scale(.94); }
+  .casilla.estalla { animation: estalla 300ms ease-out; z-index: 2; }
+  @keyframes estalla {
+    0%   { transform: scale(1);    background: var(--casilla); }
+    18%  { transform: scale(1.22); background: #fff; box-shadow: 0 0 26px currentColor; }
+    55%  { transform: scale(.86);  background: currentColor; }
+    100% { transform: scale(1);    background: var(--casilla); }
+  }
+
   .fichas { position: absolute; inset: 0; }
-  .fichas.peligro { animation: girar 1.6s linear infinite; }
+  .fichas.peligro { animation: girar 1.5s linear infinite; }
   .fichas.invisible { opacity: 0; }
   @keyframes girar { to { transform: rotate(360deg); } }
   .ficha {
@@ -104,28 +137,60 @@
     transform: translate(-50%, -50%);
     background: currentColor; box-shadow: 0 0 8px currentColor;
   }
+  .ficha.entra { animation: entra 300ms cubic-bezier(.34, 1.7, .5, 1); }
+  @keyframes entra {
+    0%   { transform: translate(-50%, -50%) scale(0);   opacity: 0; }
+    60%  { transform: translate(-50%, -50%) scale(1.35); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); }
+  }
   .rojo { color: var(--rojo); }
   .azul { color: var(--azul); }
 
-  #capa { position: absolute; inset: 0; pointer-events: none; }
+  /* ---------- capa de efectos ---------- */
+  #capa { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 3; }
   .volando {
     position: absolute; border-radius: 50%; background: currentColor;
-    box-shadow: 0 0 10px currentColor;
-    transform: translate(-50%, -50%); transition: transform var(--dur) ease-in;
+    box-shadow: 0 0 12px currentColor;
+    transform: translate(-50%, -50%); transition: transform var(--dur) cubic-bezier(.4, 0, .7, 1);
+  }
+  .onda {
+    position: absolute; border-radius: 50%; border: 2px solid currentColor;
+    transform: translate(-50%, -50%) scale(.35); opacity: .85;
+    animation: onda 420ms ease-out forwards;
+  }
+  @keyframes onda {
+    to { transform: translate(-50%, -50%) scale(2.8); opacity: 0; }
+  }
+  .chispa {
+    position: absolute; border-radius: 50%; background: currentColor;
+    box-shadow: 0 0 10px currentColor; transform: translate(-50%, -50%);
+    animation: chispa 460ms ease-out forwards;
+  }
+  @keyframes chispa {
+    0%   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(.15); opacity: 0; }
   }
 
   /* ---------- avisos y victoria ---------- */
-  #aviso { min-height: 20px; text-align: center; font-size: 13px; color: var(--tenue); }
+  #aviso { flex: 0 0 auto; min-height: 18px; text-align: center; font-size: 13px; color: var(--tenue); }
   #aviso.malo { color: var(--rojo); }
   #victoria {
-    position: fixed; inset: 0; background: rgba(11, 13, 18, .92);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    position: fixed; inset: 0; background: rgba(11, 13, 18, .93);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
     text-align: center; padding: 20px; z-index: 10;
+    animation: aparece 300ms ease-out;
   }
-  #victoria h2 { font-size: 30px; }
-  #victoria p { color: var(--tenue); font-size: 14px; margin-top: -10px; }
+  @keyframes aparece { from { opacity: 0; } to { opacity: 1; } }
+  #victoria h2 { font-size: 32px; animation: entrada-titulo 450ms cubic-bezier(.34, 1.56, .64, 1); }
+  @keyframes entrada-titulo { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   #victoria h2.rojo { color: var(--rojo); }
   #victoria h2.azul { color: var(--azul); }
+  #victoria p { color: var(--tenue); font-size: 14px; margin-top: -8px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fichas.peligro, .ficha.entra, .casilla.estalla, #tablero.sacude,
+    .onda, .chispa, #marcador.late, #victoria h2 { animation: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -146,14 +211,16 @@
 <section id="juego" class="oculto">
   <div class="barra">
     <div id="marcador"><span id="estado-turno">Conectando…</span><span id="sala"></span></div>
-    <button id="copiar">Copiar enlace</button>
+    <button class="icono" id="copiar" title="Copiar enlace de invitación">🔗</button>
+    <button class="icono" id="sonido" title="Sonido">🔊</button>
   </div>
   <div id="panel-codigo" class="oculto">
-    <p>Dile este código a tu rival, o pásale el enlace</p>
+    <span class="etiqueta">Dile este código:</span>
     <div id="codigo-grande"></div>
-    <p class="o-bien">Tiene que abrir la web y pulsar «Unirse»</p>
   </div>
-  <div id="tablero"><div id="capa"></div></div>
+  <div id="zona">
+    <div id="tablero"><div id="capa"></div></div>
+  </div>
   <p id="aviso"></p>
 </section>
 
@@ -170,9 +237,61 @@
   const COLS = 6, FILAS = 9, DUR = 150;
   const $ = (id) => document.getElementById(id);
   const tablero = $("tablero"), capa = $("capa");
+  const menosMovimiento = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const masaCritica = (fila, col) =>
     (fila > 0) + (fila < FILAS - 1) + (col > 0) + (col < COLS - 1);
+
+  /* ---------- sonido (WebAudio, sin archivos) ---------- */
+  const audio = {
+    activo: true,
+    ctx: null,
+    arrancar() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+    },
+    tono(frec, frecFinal, dur, volumen, tipo) {
+      if (!this.activo || !this.ctx) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+      osc.type = tipo || "triangle";
+      osc.frequency.setValueAtTime(frec, t);
+      osc.frequency.exponentialRampToValueAtTime(frecFinal, t + dur);
+      g.gain.setValueAtTime(volumen, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g).connect(this.ctx.destination);
+      osc.start(t); osc.stop(t + dur);
+    },
+    ruido(dur, volumen, corte) {
+      if (!this.activo || !this.ctx) return;
+      const t = this.ctx.currentTime;
+      const muestras = Math.floor(this.ctx.sampleRate * dur);
+      const buffer = this.ctx.createBuffer(1, muestras, this.ctx.sampleRate);
+      const datos = buffer.getChannelData(0);
+      for (let i = 0; i < muestras; i++) datos[i] = (Math.random() * 2 - 1) * (1 - i / muestras);
+      const fuente = this.ctx.createBufferSource(); fuente.buffer = buffer;
+      const filtro = this.ctx.createBiquadFilter(); filtro.type = "lowpass"; filtro.frequency.value = corte;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(volumen, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      fuente.connect(filtro).connect(g).connect(this.ctx.destination);
+      fuente.start(t);
+    },
+    ficha() { this.tono(420, 720, 0.09, 0.06); },
+    estallido(oleada, cuantas) {
+      // Cada oleada encadenada suena un poco más aguda: la cascada crece.
+      const agudo = Math.min(oleada, 8);
+      this.ruido(0.22, Math.min(0.05 + cuantas * 0.012, 0.14), 900 + agudo * 220);
+      this.tono(180 + agudo * 26, 60, 0.25, 0.09, "sine");
+    },
+    victoria() {
+      [0, 120, 240].forEach((ms, i) =>
+        setTimeout(() => this.tono(440 * Math.pow(1.26, i), 880 * Math.pow(1.26, i), 0.22, 0.07), ms));
+    },
+  };
 
   /* ---------- construcción del tablero ---------- */
   const casillas = [];
@@ -200,14 +319,18 @@
   };
 
   let pintado = null;   // último tablero pintado (el que manda el servidor)
-  let miColor = null, turno = null, jugadores = 0;
+  let miColor = null, turno = null, jugadores = 0, eraMiTurno = false;
 
   function pintar(celdas) {
+    const previo = pintado;
     pintado = celdas;
     for (let i = 0; i < celdas.length; i++) {
       const { n, jugador } = celdas[i];
       const c = casillas[i];
-      c.div.classList.remove("explotando");
+      const antes = previo ? previo[i] : null;
+      // Ficha nueva: la que acaba de caer aquí (colocada o recibida de un vecino).
+      const entra = !!antes && n > 0 && (n > antes.n || jugador !== antes.jugador);
+
       c.div.className = "casilla" + (jugador ? " " + jugador : "");
       const peligro = n > 0 && n === c.critica - 1;
       let pos = POSICIONES[Math.min(n, 4)] || [];
@@ -216,32 +339,73 @@
       c.fichas.innerHTML = "";
       for (const [x, y] of pos) {
         const f = document.createElement("div");
-        f.className = "ficha";
+        f.className = "ficha" + (entra && !menosMovimiento ? " entra" : "");
         f.style.left = x + "%";
         f.style.top = y + "%";
         c.fichas.appendChild(f);
       }
-      const jugable = !turno || turno !== miColor ? false : (!jugador || jugador === miColor);
+      const jugable = turno === miColor && (!jugador || jugador === miColor);
       if (jugable) c.div.classList.add("jugable");
     }
     tablero.classList.toggle("mio", turno === miColor && jugadores === 2);
   }
 
-  /* ---------- animación de las oleadas ---------- */
+  /* ---------- efectos ---------- */
   function centro(i) {
     const d = casillas[i].div;
-    return { x: d.offsetLeft + d.offsetWidth / 2, y: d.offsetTop + d.offsetHeight / 2, r: d.offsetWidth * 0.26 };
+    return {
+      x: d.offsetLeft + d.offsetWidth / 2,
+      y: d.offsetTop + d.offsetHeight / 2,
+      lado: d.offsetWidth,
+      r: d.offsetWidth * 0.26,
+    };
   }
 
-  function animarOleada(explotan) {
+  function efimero(el, ms) {
+    capa.appendChild(el);
+    setTimeout(() => el.remove(), ms);
+  }
+
+  /** Onda expansiva + chispas en la casilla que revienta. */
+  function estallido(i, color) {
+    if (menosMovimiento) return;
+    const p = centro(i);
+    const onda = document.createElement("div");
+    onda.className = "onda " + color;
+    onda.style.width = onda.style.height = p.lado + "px";
+    onda.style.left = p.x + "px";
+    onda.style.top = p.y + "px";
+    efimero(onda, 460);
+
+    for (let k = 0; k < 7; k++) {
+      const ang = (Math.PI * 2 * k) / 7 + Math.random() * 0.6;
+      const dist = p.lado * (0.55 + Math.random() * 0.5);
+      const chispa = document.createElement("div");
+      chispa.className = "chispa " + color;
+      const tam = p.lado * (0.1 + Math.random() * 0.09);
+      chispa.style.width = chispa.style.height = tam + "px";
+      chispa.style.left = p.x + "px";
+      chispa.style.top = p.y + "px";
+      chispa.style.setProperty("--dx", Math.cos(ang) * dist + "px");
+      chispa.style.setProperty("--dy", Math.sin(ang) * dist + "px");
+      efimero(chispa, 500);
+    }
+  }
+
+  function animarOleada(explotan, indice) {
     return new Promise((resolve) => {
-      const puntos = [];
+      const volando = [];
       for (const { fila, col } of explotan) {
         const i = fila * COLS + col;
         const color = (pintado && pintado[i].jugador) || miColor || "rojo";
         const desde = centro(i);
-        casillas[i].div.classList.add("explotando");
+
+        casillas[i].div.classList.remove("estalla");
+        void casillas[i].div.offsetWidth;          // reinicia la animación
+        casillas[i].div.classList.add("estalla");
         casillas[i].fichas.classList.add("invisible");
+        estallido(i, color);
+
         const vecinos = [[fila - 1, col], [fila + 1, col], [fila, col - 1], [fila, col + 1]];
         for (const [vf, vc] of vecinos) {
           if (vf < 0 || vf >= FILAS || vc < 0 || vc >= COLS) continue;
@@ -252,34 +416,70 @@
           punto.style.left = desde.x + "px";
           punto.style.top = desde.y + "px";
           capa.appendChild(punto);
-          puntos.push([punto, hasta.x - desde.x, hasta.y - desde.y]);
+          volando.push([punto, hasta.x - desde.x, hasta.y - desde.y]);
         }
       }
+
+      audio.estallido(indice, explotan.length);
+      if (!menosMovimiento && explotan.length > 1) {
+        tablero.classList.remove("sacude");
+        void tablero.offsetWidth;
+        tablero.classList.add("sacude");
+      }
+
       requestAnimationFrame(() => {
-        for (const [punto, dx, dy] of puntos) {
-          punto.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px)`;
+        for (const [punto, dx, dy] of volando) {
+          punto.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px) scale(.7)`;
         }
         setTimeout(() => {
-          capa.innerHTML = "";
+          for (const [punto] of volando) punto.remove();
           resolve();
         }, DUR);
       });
     });
   }
 
+  function fiestaVictoria(color) {
+    if (menosMovimiento) return;
+    const p = centro(Math.floor((FILAS * COLS) / 2));
+    for (let k = 0; k < 26; k++) {
+      setTimeout(() => {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = p.lado * (2 + Math.random() * 4);
+        const chispa = document.createElement("div");
+        chispa.className = "chispa " + color;
+        const tam = p.lado * (0.12 + Math.random() * 0.14);
+        chispa.style.width = chispa.style.height = tam + "px";
+        chispa.style.left = p.x + "px";
+        chispa.style.top = p.y + "px";
+        chispa.style.setProperty("--dx", Math.cos(ang) * dist + "px");
+        chispa.style.setProperty("--dy", Math.sin(ang) * dist + "px");
+        efimero(chispa, 520);
+      }, k * 18);
+    }
+  }
+
+  /* ---------- estados que llegan del servidor ---------- */
   let cola = Promise.resolve();
+  let habiaGanador = false, fichasPintadas = 0;
 
   function encolar(estado) {
     cola = cola.then(async () => {
       miColor = estado.tuColor;
       jugadores = estado.jugadores;
       const oleadas = estado.explosiones || [];
+
+      // Sólo suena cuando alguien ha jugado de verdad (no al entrar o al reiniciar).
+      const fichasAhora = estado.celdas.reduce((t, c) => t + c.n, 0);
+      if (fichasAhora > fichasPintadas) audio.ficha();
+      fichasPintadas = fichasAhora;
+
       if (oleadas.length) {
         tablero.classList.add("bloqueado");
         turno = null;
-        for (const oleada of oleadas) {
-          await animarOleada(oleada.explotan);
-          pintar(oleada.celdas);
+        for (let k = 0; k < oleadas.length; k++) {
+          await animarOleada(oleadas[k].explotan, k);
+          pintar(oleadas[k].celdas);
         }
         tablero.classList.remove("bloqueado");
       }
@@ -303,7 +503,16 @@
     }
     $("sala").textContent = (miColor === "rojo" ? "ROJO" : "AZUL") + " · " + sala;
 
-    // Mientras estés solo, el código bien grande para poder dictarlo.
+    // Latido del marcador justo cuando te toca.
+    const meToca = !estado.ganador && jugadores === 2 && estado.turno === miColor;
+    if (meToca && !eraMiTurno && !menosMovimiento) {
+      marcador.classList.remove("late");
+      void marcador.offsetWidth;
+      marcador.classList.add("late");
+    }
+    eraMiTurno = meToca;
+
+    // Mientras estés solo, el código a la vista para poder dictarlo.
     const panel = $("panel-codigo");
     if (jugadores < 2 && !estado.ganador) {
       $("codigo-grande").innerHTML = "";
@@ -325,8 +534,11 @@
       h2.textContent = estado.ganador === miColor ? "¡Has ganado!" : "Gana el " + estado.ganador;
       $("detalle-victoria").textContent =
         "El " + (estado.ganador === "rojo" ? "azul" : "rojo") + " se quedó sin fichas.";
+      if (!habiaGanador) { fiestaVictoria(estado.ganador); audio.victoria(); }
+      habiaGanador = true;
     } else {
       victoria.classList.add("oculto");
+      habiaGanador = false;
     }
   }
 
@@ -351,6 +563,7 @@
     $("inicio").classList.add("oculto");
     $("juego").classList.remove("oculto");
     aviso("Conectando…");
+    audio.arrancar();
 
     const protocolo = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${protocolo}://${location.host}/ws?sala=${codigo}`);
@@ -358,10 +571,7 @@
     ws.addEventListener("open", () => aviso(""));
     ws.addEventListener("message", (ev) => {
       const msg = JSON.parse(ev.data);
-      if (msg.tipo === "estado") {
-        aviso("");
-        encolar(msg);
-      }
+      if (msg.tipo === "estado") { aviso(""); encolar(msg); }
       else if (msg.tipo === "error") aviso(msg.mensaje, true);
     });
     ws.addEventListener("close", (ev) => {
@@ -421,8 +631,15 @@
       t.value = enlace; document.body.appendChild(t); t.select();
       document.execCommand("copy"); t.remove();
     }
-    $("copiar").textContent = "¡Copiado!";
-    setTimeout(() => ($("copiar").textContent = "Copiar enlace"), 1500);
+    const boton = $("copiar");
+    boton.textContent = "✅";
+    setTimeout(() => (boton.textContent = "🔗"), 1400);
+  });
+
+  $("sonido").addEventListener("click", () => {
+    audio.activo = !audio.activo;
+    audio.arrancar();
+    $("sonido").textContent = audio.activo ? "🔊" : "🔇";
   });
 
   $("btn-revancha").addEventListener("click", () => {
