@@ -200,6 +200,7 @@
   <p class="lema">Dos jugadores, un tablero de 6 × 9. Haz explotar al rival.</p>
   <div class="botones">
     <button class="primario" id="btn-crear">Crear partida</button>
+    <button id="btn-bot">Jugar contra el bot</button>
     <div class="fila-union">
       <input id="codigo" maxlength="80" placeholder="CÓDIGO" autocomplete="off" spellcheck="false">
       <button id="btn-unirse">Unirse</button>
@@ -499,9 +500,11 @@
     } else if (estado.ganador) {
       $("estado-turno").textContent = "Partida terminada";
     } else {
-      $("estado-turno").textContent = estado.turno === miColor ? "Es tu turno" : "Turno del rival";
+      $("estado-turno").textContent = estado.turno === miColor
+        ? "Es tu turno"
+        : (estado.bot ? "Piensa el bot…" : "Turno del rival");
     }
-    $("sala").textContent = (miColor === "rojo" ? "ROJO" : "AZUL") + " · " + sala;
+    $("sala").textContent = (miColor === "rojo" ? "ROJO" : "AZUL") + " · " + (estado.bot ? "BOT" : sala);
 
     // Latido del marcador justo cuando te toca.
     const meToca = !estado.ganador && jugadores === 2 && estado.turno === miColor;
@@ -514,7 +517,7 @@
 
     // Mientras estés solo, el código a la vista para poder dictarlo.
     const panel = $("panel-codigo");
-    if (jugadores < 2 && !estado.ganador) {
+    if (jugadores < 2 && !estado.ganador && !modoBot) {
       $("codigo-grande").innerHTML = "";
       for (const letra of sala) {
         const casilla = document.createElement("span");
@@ -531,7 +534,9 @@
       victoria.classList.remove("oculto");
       const h2 = $("texto-victoria");
       h2.className = estado.ganador;
-      h2.textContent = estado.ganador === miColor ? "¡Has ganado!" : "Gana el " + estado.ganador;
+      h2.textContent = estado.ganador === miColor
+        ? "¡Has ganado!"
+        : (estado.bot ? "Gana el bot" : "Gana el " + estado.ganador);
       $("detalle-victoria").textContent =
         "El " + (estado.ganador === "rojo" ? "azul" : "rojo") + " se quedó sin fichas.";
       if (!habiaGanador) { fiestaVictoria(estado.ganador); audio.victoria(); }
@@ -549,7 +554,7 @@
   }
 
   /* ---------- conexión ---------- */
-  let ws = null, sala = "", reintento = null;
+  let ws = null, sala = "", reintento = null, modoBot = false;
 
   function jugar(fila, col) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -557,8 +562,9 @@
     ws.send(JSON.stringify({ tipo: "jugar", fila, col }));
   }
 
-  function conectar(codigo) {
+  function conectar(codigo, contraBot) {
     sala = codigo;
+    modoBot = !!contraBot;
     location.hash = codigo;
     $("inicio").classList.add("oculto");
     $("juego").classList.remove("oculto");
@@ -568,7 +574,10 @@
     const protocolo = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${protocolo}://${location.host}/ws?sala=${codigo}`);
 
-    ws.addEventListener("open", () => aviso(""));
+    ws.addEventListener("open", () => {
+      aviso("");
+      if (modoBot) ws.send(JSON.stringify({ tipo: "bot" }));
+    });
     ws.addEventListener("message", (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.tipo === "estado") { aviso(""); encolar(msg); }
@@ -581,7 +590,7 @@
       }
       aviso("Sin conexión. Reintentando…", true);
       clearTimeout(reintento);
-      reintento = setTimeout(() => conectar(codigo), 1500);
+      reintento = setTimeout(() => conectar(codigo, modoBot), 1500);
     });
   }
 
@@ -607,6 +616,7 @@
   }
 
   $("btn-crear").addEventListener("click", () => conectar(codigoAlAzar()));
+  $("btn-bot").addEventListener("click", () => conectar(codigoAlAzar(), true));
   $("btn-unirse").addEventListener("click", () => {
     const codigo = extraerCodigo($("codigo").value);
     if (codigo.length !== 4) {

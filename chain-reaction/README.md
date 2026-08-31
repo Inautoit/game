@@ -19,6 +19,15 @@ y difunde el estado completo. El cliente sólo pinta lo que recibe.
 - Ganas cuando el rival se queda sin fichas, comprobación que sólo se aplica
   a partir del momento en que **los dos** han hecho al menos una jugada.
 
+## Contra el bot
+
+El botón **Jugar contra el bot** abre una sala en la que el azul lo lleva el
+servidor. El bot mira una jugada por delante: puntúa cada jugada legal por
+material y posición (las esquinas y bordes valen más porque explotan antes) y,
+de las diez mejores, se queda con la que menos daño permite en la mejor
+respuesta del rival. Tarda unos 3 ms en decidir; la pausa de 450 ms antes de
+jugar es sólo para que se vea venir.
+
 ## Ejecutar en local
 
 ```bash
@@ -65,12 +74,13 @@ wrangler.jsonc      Binding SALA, assets estáticos y migración sqlite
 ```jsonc
 // cliente -> servidor
 { "tipo": "jugar", "fila": 0, "col": 0 }
+{ "tipo": "bot" }          // el azul pasa a llevarlo el servidor
 { "tipo": "revancha" }
 
 // servidor -> cliente
 { "tipo": "estado",
   "celdas": [{ "n": 1, "jugador": "rojo" }, ...],   // 54 casillas, fila * 6 + col
-  "turno": "azul", "tuColor": "rojo", "ganador": null, "jugadores": 2,
+  "turno": "azul", "tuColor": "rojo", "ganador": null, "jugadores": 2, "bot": false,
   "explosiones": [                                   // oleadas de la última jugada
     { "explotan": [{ "fila": 0, "col": 0 }], "celdas": [ ... ] }
   ]

@@ -10,6 +10,7 @@ const FILAS = 9;
 const COLORES = ["rojo", "azul"];
 const MAX_OLEADAS = 200;
 const ABIERTO = 1; // WebSocket.READY_STATE_OPEN
+const BOT = "azul";  // el bot siempre juega de azul
 
 /* ------------------------------------------------------------------ */
 /* Lógica de juego (pura)                                              */
@@ -50,7 +51,7 @@ function fichasDe(celdas, color) {
  * cada oleada lleva las casillas que explotan y el tablero resultante,
  * para que el cliente pueda animarlas una detrás de otra sin calcular nada.
  */
-function resolverCascada(celdas, color, comprobarVictoria) {
+function resolverCascada(celdas, color, comprobarVictoria, registrar = true) {
   const oleadas = [];
   for (let n = 0; n < MAX_OLEADAS; n++) {
     const inestables = [];
@@ -72,10 +73,12 @@ function resolverCascada(celdas, color, comprobarVictoria) {
       }
     }
 
-    oleadas.push({
-      explotan: inestables.map(([fila, col]) => ({ fila, col })),
-      celdas: clonar(celdas),
-    });
+    if (registrar) {
+      oleadas.push({
+        explotan: inestables.map(([fila, col]) => ({ fila, col })),
+        celdas: clonar(celdas),
+      });
+    }
 
     // Si el rival ya no tiene fichas la partida está decidida: no seguimos
     // encadenando (evita cascadas eternas sobre un tablero de un solo color).
@@ -93,7 +96,73 @@ function nuevaPartida() {
     turno: "rojo",
     ganador: null,
     jugadas: { rojo: 0, azul: 0 },
+    bot: false,
   };
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Bot (juega de azul, decidido en el servidor)                        */
+/* ------------------------------------------------------------------ */
+
+/** Las casillas con menos vecinos son más fuertes: cuestan menos de reventar. */
+const posicional = (i) => (4 - masaCritica(Math.floor(i / COLS), i % COLS)) * 0.6;
+
+function movimientosLegales(celdas, color) {
+  const movs = [];
+  for (let i = 0; i < FILAS * COLS; i++) {
+    if (!celdas[i].jugador || celdas[i].jugador === color) movs.push(i);
+  }
+  return movs;
+}
+
+function simular(celdas, color, i, ambosHanJugado) {
+  const copia = clonar(celdas);
+  copia[i].n += 1;
+  copia[i].jugador = color;
+  resolverCascada(copia, color, ambosHanJugado, false);
+  return copia;
+}
+
+const ventaja = (celdas, color) =>
+  fichasDe(celdas, color) - fichasDe(celdas, color === "rojo" ? "azul" : "rojo");
+
+/**
+ * Elige jugada mirando una respuesta por delante: primero puntúa todas las
+ * jugadas por material y posición, y de las mejores comprueba qué es lo peor
+ * que puede contestar el rival. Así evita dejar fichas a tiro de una cascada.
+ */
+function jugadaDelBot(celdas, color, ambosHanJugado) {
+  const rival = color === "rojo" ? "azul" : "rojo";
+  const legales = movimientosLegales(celdas, color);
+  if (legales.length === 0) return null;
+
+  const candidatos = legales.map((i) => {
+    const tras = simular(celdas, color, i, ambosHanJugado);
+    return {
+      i,
+      tras,
+      gana: ambosHanJugado && fichasDe(tras, rival) === 0,
+      nota: ventaja(tras, color) + posicional(i),
+    };
+  });
+
+  const ganadora = candidatos.find((c) => c.gana);
+  if (ganadora) return ganadora.i;
+
+  candidatos.sort((a, b) => b.nota - a.nota);
+  let mejor = null;
+  for (const cand of candidatos.slice(0, 10)) {
+    let peor = Infinity;
+    for (const j of movimientosLegales(cand.tras, rival)) {
+      const despues = simular(cand.tras, rival, j, true);
+      if (fichasDe(despues, color) === 0) { peor = -1000; break; }  // nos barre
+      peor = Math.min(peor, ventaja(despues, color));
+    }
+    const nota = (peor === Infinity ? cand.nota : peor + posicional(cand.i)) + Math.random() * 0.4;
+    if (!mejor || nota > mejor.nota) mejor = { i: cand.i, nota };
+  }
+  return mejor ? mejor.i : legales[0];
 }
 
 /* ------------------------------------------------------------------ */
@@ -144,6 +213,7 @@ export class Sala {
   }
 
   colorLibre() {
+    if (this.partida.bot) return this.activos("rojo").length === 0 ? "rojo" : null;
     for (const color of COLORES) {
       if (this.activos(color).length === 0) return color;
     }
@@ -164,6 +234,7 @@ export class Sala {
     }
 
     if (datos.tipo === "jugar") return this.jugar(ws, datos);
+    if (datos.tipo === "bot") return this.activarBot(ws);
     if (datos.tipo === "revancha") return this.revancha();
     return this.error(ws, "Tipo de mensaje desconocido");
   }
@@ -172,7 +243,7 @@ export class Sala {
     const color = this.colorDe(ws);
     const p = this.partida;
 
-    if (this.activos().length < 2) return this.error(ws, "Falta el rival");
+    if (!p.bot && this.activos().length < 2) return this.error(ws, "Falta el rival");
     if (p.ganador) return this.error(ws, "La partida ha terminado");
     if (color !== p.turno) return this.error(ws, "No es tu turno");
     if (!Number.isInteger(fila) || !Number.isInteger(col) ||
@@ -183,8 +254,18 @@ export class Sala {
     const celda = p.celdas[idx(fila, col)];
     if (celda.jugador && celda.jugador !== color) return this.error(ws, "Esa casilla es del rival");
 
-    celda.n += 1;
-    celda.jugador = color;
+    const oleadas = this.aplicarJugada(color, idx(fila, col));
+    await this.state.storage.put("partida", p);
+    this.difundirEstado(oleadas);
+
+    if (p.bot && !p.ganador && p.turno === BOT) await this.turnoDelBot();
+  }
+
+  /** Coloca la ficha, resuelve la cascada y actualiza turno y ganador. */
+  aplicarJugada(color, i) {
+    const p = this.partida;
+    p.celdas[i].n += 1;
+    p.celdas[i].jugador = color;
     p.jugadas[color] += 1;
 
     const ambosHanJugado = p.jugadas.rojo > 0 && p.jugadas.azul > 0;
@@ -195,13 +276,34 @@ export class Sala {
       if (fichasDe(p.celdas, rival) === 0) p.ganador = color;
     }
     p.turno = p.ganador ? null : color === "rojo" ? "azul" : "rojo";
+    return oleadas;
+  }
 
+  async activarBot(ws) {
+    const p = this.partida;
+    if (this.activos().length > 1) return this.error(ws, "Ya hay dos jugadores en la sala");
+    if (this.colorDe(ws) !== "rojo") return this.error(ws, "El bot juega de azul");
+    p.bot = true;
+    await this.state.storage.put("partida", p);
+    this.difundirEstado();
+    if (!p.ganador && p.turno === BOT) await this.turnoDelBot();
+  }
+
+  async turnoDelBot() {
+    const p = this.partida;
+    const i = jugadaDelBot(p.celdas, BOT, p.jugadas.rojo > 0 && p.jugadas.azul > 0);
+    if (i === null) return;
+    // Una pausa corta: da sensación de que piensa y deja ver la cascada anterior.
+    await new Promise((listo) => setTimeout(listo, 450));
+    const oleadas = this.aplicarJugada(BOT, i);
     await this.state.storage.put("partida", p);
     this.difundirEstado(oleadas);
   }
 
   async revancha() {
+    const conBot = this.partida.bot;
     this.partida = nuevaPartida();
+    this.partida.bot = conBot;
     await this.state.storage.put("partida", this.partida);
     this.difundirEstado();
   }
@@ -224,7 +326,8 @@ export class Sala {
         turno: p.turno,
         tuColor: this.colorDe(ws),
         ganador: p.ganador,
-        jugadores: sockets.length,
+        jugadores: sockets.length + (p.bot ? 1 : 0),
+        bot: p.bot,
         explosiones: oleadas,
       };
       try {
