@@ -1,0 +1,32 @@
+name: Desplegar Reacción en cadena
+
+# Se puede lanzar a mano desde la pestaña Actions y se lanza solo
+# cuando cambia algo del juego en esta rama.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/chain-reaction-multiplayer-game-y6c71l]
+    paths:
+      - 'chain-reaction/**'
+      - '.github/workflows/desplegar-reaccion-en-cadena.yml'
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependencias
+        working-directory: chain-reaction
+        run: npm ci
+
+      - name: wrangler deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: chain-reaction
