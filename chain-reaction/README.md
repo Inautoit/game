@@ -37,6 +37,18 @@ npx wrangler login
 npm run deploy
 ```
 
+Sin `wrangler login` (útil en CI o en un entorno remoto), con un token de API
+creado en *Cloudflare → Mi perfil → Tokens de API → plantilla «Edit Cloudflare
+Workers»*:
+
+```bash
+CLOUDFLARE_API_TOKEN=xxxxx npm run deploy
+# si tu cuenta tiene más de un "account", añade CLOUDFLARE_ACCOUNT_ID=xxxxx
+```
+
+El primer despliegue pide activar tu subdominio `workers.dev`; el juego queda
+en `https://reaccion-en-cadena.<tu-subdominio>.workers.dev`.
+
 Los Durable Objects usan `new_sqlite_classes` en la migración, necesario para
 el plan gratuito de Workers.
 
