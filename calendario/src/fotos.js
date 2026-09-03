@@ -11,6 +11,7 @@
 
   var cfg = window.CAL_CONFIG;
   var NOMBRE_KEY = cfg.storageKey + ':autor';
+  var CLAVES_KEY = cfg.storageKey + ':claves-foto';
   var LADO_MAX = 1600;
   var CALIDAD = 0.82;
 
@@ -54,7 +55,33 @@
     });
   }
 
+  // Claves de borrado de las fotos subidas desde este dispositivo. El
+  // servidor las entrega solo al subir; guardarlas aquí es lo que permite
+  // a quien sube una foto quitarla después.
+  function claves() {
+    try { return JSON.parse(localStorage.getItem(CLAVES_KEY) || '{}'); } catch (err) { return {}; }
+  }
+
+  function guardarClave(id, clave) {
+    if (!clave) return;
+    try {
+      var todas = claves();
+      todas[id] = clave;
+      localStorage.setItem(CLAVES_KEY, JSON.stringify(todas));
+    } catch (err) { /* sin clave guardada, solo podrá borrarla el entrenador */ }
+  }
+
+  function olvidarClave(id) {
+    try {
+      var todas = claves();
+      delete todas[id];
+      localStorage.setItem(CLAVES_KEY, JSON.stringify(todas));
+    } catch (err) { /* da igual */ }
+  }
+
   var Fotos = {
+    // ¿La subí yo desde este dispositivo?
+    esMia: function (id) { return !!claves()[id]; },
     // Nombre de quien sube, recordado en este dispositivo.
     autor: function () {
       try { return localStorage.getItem(NOMBRE_KEY) || ''; } catch (err) { return ''; }
@@ -87,6 +114,7 @@
       }).then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (cuerpo) {
           if (!res.ok) throw new Error(cuerpo.error || ('HTTP ' + res.status));
+          guardarClave(cuerpo.id, cuerpo.clave);
           return cuerpo;
         });
       });
@@ -94,13 +122,22 @@
 
     borrar: function (id) {
       var cabeceras = {};
+
+      var mia = claves()[id];
+      if (mia) cabeceras['x-clave'] = mia;
+
       try {
         var t = sessionStorage.getItem(cfg.storageKey + ':token');
         if (t) cabeceras.Authorization = 'Bearer ' + t;
-      } catch (err) { /* sin token: el servidor dirá que no */ }
+      } catch (err) { /* sin token: valdrá la clave, si la hay */ }
 
       return fetch(Fotos.urlDe(id), { method: 'DELETE', headers: cabeceras }).then(function (res) {
-        if (!res.ok) throw new Error(res.status === 401 ? 'Hay que entrar en modo edición' : 'HTTP ' + res.status);
+        if (!res.ok) {
+          throw new Error(res.status === 401
+            ? 'Solo puede borrarla quien la subió o el entrenador'
+            : 'HTTP ' + res.status);
+        }
+        olvidarClave(id);
         return true;
       });
     },

@@ -458,7 +458,8 @@
     boton.onclick = function () { $('#file-fotos').click(); };
     subida.appendChild(boton);
     subida.appendChild(el('p', 'subida-nota',
-      'Cualquiera del equipo puede subir fotos. Se reducen en tu móvil antes de enviarlas, así que no gastan datos de más.'));
+      'Cualquiera del equipo puede subir fotos. Las tuyas las puedes borrar tú desde este mismo móvil; ' +
+      'el entrenador puede borrar cualquiera. Se reducen antes de enviarlas, así que no gastan datos de más.'));
     raiz.appendChild(subida);
 
     var entrada = document.createElement('input');
@@ -514,7 +515,12 @@
       img.decoding = 'async';
       b.appendChild(img);
 
-      if (foto.autor) b.appendChild(el('span', 'foto-autor', foto.autor));
+      var pie = foto.autor || '';
+      if (CalFotos.esMia(foto.id)) {
+        b.classList.add('mia');
+        pie = pie ? pie + ' · tuya' : 'tuya';
+      }
+      if (pie) b.appendChild(el('span', 'foto-autor', pie));
       galeria.appendChild(b);
     });
   }
@@ -620,7 +626,9 @@
     descargar.href = url;
     descargar.download = foto.nombre || 'foto.jpg';
 
-    $('#visor-borrar').hidden = !Auth.isUnlocked();
+    var puedoBorrar = Auth.isUnlocked() || CalFotos.esMia(foto.id);
+    $('#visor-borrar').hidden = !puedoBorrar;
+    $('#visor-borrar').textContent = Auth.isUnlocked() ? 'Borrar' : 'Borrar la mía';
     $('#visor').hidden = false;
     document.body.style.overflow = 'hidden';
   }

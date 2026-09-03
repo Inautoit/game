@@ -1,6 +1,10 @@
 // GET    /api/fotos/<id>  -> la imagen (pública)
-// DELETE /api/fotos/<id>  -> borrarla (solo el entrenador)
-import { json, error, exigirEditor } from '../_shared.js';
+// DELETE /api/fotos/<id>  -> borrarla
+//
+// Puede borrar dos gentes: el entrenador (con su token de edición) y quien
+// subió la foto, que al subirla recibió una clave y la guardó en su
+// navegador. Esa clave es un HMAC del id: nadie la puede inventar.
+import { json, error, exigirEditor, claveFoto, iguales } from '../_shared.js';
 
 const PREFIJO = 'foto:';
 
@@ -29,9 +33,17 @@ export async function onRequestGet({ params, env }) {
 export async function onRequestDelete({ params, request, env }) {
   if (!env.CALENDARIO) return error('KV CALENDARIO no enlazado', 503);
   if (!idValido(params.id)) return error('Identificador no válido', 400);
+  if (!env.EDIT_PASSWORD) return error('Falta configurar EDIT_PASSWORD', 503);
 
-  const noAutorizado = await exigirEditor(request, env);
-  if (noAutorizado) return noAutorizado;
+  // ¿La sube quien la subió? Su clave vale por sí sola.
+  const clave = request.headers.get('x-clave') || '';
+  const suya = clave && iguales(clave, await claveFoto(env, params.id));
+
+  if (!suya) {
+    // Si no, tiene que ser el entrenador.
+    const noAutorizado = await exigirEditor(request, env);
+    if (noAutorizado) return noAutorizado;
+  }
 
   await env.CALENDARIO.delete(PREFIJO + params.id);
   return json({ ok: true });

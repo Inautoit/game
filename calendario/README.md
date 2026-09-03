@@ -167,8 +167,16 @@ Antes de enviarla, la foto se reduce en el propio móvil (lado máximo 1600
 px, JPEG) para que no gaste datos ni llene el almacén. Tocando una foto se
 abre a pantalla completa, con botón de **Descargar**.
 
-**Borrar solo puede el entrenador**, en modo edición: el servidor exige el
-token para el `DELETE`.
+**Borrar puede quien la subió y el entrenador.** Al subir una foto, el
+servidor devuelve una clave de borrado —un HMAC de su identificador, así
+que no hay nada guardado ni se puede inventar— y la web la deja en el
+navegador de quien sube. Con esa clave puede quitarla luego; el entrenador
+puede quitar cualquiera con su token. Las fotos propias salen marcadas en
+la galería con un borde de color y el pie «tuya».
+
+Como la clave vive en ese navegador, si se borran los datos del navegador
+o se cambia de móvil se pierde la posibilidad de borrar esa foto. El
+entrenador siempre puede.
 
 Límites: 6 MB por foto y 400 fotos en total. Se guardan en el mismo KV que
 el calendario, con el prefijo `foto:`.

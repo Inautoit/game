@@ -892,3 +892,6 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
   object-fit: contain;
   padding: 0 .5rem 1rem;
 }
+
+/* Las fotos que ha subido este dispositivo se distinguen de un vistazo. */
+.foto.mia { border-color: var(--acento); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--acento) 45%, transparent); }

@@ -5,7 +5,7 @@
 // `foto:`, y los datos de cada una (nombre, autor, fecha) en la metadata
 // de la clave. Así no hace falta un índice aparte que se pueda pisar
 // cuando dos personas suben a la vez.
-import { json, error } from './_shared.js';
+import { json, error, claveFoto } from './_shared.js';
 
 const PREFIJO = 'foto:';
 const MAX_BYTES = 6 * 1024 * 1024;   // la web las reduce antes de subir
@@ -73,5 +73,6 @@ export async function onRequestPost({ request, env }) {
     },
   });
 
-  return json({ ok: true, id });
+  // La clave solo la ve quien acaba de subir: es su permiso para borrarla.
+  return json({ ok: true, id, clave: await claveFoto(env, id) });
 }

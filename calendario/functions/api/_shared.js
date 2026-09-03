@@ -66,6 +66,13 @@ export function secretoFirma(env) {
   return env.TOKEN_SECRET || `firma:${env.EDIT_PASSWORD || ''}`;
 }
 
+// Clave de borrado de una foto: se le da a quien la sube para que pueda
+// quitarla luego. Es un HMAC del id, así que no hay que guardar nada y
+// nadie la puede inventar sin el secreto del servidor.
+export async function claveFoto(env, id) {
+  return hmac(secretoFirma(env), 'foto:' + id);
+}
+
 export async function exigirEditor(request, env) {
   if (!env.EDIT_PASSWORD) return error('Falta configurar EDIT_PASSWORD', 503);
   const ok = await tokenValido(secretoFirma(env), tokenDePeticion(request));
