@@ -3,7 +3,7 @@
 window.CAL_SEED = {
   "version": 1,
   "equipo": "Balonmano Leganés",
-  "titulo": "Pretemporada · Segunda Infantil Femenino",
+  "titulo": "26/27 · Segunda Infantil Femenino",
   "actualizado": "2026-09-03T00:00:00.000Z",
   "dias": {
     "2026-09-01": [

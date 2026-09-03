@@ -23,4 +23,10 @@ window.CAL_CONFIG = {
 
   // Minutos de inactividad tras los que se bloquea solo el modo edición.
   autoLockMinutes: 30,
+
+  // Ficha del equipo en la Federación Madrileña. Para quitarla, pon url: ''.
+  federacion: {
+    url: 'https://www.fmbalonmano.com/equipos/200',
+    etiqueta: 'Clasificación y resultados en la Federación',
+  },
 };

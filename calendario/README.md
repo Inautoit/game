@@ -9,7 +9,7 @@ Web del calendario de entrenamientos y partidos.
 - **Gratis**: se publica en Cloudflare Pages sin pagar nada.
 
 Viene rellena con el calendario de pretemporada de la Segunda Infantil
-Femenino (del 31 de agosto al 11 de octubre de 2026).
+Femenino 26/27 (del 31 de agosto al 11 de octubre de 2026).
 
 ---
 
@@ -153,6 +153,10 @@ consultar sin cobertura (los cambios necesitan conexión).
   cuántos van jugados y cuántos quedan. Los ya jugados salen atenuados.
   Tocando uno se abre su día.
 - **Fotos** — la galería del equipo.
+
+En Partidos y en el pie hay un enlace a la **ficha del equipo en la
+Federación Madrileña**, con su clasificación y sus resultados. Se cambia
+(o se quita, dejando la url vacía) en `federacion` de `src/config.js`.
 
 Pulsando cualquier día se abre su ficha con horario, actividad, pista y
 notas.

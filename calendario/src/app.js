@@ -76,6 +76,22 @@
 
   // ---------- piezas reutilizables ----------
 
+  // Enlace a la ficha del equipo en la federación. Abre en otra pestaña,
+  // con rel="noopener" para que la página de destino no toque la nuestra.
+  function enlaceFederacion(clase) {
+    var fed = window.CAL_CONFIG.federacion;
+    if (!fed || !fed.url) return null;
+
+    var a = document.createElement('a');
+    a.className = clase || 'btn btn-federacion';
+    a.href = fed.url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.appendChild(document.createTextNode(fed.etiqueta || 'Ficha en la Federación'));
+    a.appendChild(el('span', 'fuera-icono', '↗'));
+    return a;
+  }
+
   function etiquetaTipo(tipo) {
     var s = el('span', 'etiqueta tipo-' + tipo, TIPOS[tipo] || tipo);
     return s;
@@ -360,6 +376,9 @@
         resumen.appendChild(caja);
       });
     raiz.appendChild(resumen);
+
+    var fed = enlaceFederacion();
+    if (fed) raiz.appendChild(fed);
 
     if (!partidos.length) {
       raiz.appendChild(el('div', 'vacio', 'Todavía no hay ningún partido en el calendario.'));
@@ -899,6 +918,13 @@
 
   // ---------- pintado general ----------
 
+  function pintarPie() {
+    var hueco = $('#pie-federacion');
+    if (!hueco || hueco.children.length) return;
+    var fed = enlaceFederacion('enlace-pie');
+    if (fed) hueco.appendChild(fed);
+  }
+
   function render() {
     var datos = Store.get();
     $('#equipo').textContent = datos.equipo;
@@ -918,6 +944,7 @@
     else contenedor.appendChild(vistaFotos());
 
     if (diaAbierto) pintarPanel();
+    pintarPie();
   }
 
   function pintarEstadoEditor(desbloqueado) {

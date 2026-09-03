@@ -895,3 +895,33 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
 
 /* Las fotos que ha subido este dispositivo se distinguen de un vistazo. */
 .foto.mia { border-color: var(--acento); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--acento) 45%, transparent); }
+
+/* ---------- enlace a la federación ---------- */
+
+.btn-federacion {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  width: 100%;
+  margin: .8rem 0 .2rem;
+  padding: .7rem 1rem;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  background: var(--tarjeta);
+  color: var(--acento-texto);
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: var(--sombra);
+}
+
+.btn-federacion:hover { border-color: var(--acento); background: var(--relleno); filter: none; }
+.btn-federacion:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+
+.fuera-icono { font-size: .85em; opacity: .7; }
+
+.pie-federacion { margin-top: .5rem; }
+.enlace-pie { color: var(--acento-texto); font-size: .8rem; text-decoration: none; }
+.enlace-pie:hover { text-decoration: underline; }
+.enlace-pie:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
