@@ -1,10 +1,16 @@
 // Service worker: hace la web instalable y consultable sin conexión.
 //
-// El calendario ya vive en localStorage, así que basta con cachear el
-// "armazón" (HTML, CSS, JS, iconos). Las llamadas a /api nunca se
-// cachean: o hay red y traen lo último, o se usa la copia local.
+// Estrategia: RED PRIMERO, caché solo como respaldo.
+//
+// Antes era al revés (caché primero) y salió mal: al publicar una versión
+// nueva, el navegador seguía usando el JavaScript viejo guardado, que ya
+// no cuadraba con el HTML nuevo, y la página se quedaba en blanco. Con
+// red primero, quien tenga cobertura ve siempre lo último, y quien no la
+// tenga sigue viendo el calendario guardado.
+//
+// Las llamadas a /api nunca pasan por aquí.
 
-var VERSION = 'cal-v1';
+var VERSION = 'cal-v2';
 var SHELL = [
   './',
   './index.html',
@@ -53,27 +59,24 @@ self.addEventListener('fetch', function (ev) {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.indexOf('/api/') !== -1) return;
 
-  // Navegación: intentar red y, si no hay, servir el index cacheado.
-  if (req.mode === 'navigate') {
-    ev.respondWith(
-      fetch(req).catch(function () {
-        return caches.match('./index.html').then(function (r) {
-          return r || caches.match('./');
-        });
-      })
-    );
-    return;
-  }
-
   ev.respondWith(
-    caches.match(req).then(function (cacheado) {
-      if (cacheado) return cacheado;
-      return fetch(req).then(function (res) {
-        if (res && res.ok && res.type === 'basic') {
-          var copia = res.clone();
-          caches.open(VERSION).then(function (c) { c.put(req, copia); });
+    fetch(req).then(function (res) {
+      // Solo se guarda lo que ha llegado bien, para no cachear un error.
+      if (res && res.ok && res.type === 'basic') {
+        var copia = res.clone();
+        caches.open(VERSION).then(function (c) { c.put(req, copia); });
+      }
+      return res;
+    }).catch(function () {
+      return caches.match(req).then(function (cacheado) {
+        if (cacheado) return cacheado;
+        // Sin conexión y sin copia: si es una navegación, el index sirve.
+        if (req.mode === 'navigate') {
+          return caches.match('./index.html').then(function (r) {
+            return r || caches.match('./');
+          });
         }
-        return res;
+        return Response.error();
       });
     })
   );

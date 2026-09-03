@@ -660,9 +660,6 @@
       else if (!$('#panel').hidden) cerrarPanel();
     });
 
-    Store.onChange(render);
-    Auth.onChange(pintarEstadoEditor);
-
     Store.onSave(function (estado, err) {
       if (estado === 'guardando') aviso('Guardando…');
       else if (estado === 'guardado') aviso('Guardado para todo el equipo');
@@ -701,7 +698,19 @@
 
   function iniciar() {
     vistaInicial();
-    conectarEventos();
+
+    // Lo primero, que el calendario se pinte y se repinte pase lo que pase.
+    Store.onChange(render);
+    Auth.onChange(pintarEstadoEditor);
+
+    // Si engancharse a algún botón falla, se pierde esa interacción, pero
+    // el calendario se sigue viendo: nunca una pantalla en blanco.
+    try {
+      conectarEventos();
+    } catch (err) {
+      console.error('No se pudieron enganchar todos los controles:', err);
+    }
+
     Store.init().then(function () {
       Auth.init();
       render();
