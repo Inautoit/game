@@ -177,6 +177,22 @@ iconos de la app son `assets/icon-192.png`, `assets/icon-512.png`,
 
 ---
 
+## Versión de un solo archivo (Artifact)
+
+`build-artifact.js` junta el CSS y los módulos en un único HTML y cambia
+el cliente de Cloudflare por `artifact-db.js`, que guarda el calendario en
+la base de datos compartida del visor de Artifacts:
+
+```bash
+node calendario/build-artifact.js salida.html
+```
+
+Ahí quién puede escribir lo deciden las reglas de la base de datos según
+el nivel con el que se comparta el enlace (ver = solo lectura, editar =
+puede guardar), y la contraseña es la segunda barrera, la de la interfaz.
+Esa versión no es instalable como app: para eso está el despliegue en
+Cloudflare.
+
 ## Estructura
 
 ```
@@ -194,6 +210,8 @@ calendario/
     store.js              Datos: leer, editar, guardar, sincronizar
     auth.js               Modo edición
     app.js                Vistas Hoy / Semana / Mes y edición
+  build-artifact.js       Genera la versión de un solo archivo
+  artifact-db.js          Adaptador de datos para esa versión
   functions/api/          Backend de Cloudflare (solo Opción A)
     _shared.js            Tokens firmados y utilidades
     auth.js               POST /api/auth  → token

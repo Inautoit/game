@@ -74,7 +74,10 @@
     avisoTimer = setTimeout(function () { caja.hidden = true; }, esError ? 6000 : 3000);
   }
 
-  function descargar(nombre, contenido) {
+  // En la web normal se descarga con un enlace; dentro del visor de
+  // artifacts los enlaces de descarga no hacen nada y hay que pedirlo a
+  // la plataforma, que enseña una confirmación al usuario.
+  function descargarConEnlace(nombre, contenido) {
     var blob = new Blob([contenido], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
@@ -84,6 +87,23 @@
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function descargar(nombre, contenido) {
+    var use = window.claude && window.claude.use;
+    if (!use) { descargarConEnlace(nombre, contenido); aviso('JSON descargado'); return; }
+
+    window.claude.use('downloads').then(function (downloads) {
+      if (!downloads) { descargarConEnlace(nombre, contenido); aviso('JSON descargado'); return; }
+      return downloads.save({ filename: nombre, data: contenido }).then(function (r) {
+        if (r && r.status === 'saved') aviso('JSON descargado');
+      }).catch(function (err) {
+        if (err && err.code === 'cancelled') return;
+        aviso('No se pudo descargar: ' + ((err && err.message) || 'inténtalo de nuevo'), true);
+      });
+    }).catch(function () {
+      descargarConEnlace(nombre, contenido);
+    });
   }
 
   // ---------- piezas reutilizables ----------
@@ -142,7 +162,7 @@
     var cab = el('div', 'hoy-cab');
     cab.appendChild(el('div', 'dia-semana', DOW_LARGO[dowLunes(hoy)]));
     cab.appendChild(el('h2', 'dia-numero', hoy.getDate() + ' de ' + MESES[hoy.getMonth()]));
-    cab.appendChild(el('div', '', String(hoy.getFullYear())));
+    cab.appendChild(el('div', 'anio', String(hoy.getFullYear())));
     raiz.appendChild(cab);
 
     raiz.appendChild(cabeceraSeccion('Lo de hoy', claveHoy));
@@ -645,7 +665,6 @@
   var acciones = {
     exportar: function () {
       descargar('calendario-' + hoyIso() + '.json', Store.toJSON());
-      aviso('JSON descargado');
     },
 
     importar: function () { $('#file-import').click(); },
@@ -775,6 +794,8 @@
   function registrarServiceWorker() {
     // Requiere contexto seguro: https, localhost o 127.0.0.1.
     if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+    // La versión de un solo archivo no lleva manifest ni sw.js.
+    if (!document.querySelector('link[rel="manifest"]')) return;
     navigator.serviceWorker.register('./sw.js').catch(function (err) {
       console.warn('Service worker no registrado:', err.message);
     });

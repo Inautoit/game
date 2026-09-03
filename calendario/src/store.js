@@ -199,6 +199,17 @@
       emit();
       return window.CalApi.detect().then(function (hay) {
         if (!hay) return false;
+        // Si el backend avisa de cambios en vivo, nos suscribimos: así lo
+        // que edita el entrenador aparece solo en el resto de pantallas.
+        if (typeof window.CalApi.onRemoteChange === 'function') {
+          window.CalApi.onRemoteChange(function (remoto) {
+            if (!remoto || !remoto.dias) return;
+            if (remoto.actualizado === data.actualizado) return;  // es nuestro propio guardado
+            data = normalize(remoto);
+            writeLocal();
+            emit();
+          });
+        }
         return Store.pull();
       }).catch(function (err) {
         console.warn('Sin datos del servidor:', err.message);
