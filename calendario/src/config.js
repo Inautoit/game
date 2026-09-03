@@ -17,8 +17,8 @@ window.CAL_CONFIG = {
   // código puede saltárselo. Con Cloudflare la comprobación es de verdad,
   // en el servidor, y esta huella deja de usarse.
   auth: {
-    salt: '00c43b870c125c5d',
-    hash: 'c5980ea6e241702b07bd0ecc0468b7b8c6981e914567a4265c7ddd45dd089ada',
+    salt: '9d264b8b0a166fca',
+    hash: '11304f14a6a1229f88b5ba13cd22755a219a3e8c3e1e4c8e8a9ee25e8e6aabd7',
   },
 
   // Minutos de inactividad tras los que se bloquea solo el modo edición.

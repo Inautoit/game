@@ -16,13 +16,26 @@ Femenino (del 31 de agosto al 11 de octubre de 2026).
 ## La contraseña
 
 ```
-BML-GG9V-Z5YT
+balonmano2026
 ```
 
 Cámbiala antes de dar el enlace a nadie (más abajo se explica cómo, según
 dónde la publiques).
 
 ---
+
+## Dónde está publicada
+
+<https://calendario-bmleganes.pages.dev>
+
+Proyecto de Cloudflare Pages `calendario-bmleganes`, con el KV
+`CALENDARIO` enlazado y la contraseña en el secreto `EDIT_PASSWORD`.
+Para volver a desplegar tras cambiar algo:
+
+```bash
+cd calendario
+npx wrangler pages deploy --project-name calendario-bmleganes --branch main
+```
 
 ## Publicar gratis en Cloudflare Pages
 

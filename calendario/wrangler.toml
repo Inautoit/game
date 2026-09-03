@@ -1,0 +1,16 @@
+# Configuración del proyecto de Cloudflare Pages.
+#
+# Esta carpeta es la raíz del sitio: en el panel de Cloudflare, el
+# "Root directory" del proyecto es `calendario`.
+name = "calendario-bmleganes"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "."
+
+# Almacén del calendario. El id no es secreto: solo identifica el espacio.
+[[kv_namespaces]]
+binding = "CALENDARIO"
+id = "53f3bb9c6e4b4553900218be081d81e3"
+
+# La contraseña de edición NO va aquí: es un secreto.
+#   npx wrangler pages secret put EDIT_PASSWORD --project-name calendario-bmleganes
+# o en el panel: Settings → Variables and Secrets.
