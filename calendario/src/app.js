@@ -329,6 +329,332 @@
     return raiz;
   }
 
+  // ---------- vista: PARTIDOS ----------
+
+  // Todos los partidos de la temporada, agrupados por mes.
+  function partidosDeLaTemporada() {
+    var datos = Store.get();
+    var salida = [];
+    Object.keys(datos.dias).sort().forEach(function (fecha) {
+      Store.day(fecha).forEach(function (e) {
+        if (e.tipo === 'partido') salida.push({ fecha: fecha, entrada: e });
+      });
+    });
+    return salida;
+  }
+
+  function vistaPartidos() {
+    var raiz = el('div');
+    var partidos = partidosDeLaTemporada();
+    var claveHoy = hoyIso();
+
+    var jugados = partidos.filter(function (p) { return p.fecha < claveHoy; }).length;
+    var quedan = partidos.length - jugados;
+
+    var resumen = el('div', 'resumen');
+    [[String(partidos.length), 'partidos'], [String(jugados), 'jugados'], [String(quedan), 'por jugar']]
+      .forEach(function (par) {
+        var caja = el('div', 'resumen-dato');
+        caja.appendChild(el('strong', '', par[0]));
+        caja.appendChild(el('span', '', par[1]));
+        resumen.appendChild(caja);
+      });
+    raiz.appendChild(resumen);
+
+    if (!partidos.length) {
+      raiz.appendChild(el('div', 'vacio', 'Todavía no hay ningún partido en el calendario.'));
+      return raiz;
+    }
+
+    // Un bloque por mes, con los partidos de ese mes en tarjetas.
+    var mesActual = '';
+    var rejilla = null;
+
+    partidos.forEach(function (p) {
+      var d = fromIso(p.fecha);
+      var mes = MESES[d.getMonth()] + ' ' + d.getFullYear();
+
+      if (mes !== mesActual) {
+        mesActual = mes;
+        raiz.appendChild(el('div', 'seccion-titulo', mes));
+        rejilla = el('div', 'partidos');
+        raiz.appendChild(rejilla);
+      }
+
+      rejilla.appendChild(tarjetaPartido(p.fecha, p.entrada, claveHoy));
+    });
+
+    return raiz;
+  }
+
+  function tarjetaPartido(fecha, entrada, claveHoy) {
+    var d = fromIso(fecha);
+    var pasado = fecha < claveHoy;
+
+    var card = el('button', 'partido' + (pasado ? ' jugado' : '') + (fecha === claveHoy ? ' es-hoy' : ''));
+    card.type = 'button';
+    card.setAttribute('aria-label', entrada.titulo + ', ' + fechaLarga(d));
+    card.onclick = function () { abrirDia(fecha, false); };
+
+    var cal = el('div', 'partido-fecha');
+    cal.appendChild(el('span', 'mes', MESES[d.getMonth()].slice(0, 3).toUpperCase()));
+    cal.appendChild(el('span', 'dia', String(d.getDate())));
+    cal.appendChild(el('span', 'dow', DOW_CORTO[dowLunes(d)]));
+    card.appendChild(cal);
+
+    var cuerpo = el('div', 'partido-cuerpo');
+    cuerpo.appendChild(el('h3', 'partido-rival', entrada.titulo || 'Partido'));
+
+    var meta = el('div', 'partido-meta');
+    if (entrada.horario) meta.appendChild(el('span', 'partido-hora', entrada.horario));
+    if (entrada.lugar) meta.appendChild(el('span', '', entrada.lugar));
+    cuerpo.appendChild(meta);
+
+    if (entrada.notas) cuerpo.appendChild(el('p', 'partido-notas', entrada.notas));
+    card.appendChild(cuerpo);
+
+    if (pasado) card.appendChild(el('span', 'partido-sello', 'Jugado'));
+
+    return card;
+  }
+
+  // ---------- vista: FOTOS ----------
+
+  var fotosCache = null;      // lo que se está mostrando
+  var fotosEstado = 'sin-cargar';
+
+  // El listado de Cloudflare tarda hasta un minuto en incluir una foto
+  // recién subida (y en olvidar una recién borrada). Para que quien sube
+  // la vea al momento, se recuerda aquí lo hecho en esta sesión y se
+  // mezcla con lo que llega del servidor.
+  var fotosRecientes = [];
+  var fotosBorradas = {};
+
+  function mezclarFotos(delServidor) {
+    var lista = delServidor.filter(function (f) { return !fotosBorradas[f.id]; });
+    var yaEstan = {};
+    lista.forEach(function (f) { yaEstan[f.id] = true; });
+
+    // Las subidas hace poco que el servidor todavía no lista van delante.
+    fotosRecientes = fotosRecientes.filter(function (f) {
+      return !yaEstan[f.id] && !fotosBorradas[f.id];
+    });
+
+    return fotosRecientes.concat(lista);
+  }
+
+  function vistaFotos() {
+    var raiz = el('div');
+
+    if (!Api.isAvailable()) {
+      raiz.appendChild(el('div', 'vacio', 'Las fotos necesitan el servidor. Abre la web publicada en Cloudflare.'));
+      return raiz;
+    }
+
+    // Zona de subida: la puede usar cualquiera, sin contraseña.
+    var subida = el('div', 'subida');
+    var boton = el('button', 'btn', '📷  Subir fotos');
+    boton.type = 'button';
+    boton.onclick = function () { $('#file-fotos').click(); };
+    subida.appendChild(boton);
+    subida.appendChild(el('p', 'subida-nota',
+      'Cualquiera del equipo puede subir fotos. Se reducen en tu móvil antes de enviarlas, así que no gastan datos de más.'));
+    raiz.appendChild(subida);
+
+    var entrada = document.createElement('input');
+    entrada.type = 'file';
+    entrada.id = 'file-fotos';
+    entrada.accept = 'image/*';
+    entrada.multiple = true;
+    entrada.hidden = true;
+    entrada.onchange = function (ev) {
+      var files = Array.prototype.slice.call(ev.target.files || []);
+      ev.target.value = '';
+      if (files.length) subirFotos(files);
+    };
+    raiz.appendChild(entrada);
+
+    var galeria = el('div', 'galeria');
+    galeria.id = 'galeria';
+    raiz.appendChild(galeria);
+
+    pintarGaleria(galeria);
+    if (fotosEstado === 'sin-cargar') cargarFotos();
+
+    return raiz;
+  }
+
+  function pintarGaleria(nodo) {
+    var galeria = nodo || document.getElementById('galeria');
+    if (!galeria) return;
+    galeria.textContent = '';
+
+    if (fotosEstado === 'cargando' && !fotosCache) {
+      galeria.appendChild(el('div', 'vacio', 'Cargando fotos…'));
+      return;
+    }
+    if (fotosEstado === 'error') {
+      galeria.appendChild(el('div', 'vacio', 'No se pudieron cargar las fotos. Prueba a recargar.'));
+      return;
+    }
+    if (!fotosCache || !fotosCache.length) {
+      galeria.appendChild(el('div', 'vacio', 'Todavía no hay fotos. Sube la primera.'));
+      return;
+    }
+
+    fotosCache.forEach(function (foto) {
+      var b = el('button', 'foto');
+      b.type = 'button';
+      b.onclick = function () { abrirVisor(foto); };
+
+      var img = document.createElement('img');
+      img.src = CalFotos.urlDe(foto.id);
+      img.alt = foto.nombre;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      b.appendChild(img);
+
+      if (foto.autor) b.appendChild(el('span', 'foto-autor', foto.autor));
+      galeria.appendChild(b);
+    });
+  }
+
+  function cargarFotos() {
+    fotosEstado = 'cargando';
+    pintarGaleria();
+    return CalFotos.listar().then(function (lista) {
+      fotosCache = mezclarFotos(lista);
+      fotosEstado = 'listo';
+      pintarGaleria();
+    }).catch(function () {
+      fotosEstado = 'error';
+      pintarGaleria();
+    });
+  }
+
+  function subirFotos(files) {
+    var autor = CalFotos.autor();
+    if (!autor) {
+      pedirNombre(function (nombre) {
+        CalFotos.setAutor(nombre);
+        subirFotos(files);
+      });
+      return;
+    }
+
+    var total = files.length;
+    var hechas = 0;
+    var fallos = 0;
+    aviso('Subiendo ' + total + (total === 1 ? ' foto…' : ' fotos…'));
+
+    // De una en una: subir cinco a la vez desde el móvil va peor.
+    var siguiente = function () {
+      if (!files.length) {
+        if (fallos) aviso(hechas + ' subidas, ' + fallos + ' fallaron', true);
+        else aviso(hechas === 1 ? 'Foto subida' : hechas + ' fotos subidas');
+        cargarFotos();
+        return;
+      }
+      var file = files.shift();
+      CalFotos.subir(file, autor).then(function (r) {
+        hechas++;
+        if (r && r.id) {
+          fotosRecientes.unshift({
+            id: r.id, nombre: file.name || 'foto', autor: autor,
+            tipo: file.type, fecha: new Date().toISOString(), bytes: file.size,
+          });
+        }
+      }).catch(function (err) {
+        fallos++;
+        console.warn('Foto no subida:', err.message);
+      }).then(siguiente);
+    };
+    siguiente();
+  }
+
+  function pedirNombre(despues) {
+    abrirModal('¿Quién sube las fotos?', function (cerrar) {
+      var form = el('form');
+      var inp = document.createElement('input');
+      inp.type = 'text';
+      inp.placeholder = 'Tu nombre';
+      inp.maxLength = 40;
+      form.appendChild(campo('Para que el equipo sepa quién las ha puesto', inp));
+
+      var acciones = el('div', 'form-acciones');
+      var ok = el('button', 'btn', 'Continuar');
+      ok.type = 'submit';
+      acciones.appendChild(ok);
+      var no = el('button', 'btn btn-plano', 'Cancelar');
+      no.type = 'button';
+      no.onclick = cerrar;
+      acciones.appendChild(no);
+      form.appendChild(acciones);
+
+      form.onsubmit = function (ev) {
+        ev.preventDefault();
+        var nombre = inp.value.trim();
+        if (!nombre) { aviso('Escribe tu nombre', true); return; }
+        cerrar();
+        despues(nombre);
+      };
+
+      setTimeout(function () { inp.focus(); }, 30);
+      return form;
+    });
+  }
+
+  // ---------- visor de una foto ----------
+
+  var fotoAbierta = null;
+
+  function abrirVisor(foto) {
+    fotoAbierta = foto;
+    var url = CalFotos.urlDe(foto.id);
+
+    $('#visor-img').src = url;
+    $('#visor-img').alt = foto.nombre;
+    $('#visor-pie').textContent = foto.autor ? foto.nombre + ' · ' + foto.autor : foto.nombre;
+
+    var descargar = $('#visor-descargar');
+    descargar.href = url;
+    descargar.download = foto.nombre || 'foto.jpg';
+
+    $('#visor-borrar').hidden = !Auth.isUnlocked();
+    $('#visor').hidden = false;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function cerrarVisor() {
+    fotoAbierta = null;
+    $('#visor').hidden = true;
+    $('#visor-img').src = '';
+    document.body.style.overflow = '';
+  }
+
+  function conectarVisor() {
+    var visor = $('#visor');
+    visor.addEventListener('click', function (ev) {
+      if (ev.target === visor || ev.target.closest('[data-cerrar-visor]')) cerrarVisor();
+    });
+
+    $('#visor-borrar').onclick = function () {
+      if (!fotoAbierta) return;
+      if (!confirm('¿Borrar esta foto para todo el equipo?')) return;
+      var id = fotoAbierta.id;
+      cerrarVisor();
+      CalFotos.borrar(id).then(function () {
+        fotosBorradas[id] = true;
+        fotosCache = (fotosCache || []).filter(function (f) { return f.id !== id; });
+        pintarGaleria();
+        aviso('Foto borrada');
+        cargarFotos();
+      }).catch(function (err) {
+        aviso('No se pudo borrar: ' + err.message, true);
+      });
+    };
+  }
+
   // ---------- panel de un día ----------
 
   function abrirDia(fecha, nueva) {
@@ -563,30 +889,6 @@
     });
   }
 
-  // ---------- acciones de la barra de edición ----------
-
-  var acciones = {
-    sincronizar: function () {
-      aviso('Publicando…');
-      Store.push().then(function () {
-        aviso('Publicado. Ya lo ve todo el mundo.');
-      }).catch(function (err) {
-        aviso('No se pudo publicar: ' + err.message, true);
-      });
-    },
-
-    restaurar: function () {
-      if (!confirm('Vas a volver al calendario original del PDF y perder todos los cambios. ¿Seguro?')) return;
-      Store.resetToSeed();
-      aviso('Calendario original restaurado');
-    },
-
-    salir: function () {
-      Auth.lock();
-      aviso('Modo edición cerrado');
-    },
-  };
-
   // ---------- pintado general ----------
 
   function render() {
@@ -603,21 +905,16 @@
     contenedor.textContent = '';
     if (vistaActual === 'hoy') contenedor.appendChild(vistaHoy());
     else if (vistaActual === 'semana') contenedor.appendChild(vistaSemana());
-    else contenedor.appendChild(vistaMes());
+    else if (vistaActual === 'mes') contenedor.appendChild(vistaMes());
+    else if (vistaActual === 'partidos') contenedor.appendChild(vistaPartidos());
+    else contenedor.appendChild(vistaFotos());
 
     if (diaAbierto) pintarPanel();
   }
 
   function pintarEstadoEditor(desbloqueado) {
     $('#badge-editor').hidden = !desbloqueado;
-    $('#editorbar').hidden = !desbloqueado;
-    $('#btn-editar').textContent = desbloqueado ? 'Bloquear' : 'Editar';
-    // Con backend los cambios se suben solos, pero dejamos el botón para
-    // reintentar si algo falló. Sin backend no hay nada que publicar.
-    $('#editorbar [data-accion="sincronizar"]').hidden = !Api.isAvailable();
-    $('#editorbar-nota').textContent = Api.isAvailable()
-      ? 'Los cambios se guardan solos y los ve todo el equipo. Ojo: no hay deshacer. La contraseña se cambia en Cloudflare (Settings → Variables and Secrets).'
-      : 'Sin servidor: los cambios se guardan solo en este dispositivo, nadie más los ve.';
+    $('#btn-editar').textContent = desbloqueado ? 'Cerrar edición' : 'Editar';
     render();
   }
 
@@ -641,10 +938,7 @@
       else pedirContrasena();
     };
 
-    $('#editorbar').addEventListener('click', function (ev) {
-      var b = ev.target.closest('[data-accion]');
-      if (b && acciones[b.dataset.accion]) { Auth.keepAlive(); acciones[b.dataset.accion](); }
-    });
+    conectarVisor();
 
     // Cerrar paneles: botón, clic fuera o Escape.
     [['#panel', cerrarPanel], ['#modal', cerrarModal]].forEach(function (par) {
@@ -656,7 +950,8 @@
 
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape') return;
-      if (!$('#modal').hidden) cerrarModal();
+      if (!$('#visor').hidden) cerrarVisor();
+      else if (!$('#modal').hidden) cerrarModal();
       else if (!$('#panel').hidden) cerrarPanel();
     });
 
@@ -687,7 +982,7 @@
   // Los accesos directos de la PWA abren la web con ?vista=hoy|semana|mes.
   function vistaInicial() {
     var pedida = new URLSearchParams(location.search).get('vista');
-    if (['hoy', 'semana', 'mes'].indexOf(pedida) < 0) return;
+    if (['hoy', 'semana', 'mes', 'partidos', 'fotos'].indexOf(pedida) < 0) return;
     vistaActual = pedida;
     document.querySelectorAll('.tab').forEach(function (t) {
       var activo = t.dataset.view === pedida;

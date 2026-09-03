@@ -19,7 +19,7 @@ const cuerpo = leer('index.html')
 const escudo = leer('assets/escudo.svg');
 const escudoData = 'data:image/svg+xml;base64,' + Buffer.from(escudo, 'utf8').toString('base64');
 
-const modulos = ['src/config.js', 'src/seed.js', 'src/sha256.js', 'src/store.js', 'src/auth.js', 'src/app.js'];
+const modulos = ['src/config.js', 'src/seed.js', 'src/sha256.js', 'src/store.js', 'src/auth.js', 'src/fotos.js', 'src/app.js'];
 const adaptador = leer('artifact-db.js');
 
 const html = `<title>Calendario BM Leganés</title>

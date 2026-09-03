@@ -204,11 +204,17 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
   max-width: var(--ancho);
   margin: 0 auto;
   padding: .6rem 1rem 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
+.tabs::-webkit-scrollbar { display: none; }
+
 .tab {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   padding: .55rem .5rem;
+  white-space: nowrap;
   border: 1px solid var(--borde);
   border-bottom: none;
   border-radius: 10px 10px 0 0;
@@ -653,6 +659,20 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
 /* ---------- pantallas estrechas: puntos en vez de texto ---------- */
 
 @media (max-width: 599px) {
+  .tabs { padding-left: .5rem; padding-right: .5rem; gap: .18rem; }
+
+  /* Cinco pestañas en un móvil: cada una ocupa al menos lo que mide su
+     texto, así nunca se corta. Si no caben todas, la fila se desliza.
+     Importa porque la tipografía condensada puede tardar en cargar y la
+     de reserva es más ancha. */
+  .tab {
+    flex: 1 0 auto;
+    min-width: max-content;
+    padding: .5rem .5rem;
+    font-size: .92rem;
+    letter-spacing: .2px;
+  }
+
   .celda { align-items: center; }
   .celda-num { width: 100%; }
 
@@ -686,4 +706,189 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
   .topbar-actions, .tabs, .editorbar, .overlay, .aviso { display: none !important; }
   body { background: #fff; color: #000; }
   .tarjeta, .semana-dia, .celda { box-shadow: none; }
+}
+
+/* ---------- vista PARTIDOS ---------- */
+
+.resumen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .5rem;
+  margin-bottom: .4rem;
+}
+
+.resumen-dato {
+  padding: .7rem .5rem;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  background: var(--tarjeta);
+  text-align: center;
+}
+
+.resumen-dato strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--partido);
+}
+
+.resumen-dato span {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--texto-suave);
+}
+
+.partidos { display: grid; gap: .5rem; }
+
+.partido {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.6rem 1fr;
+  gap: .9rem;
+  align-items: center;
+  width: 100%;
+  padding: .8rem .9rem;
+  border: 1px solid var(--borde);
+  border-left: 5px solid var(--partido);
+  border-radius: var(--radio);
+  background: var(--tarjeta);
+  box-shadow: var(--sombra);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.partido:hover { border-color: var(--partido); }
+.partido:focus-visible { outline: 3px solid var(--partido); outline-offset: 2px; }
+.partido.es-hoy { box-shadow: 0 0 0 2px color-mix(in srgb, var(--partido) 30%, transparent); }
+.partido.jugado { opacity: .62; border-left-color: var(--texto-suave); }
+
+/* El bloque de fecha imita una hoja de calendario arrancada. */
+.partido-fecha {
+  display: grid;
+  justify-items: center;
+  padding: .3rem 0;
+  border-radius: 9px;
+  background: var(--partido-bg);
+  color: var(--partido-fg);
+}
+
+.partido-fecha .mes { font-family: var(--display); font-size: .72rem; font-weight: 700; letter-spacing: 1px; }
+.partido-fecha .dia { font-family: var(--display); font-size: 1.7rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.partido-fecha .dow { font-size: .66rem; text-transform: uppercase; letter-spacing: .6px; opacity: .8; }
+
+.partido-cuerpo { min-width: 0; }
+.partido-rival { font-size: 1.05rem; font-weight: 600; overflow-wrap: anywhere; }
+.partido-meta { display: flex; flex-wrap: wrap; gap: .1rem .5rem; margin-top: .15rem; font-size: .87rem; color: var(--texto-suave); }
+.partido-hora { font-family: var(--display); font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--partido); }
+.partido-notas { margin: .3rem 0 0; font-size: .84rem; color: var(--texto-suave); }
+
+.partido-sello {
+  position: absolute;
+  top: .5rem;
+  right: .6rem;
+  padding: .08rem .45rem;
+  border-radius: 999px;
+  background: var(--relleno);
+  color: var(--texto-suave);
+  font-size: .62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+
+/* ---------- vista FOTOS ---------- */
+
+.subida {
+  display: grid;
+  gap: .5rem;
+  justify-items: center;
+  padding: 1.1rem 1rem;
+  margin-bottom: 1rem;
+  border: 2px dashed var(--borde);
+  border-radius: var(--radio);
+  background: var(--tarjeta);
+  text-align: center;
+}
+
+.subida .btn { font-size: 1rem; padding: .7rem 1.4rem; }
+.subida-nota { margin: 0; max-width: 34rem; font-size: .82rem; color: var(--texto-suave); }
+
+.galeria {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: .4rem;
+}
+
+.galeria .vacio { grid-column: 1 / -1; }
+
+.foto {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: var(--relleno);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.foto:hover img { filter: brightness(1.06); }
+.foto:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+
+.foto-autor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: .5rem .4rem .25rem;
+  background: linear-gradient(transparent, rgba(6, 12, 46, .8));
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- visor de foto ---------- */
+
+.visor {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  background: rgba(4, 8, 30, .94);
+}
+
+.visor[hidden] { display: none; }
+
+.visor-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .7rem 1rem;
+  color: #fff;
+}
+
+.visor-pie { min-width: 0; font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visor-acciones { display: flex; align-items: center; gap: .4rem; flex: none; }
+.visor-acciones .btn { text-decoration: none; }
+
+.visor-img {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  padding: 0 .5rem 1rem;
 }

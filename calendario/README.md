@@ -4,7 +4,7 @@ Web del calendario de entrenamientos y partidos.
 
 - **La ve cualquiera** con el enlace: no hace falta cuenta ni registro.
 - **La edita una sola persona**, pulsando **Editar** y metiendo la contraseña.
-- **Tres vistas**: Hoy, Semana y Mes, entrando en cada día para ver el detalle.
+- **Cinco vistas**: Hoy, Semana, Mes, Partidos y Fotos.
 - **Instalable** en el móvil como una app (PWA) y consultable sin cobertura.
 - **Gratis**: se publica en Cloudflare Pages sin pagar nada.
 
@@ -149,13 +149,38 @@ consultar sin cobertura (los cambios necesitan conexión).
 - **Semana** — los siete días, con las flechas `‹` `›` para moverte.
 - **Mes** — la rejilla del mes. En el móvil cada actividad es un punto de
   color; toca un día para ver el detalle.
+- **Partidos** — todos los partidos de la temporada, por meses, con
+  cuántos van jugados y cuántos quedan. Los ya jugados salen atenuados.
+  Tocando uno se abre su día.
+- **Fotos** — la galería del equipo.
 
 Pulsando cualquier día se abre su ficha con horario, actividad, pista y
 notas.
 
+### Fotos
+
+**Sube quien quiera**, sin contraseña: basta con tener el enlace. La web
+pide un nombre la primera vez, solo para que se sepa quién ha puesto cada
+foto, y lo recuerda en ese dispositivo.
+
+Antes de enviarla, la foto se reduce en el propio móvil (lado máximo 1600
+px, JPEG) para que no gaste datos ni llene el almacén. Tocando una foto se
+abre a pantalla completa, con botón de **Descargar**.
+
+**Borrar solo puede el entrenador**, en modo edición: el servidor exige el
+token para el `DELETE`.
+
+Límites: 6 MB por foto y 400 fotos en total. Se guardan en el mismo KV que
+el calendario, con el prefijo `foto:`.
+
+Un detalle de Cloudflare: su listado tarda hasta un minuto en incluir una
+foto recién subida. Quien la sube la ve al momento (la web la añade por su
+cuenta); el resto puede tardar ese minuto en verla aparecer.
+
 ### Editar
 
-**Editar** → contraseña. Aparece la barra amarilla y, dentro de cada día:
+**Editar** → contraseña. El botón pasa a decir **Cerrar edición** y, dentro
+de cada día, aparecen:
 
 - **+ Añadir actividad** — nueva entrada (se pueden poner varias por día).
 - **Editar** — cambiar horario, tipo, actividad, pista o notas. Cambiando
@@ -167,11 +192,8 @@ Los tipos (entreno, partido, descanso, aviso) solo cambian el color.
 
 En la barra amarilla:
 
-| Botón | Qué hace |
-|---|---|
-| Publicar cambios | Reintenta el guardado en el servidor si algo falló. |
-| Restaurar original | Vuelve al calendario del PDF. **No tiene vuelta atrás.** |
-| Salir de edición | Bloquea. También se bloquea solo a los 30 min. |
+En modo edición también aparece el botón de **Borrar** al abrir una foto.
+Se sale con **Cerrar edición**, y se bloquea solo a los 30 minutos.
 
 No hay deshacer ni historial: cada cambio se guarda en el momento. Para
 llevarte una copia de seguridad del calendario entero:
@@ -232,13 +254,16 @@ calendario/
     api.js                Cliente del backend
     store.js              Datos: leer, editar, guardar, sincronizar
     auth.js               Modo edición
-    app.js                Vistas Hoy / Semana / Mes y edición
+    fotos.js              Galería: subir, listar, borrar
+    app.js                Vistas y edición
   build-artifact.js       Genera la versión de un solo archivo
   artifact-db.js          Adaptador de datos para esa versión
   functions/api/          Backend de Cloudflare (solo Opción A)
     _shared.js            Tokens firmados y utilidades
     auth.js               POST /api/auth  → token
     calendario.js         GET/PUT /api/calendario
+    fotos.js              GET/POST /api/fotos
+    fotos/[id].js         GET/DELETE /api/fotos/<id>
   assets/                 Escudo e iconos
 ```
 

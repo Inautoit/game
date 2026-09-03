@@ -38,15 +38,9 @@
   <button class="tab is-active" type="button" role="tab" aria-selected="true"  data-view="hoy">Hoy</button>
   <button class="tab"           type="button" role="tab" aria-selected="false" data-view="semana">Semana</button>
   <button class="tab"           type="button" role="tab" aria-selected="false" data-view="mes">Mes</button>
+  <button class="tab"           type="button" role="tab" aria-selected="false" data-view="partidos">Partidos</button>
+  <button class="tab"           type="button" role="tab" aria-selected="false" data-view="fotos">Fotos</button>
 </nav>
-
-<!-- Barra que solo aparece con el modo edición desbloqueado -->
-<div id="editorbar" class="editorbar" hidden>
-  <button class="btn btn-small" type="button" data-accion="sincronizar" hidden>Publicar cambios</button>
-  <button class="btn btn-small btn-danger" type="button" data-accion="restaurar">Restaurar original</button>
-  <button class="btn btn-small" type="button" data-accion="salir">Salir de edición</button>
-  <p id="editorbar-nota" class="editorbar-nota"></p>
-</div>
 
 <main id="vista" class="vista" aria-live="polite"></main>
 
@@ -77,6 +71,19 @@
   </div>
 </div>
 
+<!-- Visor de una foto a pantalla completa -->
+<div id="visor" class="visor" hidden>
+  <div class="visor-barra">
+    <span id="visor-pie" class="visor-pie"></span>
+    <div class="visor-acciones">
+      <a id="visor-descargar" class="btn btn-small" download>Descargar</a>
+      <button id="visor-borrar" class="btn btn-small btn-danger" type="button" hidden>Borrar</button>
+      <button class="cerrar" type="button" data-cerrar-visor aria-label="Cerrar">&times;</button>
+    </div>
+  </div>
+  <img id="visor-img" class="visor-img" alt="" />
+</div>
+
 <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
 
 <script src="./src/config.js"></script>
@@ -85,6 +92,7 @@
 <script src="./src/api.js"></script>
 <script src="./src/store.js"></script>
 <script src="./src/auth.js"></script>
+<script src="./src/fotos.js"></script>
 <script src="./src/app.js"></script>
 </body>
 </html>
