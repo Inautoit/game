@@ -1,5 +1,7 @@
 # Open Drive 3D 🏎️
 
+> ¿Buscas el **calendario del equipo**? Está en [`calendario/`](calendario/README.md).
+
 Juego de coches **3D de mundo abierto** para navegador (PC y móvil).
 Conduce libremente por una ciudad con carreteras, edificios y árboles,
 con cámara en tercera persona.
