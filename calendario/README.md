@@ -99,8 +99,8 @@ Listo. La web queda en `https://tu-proyecto.pages.dev`.
   caduca a las 12 horas.
 - Cada cambio se guarda solo en el servidor. Los demás lo ven al abrir o
   al volver a la pestaña.
-- Para cambiar la contraseña: edita el secreto `EDIT_PASSWORD` y vuelve a
-  desplegar.
+- Para cambiar la contraseña: **Settings** → **Variables and Secrets** →
+  `EDIT_PASSWORD`, y luego **Retry deployment**.
 
 ### Opción B — solo web estática
 
@@ -117,8 +117,14 @@ La web funciona igual **para consultar**. La diferencia está en editar:
 - Los cambios se guardan solo en el dispositivo de quien edita. Para que
   los vea el equipo hay que **Descargar JSON**, guardarlo como
   `calendario/src/seed.js` (ver más abajo) y volver a publicar.
-- Para cambiar la contraseña: modo edición → **Cambiar contraseña**. La web
-  te da dos líneas para pegar en `src/config.js`.
+- Para cambiar la contraseña hay que editar `src/config.js` a mano. Las dos
+  líneas se generan así:
+
+  ```bash
+  node -e "const c=require('crypto');const s=c.randomBytes(8).toString('hex');
+  console.log(\`salt: '\${s}',\`);
+  console.log(\`hash: '\${c.createHash('sha256').update(s+':'+process.argv[1]).digest('hex')}',\`)" MI-CONTRASEÑA
+  ```
 
 ---
 
@@ -163,12 +169,16 @@ En la barra amarilla:
 
 | Botón | Qué hace |
 |---|---|
-| Descargar JSON | Guarda una copia del calendario entero. |
-| Importar JSON | Sustituye el calendario por el de un archivo. |
-| Publicar cambios | Reintenta el guardado en el servidor (solo con backend). |
-| Cambiar contraseña | Genera una contraseña nueva (solo sin backend). |
-| Restaurar original | Vuelve al calendario del PDF. |
+| Publicar cambios | Reintenta el guardado en el servidor si algo falló. |
+| Restaurar original | Vuelve al calendario del PDF. **No tiene vuelta atrás.** |
 | Salir de edición | Bloquea. También se bloquea solo a los 30 min. |
+
+No hay deshacer ni historial: cada cambio se guarda en el momento. Para
+llevarte una copia de seguridad del calendario entero:
+
+```bash
+curl -s https://calendario-bmleganes.pages.dev/api/calendario > copia.json
+```
 
 ---
 

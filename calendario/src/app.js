@@ -74,38 +74,6 @@
     avisoTimer = setTimeout(function () { caja.hidden = true; }, esError ? 6000 : 3000);
   }
 
-  // En la web normal se descarga con un enlace; dentro del visor de
-  // artifacts los enlaces de descarga no hacen nada y hay que pedirlo a
-  // la plataforma, que enseña una confirmación al usuario.
-  function descargarConEnlace(nombre, contenido) {
-    var blob = new Blob([contenido], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = nombre;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-  }
-
-  function descargar(nombre, contenido) {
-    var use = window.claude && window.claude.use;
-    if (!use) { descargarConEnlace(nombre, contenido); aviso('JSON descargado'); return; }
-
-    window.claude.use('downloads').then(function (downloads) {
-      if (!downloads) { descargarConEnlace(nombre, contenido); aviso('JSON descargado'); return; }
-      return downloads.save({ filename: nombre, data: contenido }).then(function (r) {
-        if (r && r.status === 'saved') aviso('JSON descargado');
-      }).catch(function (err) {
-        if (err && err.code === 'cancelled') return;
-        aviso('No se pudo descargar: ' + ((err && err.message) || 'inténtalo de nuevo'), true);
-      });
-    }).catch(function () {
-      descargarConEnlace(nombre, contenido);
-    });
-  }
-
   // ---------- piezas reutilizables ----------
 
   function etiquetaTipo(tipo) {
@@ -595,80 +563,9 @@
     });
   }
 
-  function dialogoCambiarContrasena() {
-    abrirModal('Cambiar contraseña', function (cerrar) {
-      var caja = el('div');
-
-      if (!Auth.canChangePassword()) {
-        caja.appendChild(el('p', '', 'Esta web usa backend, así que la contraseña vive en el servidor.'));
-        caja.appendChild(el('p', 'nota', 'Cámbiala en Cloudflare: tu proyecto → Settings → Variables and Secrets → EDIT_PASSWORD. Luego vuelve a desplegar.'));
-        var cerrarBtn = el('button', 'btn', 'Entendido');
-        cerrarBtn.type = 'button';
-        cerrarBtn.onclick = cerrar;
-        caja.appendChild(cerrarBtn);
-        return caja;
-      }
-
-      var form = el('form');
-      var inp = document.createElement('input');
-      inp.type = 'password';
-      inp.autocomplete = 'new-password';
-      form.appendChild(campo('Contraseña nueva (mínimo 8 caracteres)', inp));
-
-      var acciones = el('div', 'form-acciones');
-      var ok = el('button', 'btn', 'Generar');
-      ok.type = 'submit';
-      acciones.appendChild(ok);
-      var no = el('button', 'btn btn-plano', 'Cancelar');
-      no.type = 'button';
-      no.onclick = cerrar;
-      acciones.appendChild(no);
-      form.appendChild(acciones);
-
-      var salida = el('div');
-      form.appendChild(salida);
-
-      form.onsubmit = function (ev) {
-        ev.preventDefault();
-        if (inp.value.length < 8) { aviso('Muy corta: mínimo 8 caracteres', true); return; }
-        var bloque = Auth.changePassword(inp.value);
-        salida.textContent = '';
-        salida.appendChild(el('p', 'nota', 'Ya vale en este navegador. Para que valga en todos, pega estas dos líneas dentro de "auth" en src/config.js y vuelve a publicar la web:'));
-        salida.appendChild(el('code', 'codigo', bloque));
-      };
-
-      caja.appendChild(form);
-      return caja;
-    });
-  }
-
   // ---------- acciones de la barra de edición ----------
 
-  function importarJson(texto) {
-    var datos;
-    try {
-      datos = JSON.parse(texto);
-    } catch (err) {
-      aviso('Ese archivo no es un JSON válido', true);
-      return;
-    }
-    if (!datos || typeof datos !== 'object' || !datos.dias) {
-      aviso('El JSON no tiene el formato del calendario', true);
-      return;
-    }
-    var cuantos = Object.keys(datos.dias).length;
-    if (!confirm('Vas a sustituir el calendario entero por el del archivo (' + cuantos + ' días). ¿Seguir?')) return;
-    Store.replaceAll(datos);
-    aviso('Calendario importado');
-  }
-
   var acciones = {
-    exportar: function () {
-      descargar('calendario-' + hoyIso() + '.json', Store.toJSON());
-    },
-
-    importar: function () { $('#file-import').click(); },
-
     sincronizar: function () {
       aviso('Publicando…');
       Store.push().then(function () {
@@ -677,8 +574,6 @@
         aviso('No se pudo publicar: ' + err.message, true);
       });
     },
-
-    password: dialogoCambiarContrasena,
 
     restaurar: function () {
       if (!confirm('Vas a volver al calendario original del PDF y perder todos los cambios. ¿Seguro?')) return;
@@ -721,8 +616,8 @@
     // reintentar si algo falló. Sin backend no hay nada que publicar.
     $('#editorbar [data-accion="sincronizar"]').hidden = !Api.isAvailable();
     $('#editorbar-nota').textContent = Api.isAvailable()
-      ? 'Los cambios se guardan solos en el servidor y los ve todo el equipo.'
-      : 'Sin servidor: los cambios se guardan solo en este dispositivo. Para que los vea el equipo, descarga el JSON y publícalo (ver README).';
+      ? 'Los cambios se guardan solos y los ve todo el equipo. Ojo: no hay deshacer. La contraseña se cambia en Cloudflare (Settings → Variables and Secrets).'
+      : 'Sin servidor: los cambios se guardan solo en este dispositivo, nadie más los ve.';
     render();
   }
 
@@ -750,15 +645,6 @@
       var b = ev.target.closest('[data-accion]');
       if (b && acciones[b.dataset.accion]) { Auth.keepAlive(); acciones[b.dataset.accion](); }
     });
-
-    $('#file-import').onchange = function (ev) {
-      var file = ev.target.files && ev.target.files[0];
-      if (!file) return;
-      var lector = new FileReader();
-      lector.onload = function () { importarJson(String(lector.result)); };
-      lector.readAsText(file);
-      ev.target.value = '';
-    };
 
     // Cerrar paneles: botón, clic fuera o Escape.
     [['#panel', cerrarPanel], ['#modal', cerrarModal]].forEach(function (par) {

@@ -14,7 +14,6 @@
 
   var cfg = window.CAL_CONFIG;
   var SESSION_KEY = cfg.storageKey + ':editor';
-  var OVERRIDE_KEY = cfg.storageKey + ':auth';
 
   var listeners = [];
   var unlocked = false;
@@ -24,30 +23,7 @@
     listeners.forEach(function (fn) { fn(unlocked); });
   }
 
-  // Si el usuario cambió la contraseña desde la web y aún no la ha pegado
-  // en config.js, la huella nueva vive aquí.
-  function credentials() {
-    try {
-      var raw = localStorage.getItem(OVERRIDE_KEY);
-      if (raw) {
-        var o = JSON.parse(raw);
-        if (o && o.salt && o.hash) return o;
-      }
-    } catch (err) { /* se usa la de config.js */ }
-    return cfg.auth;
-  }
-
-  function randomSalt() {
-    var bytes = new Uint8Array(8);
-    if (window.crypto && window.crypto.getRandomValues) {
-      window.crypto.getRandomValues(bytes);
-    } else {
-      for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
-    }
-    return Array.prototype.map.call(bytes, function (b) {
-      return ('0' + b.toString(16)).slice(-2);
-    }).join('');
-  }
+  function credentials() { return cfg.auth; }
 
   // Comparación en tiempo constante: no filtra cuántos caracteres aciertas.
   function equalHex(a, b) {
@@ -108,19 +84,6 @@
 
     // Devuelve el bloque que hay que pegar en config.js para que la
     // contraseña nueva valga también en el resto de dispositivos.
-    // Solo tiene sentido sin backend: con Cloudflare la contraseña es la
-    // variable de entorno EDIT_PASSWORD del panel.
-    canChangePassword: function () { return !window.CalApi.isAvailable(); },
-
-    changePassword: function (nueva) {
-      var salt = randomSalt();
-      var hash = window.sha256Hex(salt + ':' + String(nueva));
-      try {
-        localStorage.setItem(OVERRIDE_KEY, JSON.stringify({ salt: salt, hash: hash }));
-      } catch (err) { /* solo valdrá tras editar config.js */ }
-      return "    salt: '" + salt + "',\n    hash: '" + hash + "',";
-    },
-
     init: function () {
       try { unlocked = sessionStorage.getItem(SESSION_KEY) === '1'; } catch (err) { unlocked = false; }
       // Con backend, el permiso lo da el token: si se perdió, a bloquear.
