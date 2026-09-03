@@ -225,30 +225,19 @@ original**. Para cambiarla: **Descargar JSON** y pega su contenido así:
 window.CAL_SEED = { ...aquí el JSON descargado... };
 ```
 
-## Poner el escudo de verdad
+## El escudo
 
-Sustituye `assets/escudo.svg` por el escudo del club (vale un `.png`, pero
-entonces cambia también las rutas de `index.html` y del manifest). Los
-iconos de la app son `assets/icon-192.png`, `assets/icon-512.png`,
-`assets/icon-maskable-512.png` y `assets/apple-touch-icon.png`.
+`assets/escudo-original.webp` es el escudo del club tal y como lo mandó el
+club: 1920×1050 con fondo transparente. De ahí salen, recortando solo el
+margen vacío de alrededor (el dibujo no se toca):
 
----
+- `assets/escudo.png` — el de la cabecera.
+- `assets/icon-192.png`, `icon-512.png` — iconos de la app.
+- `assets/icon-maskable-512.png`, `apple-touch-icon.png` — con fondo azul
+  marino, porque Android e iOS recortan el icono y no admiten transparencia.
 
-## Versión de un solo archivo (Artifact)
-
-`build-artifact.js` junta el CSS y los módulos en un único HTML y cambia
-el cliente de Cloudflare por `artifact-db.js`, que guarda el calendario en
-la base de datos compartida del visor de Artifacts:
-
-```bash
-node calendario/build-artifact.js salida.html
-```
-
-Ahí quién puede escribir lo deciden las reglas de la base de datos según
-el nivel con el que se comparta el enlace (ver = solo lectura, editar =
-puede guardar), y la contraseña es la segunda barrera, la de la interfaz.
-Esa versión no es instalable como app: para eso está el despliegue en
-Cloudflare.
+Para cambiarlo: pon el nuevo en `assets/escudo-original.webp` y vuelve a
+generar los tamaños con un recorte automático del margen transparente.
 
 ## Estructura
 

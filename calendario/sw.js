@@ -10,7 +10,7 @@
 //
 // Las llamadas a /api nunca pasan por aquí.
 
-var VERSION = 'cal-v3';
+var VERSION = 'cal-v4';
 var SHELL = [
   './',
   './index.html',
@@ -24,7 +24,7 @@ var SHELL = [
   './src/auth.js',
   './src/fotos.js',
   './src/app.js',
-  './assets/escudo.svg',
+  './assets/escudo.png',
   './assets/icon-192.png',
   './assets/icon-512.png',
 ];
