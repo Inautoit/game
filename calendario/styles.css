@@ -875,15 +875,22 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
 .visor-barra {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: .8rem;
-  padding: .7rem 1rem;
+  flex-wrap: wrap;
+  gap: .4rem .6rem;
+  padding: .6rem .8rem;
   color: #fff;
 }
 
-.visor-pie { min-width: 0; font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.visor-acciones { display: flex; align-items: center; gap: .4rem; flex: none; }
-.visor-acciones .btn { text-decoration: none; }
+/* Con cuatro botones no cabe todo en una línea de móvil: el nombre de la
+   foto se pone arriba y los botones debajo, sin apretujarse. */
+@media (min-width: 560px) {
+  .visor-pie { flex: 1 1 auto; }
+}
+
+.visor-pie { min-width: 0; flex: 1 1 100%; font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visor-acciones { display: flex; align-items: center; gap: .35rem; margin-left: auto; }
+.visor-acciones .btn { text-decoration: none; white-space: nowrap; }
+.visor-acciones [hidden] { display: none; }
 
 .visor-img {
   flex: 1;

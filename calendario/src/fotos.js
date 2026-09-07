@@ -93,6 +93,27 @@
 
     urlDe: function (id) { return base() + '/fotos/' + encodeURIComponent(id); },
 
+    // Misma foto, pero servida como descarga: el navegador la guarda en
+    // vez de abrirla. Es el último recurso si falla lo demás.
+    urlDescarga: function (id) { return Fotos.urlDe(id) + '?descargar=1'; },
+
+    // La imagen ya está en la caché del navegador (la galería la ha
+    // pintado), así que esto suele resolverse al instante.
+    blobDe: function (id) {
+      return fetch(Fotos.urlDe(id)).then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+      });
+    },
+
+    // Nombre con el que guardar el archivo.
+    nombreArchivo: function (foto) {
+      var nombre = (foto && foto.nombre) || 'foto';
+      if (/\.[a-z0-9]{2,4}$/i.test(nombre)) return nombre;
+      var ext = { 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[foto && foto.tipo] || 'jpg';
+      return nombre + '.' + ext;
+    },
+
     listar: function () {
       return fetch(base() + '/fotos', { cache: 'no-store' }).then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);

@@ -632,31 +632,111 @@
   // ---------- visor de una foto ----------
 
   var fotoAbierta = null;
+  var blobAbierto = null;   // la foto ya descargada, lista para guardar
 
   function abrirVisor(foto) {
     fotoAbierta = foto;
+    blobAbierto = null;
     var url = CalFotos.urlDe(foto.id);
 
     $('#visor-img').src = url;
     $('#visor-img').alt = foto.nombre;
     $('#visor-pie').textContent = foto.autor ? foto.nombre + ' · ' + foto.autor : foto.nombre;
 
-    var descargar = $('#visor-descargar');
-    descargar.href = url;
-    descargar.download = foto.nombre || 'foto.jpg';
-
     var puedoBorrar = Auth.isUnlocked() || CalFotos.esMia(foto.id);
     $('#visor-borrar').hidden = !puedoBorrar;
     $('#visor-borrar').textContent = Auth.isUnlocked() ? 'Borrar' : 'Borrar la mía';
+
+    // Compartir solo donde el móvil sabe hacerlo con archivos. En iPhone
+    // es la forma de guardar en Fotos sin salir de la aplicación.
+    $('#visor-compartir').hidden = !puedeCompartirArchivos();
+
     $('#visor').hidden = false;
     document.body.style.overflow = 'hidden';
+
+    // Se va trayendo la imagen ya, para que al pulsar Guardar no haya
+    // espera: compartir en iPhone exige responder en el mismo toque.
+    CalFotos.blobDe(foto.id).then(function (blob) {
+      if (fotoAbierta && fotoAbierta.id === foto.id) blobAbierto = blob;
+    }).catch(function () { /* se resolverá al pulsar */ });
   }
 
   function cerrarVisor() {
     fotoAbierta = null;
+    blobAbierto = null;
     $('#visor').hidden = true;
     $('#visor-img').src = '';
     document.body.style.overflow = '';
+  }
+
+  function puedeCompartirArchivos() {
+    if (!navigator.canShare || !navigator.share || typeof File !== 'function') return false;
+    try {
+      return navigator.canShare({ files: [new File([new Blob([1])], 'x.jpg', { type: 'image/jpeg' })] });
+    } catch (err) {
+      return false;
+    }
+  }
+
+  // Guarda el archivo sin sacar al usuario de la aplicación. Antes esto
+  // era un enlace normal, y en la app instalada la ventana se quedaba en
+  // la foto, sin manera de volver al calendario.
+  function guardarBlob(blob, nombre) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = nombre;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+
+  function descargarFoto() {
+    if (!fotoAbierta) return;
+    var foto = fotoAbierta;
+    var nombre = CalFotos.nombreArchivo(foto);
+
+    if (blobAbierto) {
+      guardarBlob(blobAbierto, nombre);
+      aviso('Foto guardada');
+      return;
+    }
+
+    aviso('Preparando la foto…');
+    CalFotos.blobDe(foto.id).then(function (blob) {
+      guardarBlob(blob, nombre);
+      aviso('Foto guardada');
+    }).catch(function () {
+      // Sin poder traerla, se abre la versión que el navegador guarda
+      // directamente en vez de mostrarla.
+      window.location.href = CalFotos.urlDescarga(foto.id);
+    });
+  }
+
+  function compartirFoto() {
+    if (!fotoAbierta) return;
+    var foto = fotoAbierta;
+    var nombre = CalFotos.nombreArchivo(foto);
+
+    var conBlob = function (blob) {
+      var archivo = new File([blob], nombre, { type: blob.type || 'image/jpeg' });
+      if (!navigator.canShare({ files: [archivo] })) {
+        guardarBlob(blob, nombre);
+        return;
+      }
+      return navigator.share({ files: [archivo] }).catch(function (err) {
+        // Cancelar no es un fallo: el usuario cerró la hoja.
+        if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) return;
+        guardarBlob(blob, nombre);
+      });
+    };
+
+    if (blobAbierto) { conBlob(blobAbierto); return; }
+    CalFotos.blobDe(foto.id).then(conBlob).catch(function () {
+      aviso('No se pudo preparar la foto', true);
+    });
   }
 
   function conectarVisor() {
@@ -664,6 +744,9 @@
     visor.addEventListener('click', function (ev) {
       if (ev.target === visor || ev.target.closest('[data-cerrar-visor]')) cerrarVisor();
     });
+
+    $('#visor-descargar').onclick = descargarFoto;
+    $('#visor-compartir').onclick = compartirFoto;
 
     $('#visor-borrar').onclick = function () {
       if (!fotoAbierta) return;

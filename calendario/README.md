@@ -168,8 +168,18 @@ pide un nombre la primera vez, solo para que se sepa quién ha puesto cada
 foto, y lo recuerda en ese dispositivo.
 
 Antes de enviarla, la foto se reduce en el propio móvil (lado máximo 1600
-px, JPEG) para que no gaste datos ni llene el almacén. Tocando una foto se
-abre a pantalla completa, con botón de **Descargar**.
+px, JPEG) para que no gaste datos ni llene el almacén.
+
+Tocando una foto se abre a pantalla completa, con **Descargar** y, en los
+móviles que saben hacerlo, **Compartir**, que abre la hoja del sistema
+(en iPhone es la forma de guardar en Fotos).
+
+Ninguno de los dos saca al usuario de la aplicación: la foto se trae con
+`fetch` y se guarda desde memoria. Un enlace normal dejaba la ventana de
+la app instalada en la imagen, sin manera de volver al calendario más que
+cerrando y abriendo. Como último recurso, si no se puede traer la imagen,
+está `/api/fotos/<id>?descargar=1`, que la sirve con `Content-Disposition:
+attachment` para que el navegador la guarde en vez de abrirla.
 
 **Borrar puede quien la subió y el entrenador.** Al subir una foto, el
 servidor devuelve una clave de borrado —un HMAC de su identificador, así
