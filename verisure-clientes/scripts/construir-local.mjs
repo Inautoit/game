@@ -19,23 +19,28 @@ import { fileURLToPath } from 'node:url';
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MARCADOR = '      /* @@COMUN@@ */';
+const MARCADOR_CSS = '      /* @@ESTILOS@@ */';
 
 const comun = readFileSync(join(raiz, 'public/comun.js'), 'utf8');
+const estilos = readFileSync(join(raiz, 'public/resultados.css'), 'utf8');
 const plantilla = readFileSync(join(raiz, 'local/plantilla.html'), 'utf8');
 
-if (!plantilla.includes(MARCADOR)) {
-  console.error('local/plantilla.html no tiene la marca /* @@COMUN@@ */');
-  process.exit(1);
+for (const marca of [MARCADOR, MARCADOR_CSS]) {
+  if (!plantilla.includes(marca)) {
+    console.error(`local/plantilla.html no tiene la marca ${marca.trim()}`);
+    process.exit(1);
+  }
 }
 
 // Dentro del HTML es un script normal, no un módulo: fuera los "export".
-const incrustado = comun
-  .replace(/^export /gm, '')
-  .split('\n')
-  .map((linea) => (linea.trim() === '' ? '' : '      ' + linea))
-  .join('\n');
+const incrustado = comun.replace(/^export /gm, '');
 
-const salida = plantilla.replace(MARCADOR, incrustado);
+const sangrar = (texto) =>
+  texto.split('\n').map((l) => (l.trim() === '' ? '' : '      ' + l)).join('\n');
+
+const salida = plantilla
+  .replace(MARCADOR, sangrar(incrustado))
+  .replace(MARCADOR_CSS, sangrar(estilos));
 
 if (/\bexport\b|\bimport\b/.test(salida.slice(salida.indexOf('<script>')))) {
   console.error('Ha quedado algún import/export en el archivo generado.');

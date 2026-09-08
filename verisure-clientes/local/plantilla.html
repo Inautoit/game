@@ -93,16 +93,7 @@
       .atajo.activo { color: #fff; background: rgba(226,0,26,.18); border-color: rgba(226,0,26,.4); }
 
       .resultados { display: grid; gap: .8rem; margin-top: 1.2rem; }
-      .registro { background: linear-gradient(180deg, var(--panel), var(--fondo-2));
-        border: 1px solid var(--borde); border-radius: var(--radio); padding: 1rem 1.1rem; }
-      .registro__cabecera { display: flex; align-items: baseline; justify-content: space-between;
-        gap: 1rem; margin-bottom: .8rem; }
-      .registro__titulo { font-size: 1.02rem; font-weight: 700; }
-      .campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .7rem 1.2rem; }
-      .dato__clave { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
-        color: var(--apagado); margin-bottom: .15rem; }
-      .dato__valor { font-size: .93rem; overflow-wrap: anywhere; }
-      mark { background: rgba(226,0,26,.32); color: #fff; border-radius: 3px; padding: 0 2px; }
+      /* @@ESTILOS@@ */
       .vacio { text-align: center; padding: 3rem 1rem; color: var(--apagado);
         border: 1px dashed var(--borde-fuerte); border-radius: var(--radio); }
       .fila-lista { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -423,34 +414,24 @@
         resumen.append(exportar);
         caja.append(resumen);
 
+        // Una sola coincidencia se abre sola: si buscas un teléfono y sale un
+        // cliente, lo que quieres es su ficha, no tener que pulsarla.
+        const colsEstado = columnasEstado(columnas);
         const desde = (pagina - 1) * POR_PAGINA;
-        for (const indice of indices.slice(desde, desde + POR_PAGINA)) {
+        const pagina_ = indices.slice(desde, desde + POR_PAGINA);
+
+        for (const indice of pagina_) {
           const valores = separarCampos(filas[indice]);
-          const claveTitulo =
-            columnas.find((c, i) => /nombre|titular|cliente|razon/i.test(c) && valores[i]) ||
-            columnas.find((c, i) => valores[i]) || columnas[0];
-
-          const tarjeta = document.createElement('article');
-          tarjeta.className = 'registro';
-          const cabecera = document.createElement('div');
-          cabecera.className = 'registro__cabecera';
-          cabecera.innerHTML =
-            `<div class="registro__titulo">${resaltar(valores[columnas.indexOf(claveTitulo)] || '—', q)}</div>` +
-            `<span class="etiqueta">fila ${(indice + 2).toLocaleString('es-ES')}</span>`;
-          tarjeta.append(cabecera);
-
-          const rejilla = document.createElement('div');
-          rejilla.className = 'campos';
-          columnas.forEach((columna, i) => {
-            const valor = valores[i];
-            if (valor === undefined || valor === '') return;
-            const dato = document.createElement('div');
-            dato.innerHTML = `<span class="dato__clave">${escapar(columna)}</span>` +
-              `<span class="dato__valor">${resaltar(valor, q)}</span>`;
-            rejilla.append(dato);
-          });
-          tarjeta.append(rejilla);
-          caja.append(tarjeta);
+          const datos = {};
+          columnas.forEach((columna, i) => { datos[columna] = valores[i] ?? ''; });
+          caja.append(crearTarjeta({
+            datos,
+            columnas,
+            consulta: q,
+            colsEstado,
+            etiqueta: `Fila ${(indice + 2).toLocaleString('es-ES')} del CSV`,
+            abierta: pagina_.length === 1,
+          }));
         }
 
         const paginas = Math.ceil(indices.length / POR_PAGINA);

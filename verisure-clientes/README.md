@@ -26,10 +26,44 @@ compilación.
 - **En todos los campos a la vez** o **en un campo concreto** (desplegable y
   atajos rápidos: nº de instalación, teléfono, DNI, nombre…).
 - Ignora acentos, mayúsculas, espacios y signos: `600 123 456`, `600-123-456`
-  y `600123456` encuentran el mismo cliente; `perez` encuentra a `Pérez`.
+  y `600123456` encuentran el mismo cliente; `perez` encuentra a `Pérez`. Un
+  número con prefijo (`+34`, `0034`) encuentra al que no lo lleva.
 - Admite varias palabras en cualquier orden (`perez maria` → *María Pérez*).
+- Los resultados salen como **una fila por cliente** con los datos que sirven
+  para distinguirlo (nº de instalación, DNI, teléfono…) y su estado de
+  reconexión. Al pulsar una fila se despliega el registro completo. Si sólo hay
+  una coincidencia se abre sola.
 - Resalta en rojo la parte coincidente de cada valor.
-- Resultados paginados de 50 en 50.
+
+### Estado de reconexión
+
+Cada registro se etiqueta con uno de tres estados, calculado en
+`public/comun.js` (`calcularEstado`) y por tanto idéntico en los dos buscadores:
+
+| Orden | Condición | Estado |
+|---|---|---|
+| 1 | `balance_txt ≤ 149` y `writeoff_txt ≤ 149` y `npv = "NO NPV"` | RECONECTABLE ✅ |
+| 2 | `balance_txt ≤ 149` y `npv = "NPV"` | LLAMA A SALES ASSURANCE 📞 |
+| 3 | cualquier otro caso | NO RECONECTABLE ❌ |
+
+Es la traducción de las medidas de Power BI `Estado_Reconectable`,
+`Estado_Llamar`, `Estado_NoReconectable` y el `SWITCH` que las ordena, ya
+resueltas. La tercera regla recoge también lo que el `SWITCH` dejaba caer en su
+valor por defecto: por ejemplo `balance ≤ 149` con `writeoff > 149`, o un `npv`
+que no sea ni `"NPV"` ni `"NO NPV"`.
+
+Detalles de la conversión:
+
+- Una celda vacía cuenta como 0, igual que hace Power BI con un BLANK.
+- Los importes se leen con las dos convenciones de Excel: `1.234,56` y
+  `1,234.56`. Un valor ilegible no cumple ninguna comparación y acaba en
+  NO RECONECTABLE, que es la salida por defecto de la fórmula original.
+- `npv` se compara sin distinguir mayúsculas ni espacios.
+- Si el CSV no trae las tres columnas (`balance_txt`, `writeoff_txt`, `npv`) no
+  se muestra ningún estado, en vez de inventarse uno.
+
+Al desplegar un registro se ven los tres valores que han decidido su estado,
+para poder comprobarlo de un vistazo.
 
 ### Importación
 

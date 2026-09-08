@@ -1,0 +1,199 @@
+/* ═══════════════════════════════════════════════════════════════
+   Lista de resultados: fila compacta que se despliega al pulsarla.
+   Compartido por la versión web y el buscador local (se copia dentro
+   de buscador-local.html al construirlo).
+   ═══════════════════════════════════════════════════════════════ */
+
+.registro {
+  background: linear-gradient(180deg, var(--panel), var(--fondo-2));
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  overflow: hidden;
+}
+
+.registro--abierto {
+  border-color: rgba(226, 0, 26, 0.35);
+}
+
+/* Fila compacta ------------------------------------------------ */
+
+.registro__resumen {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: .8rem 1rem;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.registro__resumen:hover {
+  background: rgba(255, 255, 255, .035);
+}
+
+.registro__resumen:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(226, 0, 26, .5);
+}
+
+.destacados {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem 1.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.destacado {
+  min-width: 0;
+}
+
+.destacado em {
+  display: block;
+  font-style: normal;
+  font-size: .66rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--apagado);
+  margin-bottom: .1rem;
+}
+
+.destacado b {
+  font-size: .92rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.flecha {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: var(--apagado);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform .15s;
+  /* Sin esto un SVG gira sobre su esquina superior izquierda, no sobre el
+     centro, y la flecha se sale de su hueco al desplegar la fila. */
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.registro--abierto .flecha {
+  transform: rotate(180deg);
+}
+
+/* Estado de reconexión ----------------------------------------- */
+
+.estado {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  padding: .32rem .7rem;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.estado--ok {
+  color: #6ee7ad;
+  background: rgba(33, 192, 122, .14);
+  border-color: rgba(33, 192, 122, .4);
+}
+
+.estado--avisar {
+  color: #f7c66a;
+  background: rgba(240, 169, 43, .14);
+  border-color: rgba(240, 169, 43, .42);
+}
+
+.estado--no {
+  color: #ff9aa4;
+  background: rgba(226, 0, 26, .14);
+  border-color: rgba(226, 0, 26, .42);
+}
+
+.estado--grande {
+  font-size: .9rem;
+  padding: .5rem 1rem;
+}
+
+/* Detalle ------------------------------------------------------ */
+
+.registro__detalle {
+  padding: 0 1rem 1.1rem;
+  border-top: 1px solid var(--borde);
+}
+
+.motivo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem 1.4rem;
+  margin: 1rem 0;
+  padding: .75rem .9rem;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .02);
+}
+
+.motivo__campos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem 1.4rem;
+  font-size: .85rem;
+  color: var(--apagado);
+}
+
+.motivo__campos b {
+  color: var(--texto);
+  font-weight: 600;
+}
+
+.campos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: .7rem 1.2rem;
+  margin-top: 1rem;
+}
+
+.dato__clave {
+  display: block;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--apagado);
+  margin-bottom: .15rem;
+}
+
+.dato__valor {
+  font-size: .93rem;
+  overflow-wrap: anywhere;
+}
+
+mark {
+  background: rgba(226, 0, 26, .32);
+  color: #fff;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+@media (max-width: 720px) {
+  .registro__resumen {
+    flex-wrap: wrap;
+  }
+
+  .destacados {
+    flex: 1 1 100%;
+    order: 2;
+  }
+}

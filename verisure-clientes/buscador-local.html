@@ -93,16 +93,206 @@
       .atajo.activo { color: #fff; background: rgba(226,0,26,.18); border-color: rgba(226,0,26,.4); }
 
       .resultados { display: grid; gap: .8rem; margin-top: 1.2rem; }
-      .registro { background: linear-gradient(180deg, var(--panel), var(--fondo-2));
-        border: 1px solid var(--borde); border-radius: var(--radio); padding: 1rem 1.1rem; }
-      .registro__cabecera { display: flex; align-items: baseline; justify-content: space-between;
-        gap: 1rem; margin-bottom: .8rem; }
-      .registro__titulo { font-size: 1.02rem; font-weight: 700; }
-      .campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .7rem 1.2rem; }
-      .dato__clave { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
-        color: var(--apagado); margin-bottom: .15rem; }
-      .dato__valor { font-size: .93rem; overflow-wrap: anywhere; }
-      mark { background: rgba(226,0,26,.32); color: #fff; border-radius: 3px; padding: 0 2px; }
+      /* ═══════════════════════════════════════════════════════════════
+         Lista de resultados: fila compacta que se despliega al pulsarla.
+         Compartido por la versión web y el buscador local (se copia dentro
+         de buscador-local.html al construirlo).
+         ═══════════════════════════════════════════════════════════════ */
+
+      .registro {
+        background: linear-gradient(180deg, var(--panel), var(--fondo-2));
+        border: 1px solid var(--borde);
+        border-radius: var(--radio);
+        overflow: hidden;
+      }
+
+      .registro--abierto {
+        border-color: rgba(226, 0, 26, 0.35);
+      }
+
+      /* Fila compacta ------------------------------------------------ */
+
+      .registro__resumen {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        width: 100%;
+        padding: .8rem 1rem;
+        font: inherit;
+        color: inherit;
+        text-align: left;
+        background: none;
+        border: 0;
+        cursor: pointer;
+      }
+
+      .registro__resumen:hover {
+        background: rgba(255, 255, 255, .035);
+      }
+
+      .registro__resumen:focus-visible {
+        outline: none;
+        box-shadow: inset 0 0 0 2px rgba(226, 0, 26, .5);
+      }
+
+      .destacados {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .35rem 1.6rem;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .destacado {
+        min-width: 0;
+      }
+
+      .destacado em {
+        display: block;
+        font-style: normal;
+        font-size: .66rem;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: var(--apagado);
+        margin-bottom: .1rem;
+      }
+
+      .destacado b {
+        font-size: .92rem;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+
+      .flecha {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        fill: none;
+        stroke: var(--apagado);
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        transition: transform .15s;
+        /* Sin esto un SVG gira sobre su esquina superior izquierda, no sobre el
+           centro, y la flecha se sale de su hueco al desplegar la fila. */
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+
+      .registro--abierto .flecha {
+        transform: rotate(180deg);
+      }
+
+      /* Estado de reconexión ----------------------------------------- */
+
+      .estado {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        font-size: .74rem;
+        font-weight: 700;
+        letter-spacing: .02em;
+        padding: .32rem .7rem;
+        border-radius: 999px;
+        border: 1px solid;
+        white-space: nowrap;
+      }
+
+      .estado--ok {
+        color: #6ee7ad;
+        background: rgba(33, 192, 122, .14);
+        border-color: rgba(33, 192, 122, .4);
+      }
+
+      .estado--avisar {
+        color: #f7c66a;
+        background: rgba(240, 169, 43, .14);
+        border-color: rgba(240, 169, 43, .42);
+      }
+
+      .estado--no {
+        color: #ff9aa4;
+        background: rgba(226, 0, 26, .14);
+        border-color: rgba(226, 0, 26, .42);
+      }
+
+      .estado--grande {
+        font-size: .9rem;
+        padding: .5rem 1rem;
+      }
+
+      /* Detalle ------------------------------------------------------ */
+
+      .registro__detalle {
+        padding: 0 1rem 1.1rem;
+        border-top: 1px solid var(--borde);
+      }
+
+      .motivo {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .6rem 1.4rem;
+        margin: 1rem 0;
+        padding: .75rem .9rem;
+        border: 1px solid var(--borde);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, .02);
+      }
+
+      .motivo__campos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .3rem 1.4rem;
+        font-size: .85rem;
+        color: var(--apagado);
+      }
+
+      .motivo__campos b {
+        color: var(--texto);
+        font-weight: 600;
+      }
+
+      .campos {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: .7rem 1.2rem;
+        margin-top: 1rem;
+      }
+
+      .dato__clave {
+        display: block;
+        font-size: .7rem;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        color: var(--apagado);
+        margin-bottom: .15rem;
+      }
+
+      .dato__valor {
+        font-size: .93rem;
+        overflow-wrap: anywhere;
+      }
+
+      mark {
+        background: rgba(226, 0, 26, .32);
+        color: #fff;
+        border-radius: 3px;
+        padding: 0 2px;
+      }
+
+      @media (max-width: 720px) {
+        .registro__resumen {
+          flex-wrap: wrap;
+        }
+
+        .destacados {
+          flex: 1 1 100%;
+          order: 2;
+        }
+      }
+
       .vacio { text-align: center; padding: 3rem 1rem; color: var(--apagado);
         border: 1px dashed var(--borde-fuerte); border-radius: var(--radio); }
       .fila-lista { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -388,6 +578,235 @@
         return dentro ? html + '</mark>' : html;
       }
 
+      /* ══════════════════════════════════════════════════════════════
+         Estado de reconexión
+         ══════════════════════════════════════════════════════════════ */
+
+      /**
+       * Lee un importe que viene como texto. Acepta las dos convenciones que salen
+       * de un Excel según cómo esté configurado: "1.234,56" y "1,234.56".
+       *
+       * Un valor vacío cuenta como 0, igual que hace Power BI con una celda en
+       * blanco. Si no se puede leer devuelve NaN, y entonces ninguna comparación se
+       * cumple: el registro acaba en "NO RECONECTABLE", que es la salida por defecto
+       * de la fórmula original y la más prudente.
+       */
+      function aNumero(valor) {
+        let t = String(valor ?? '').trim().replace(/[€$\s]/g, '');
+        if (t === '') return 0;
+
+        const coma = t.includes(',');
+        const punto = t.includes('.');
+        if (coma && punto) {
+          // El último separador que aparece es el decimal.
+          t = t.lastIndexOf(',') > t.lastIndexOf('.')
+            ? t.replace(/\./g, '').replace(',', '.')
+            : t.replace(/,/g, '');
+        } else if (coma) {
+          // "1,234" son mil doscientos treinta y cuatro; "12,50" son doce con medio.
+          t = /^-?\d{1,3}(,\d{3})+$/.test(t) ? t.replace(/,/g, '') : t.replace(',', '.');
+        } else if (punto) {
+          if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+        }
+
+        const n = Number(t);
+        return Number.isFinite(n) ? n : NaN;
+      }
+
+      /** Columnas que necesita el estado, buscadas sin distinguir mayúsculas ni signos. */
+      const COLUMNAS_ESTADO = { balance: 'balancetxt', writeoff: 'writeofftxt', npv: 'npv' };
+
+      /**
+       * Localiza en la cabecera del CSV las columnas del estado. Devuelve null si el
+       * fichero no las trae, y entonces no se enseña ningún estado en vez de
+       * inventarse uno.
+       */
+      function columnasEstado(columnas) {
+        const encontradas = {};
+        for (const [clave, buscada] of Object.entries(COLUMNAS_ESTADO)) {
+          const columna = columnas.find((c) => colapsar(c) === buscada);
+          if (columna === undefined) return null;
+          encontradas[clave] = columna;
+        }
+        return encontradas;
+      }
+
+      const ESTADOS = {
+        RECONECTABLE: { texto: 'RECONECTABLE', emoji: '✅', clase: 'ok' },
+        LLAMAR: { texto: 'LLAMA A SALES ASSURANCE', emoji: '📞', clase: 'avisar' },
+        NO_RECONECTABLE: { texto: 'NO RECONECTABLE', emoji: '❌', clase: 'no' },
+      };
+
+      /**
+       * Estado de reconexión de un registro. Traduce las medidas de Power BI
+       * (Estado_Reconectable, Estado_Llamar, Estado_NoReconectable y el SWITCH que
+       * las ordena) a las tres reglas que quedan al resolverlas, en este orden:
+       *
+       *   1. balance <= 149 y writeoff <= 149 y npv = "NO NPV"  ->  RECONECTABLE
+       *   2. balance <= 149 y npv = "NPV"                       ->  LLAMA A SALES ASSURANCE
+       *   3. cualquier otro caso                                ->  NO RECONECTABLE
+       *
+       * La tercera recoge también lo que el SWITCH dejaba caer en su valor por
+       * defecto: por ejemplo balance <= 149 con writeoff > 149, o un npv que no sea
+       * ni "NPV" ni "NO NPV".
+       *
+       * `datos` es {columna: valor} y `cols` lo que devuelve columnasEstado().
+       */
+      function calcularEstado(datos, cols) {
+        if (!cols) return null;
+
+        const balance = aNumero(datos[cols.balance]);
+        const writeoff = aNumero(datos[cols.writeoff]);
+        const npv = colapsar(datos[cols.npv]);
+
+        const clave =
+          balance <= 149 && writeoff <= 149 && npv === 'nonpv' ? 'RECONECTABLE'
+          : balance <= 149 && npv === 'npv' ? 'LLAMAR'
+          : 'NO_RECONECTABLE';
+
+        return {
+          clave,
+          ...ESTADOS[clave],
+          // Lo que ha decidido el resultado, para poder enseñarlo y comprobarlo.
+          motivo: {
+            [cols.balance]: datos[cols.balance] ?? '',
+            [cols.writeoff]: datos[cols.writeoff] ?? '',
+            [cols.npv]: datos[cols.npv] ?? '',
+          },
+        };
+      }
+
+      /**
+       * Columnas que se enseñan en la lista de resultados para poder distinguir un
+       * registro de otro sin abrirlo: identificadores y datos de contacto, en ese
+       * orden de preferencia y sin repetir.
+       */
+      const PREFERENCIAS = [
+        /^(s#ins|ins_no|instalacion|n.?\s*instalac)/i,
+        /instalac/i,
+        /nombre|titular|cliente|razon/i,
+        /^(cifnif|dni|nif|cif|documento)$/i,
+        /dni|nif|cif/i,
+        /phone|telef|movil|tlf/i,
+        /direccion|domicilio|calle/i,
+        /city|poblacion|localidad|municipio/i,
+      ];
+
+      function camposDestacados(columnas, maximo = 5) {
+        const elegidas = [];
+        for (const patron of PREFERENCIAS) {
+          for (const columna of columnas) {
+            if (elegidas.length >= maximo) return elegidas;
+            if (!elegidas.includes(columna) && patron.test(columna)) elegidas.push(columna);
+          }
+        }
+        // Si el CSV no trae nada reconocible, las primeras columnas sirven igual.
+        for (const columna of columnas) {
+          if (elegidas.length >= maximo) break;
+          if (!elegidas.includes(columna)) elegidas.push(columna);
+        }
+        return elegidas;
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         Tarjeta de un registro en la lista de resultados
+         ══════════════════════════════════════════════════════════════ */
+
+      /**
+       * Construye la tarjeta de un resultado: una fila compacta con los datos que
+       * sirven para distinguirlo y su estado, que al pulsarla despliega el registro
+       * entero.
+       *
+       * Devuelve un elemento del DOM, así que sólo la llaman las interfaces; el
+       * Worker importa de este archivo únicamente las funciones de texto.
+       */
+      function crearTarjeta({ datos, columnas, consulta, colsEstado, etiqueta, abierta }) {
+        const estado = calcularEstado(datos, colsEstado);
+
+        const tarjeta = document.createElement('article');
+        tarjeta.className = 'registro';
+
+        /* ── fila compacta ── */
+        const resumen = document.createElement('button');
+        resumen.type = 'button';
+        resumen.className = 'registro__resumen';
+        resumen.setAttribute('aria-expanded', abierta ? 'true' : 'false');
+
+        const destacados = document.createElement('div');
+        destacados.className = 'destacados';
+        for (const columna of camposDestacados(columnas)) {
+          const valor = datos[columna];
+          if (valor === undefined || valor === '') continue;
+          const dato = document.createElement('div');
+          dato.className = 'destacado';
+          dato.innerHTML = `<em>${escapar(columna)}</em><b>${resaltar(valor, consulta)}</b>`;
+          destacados.append(dato);
+        }
+        resumen.append(destacados);
+
+        if (estado) {
+          const insignia = document.createElement('span');
+          insignia.className = `estado estado--${estado.clase}`;
+          insignia.textContent = `${estado.texto} ${estado.emoji}`;
+          resumen.append(insignia);
+        }
+
+        const flecha = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        flecha.setAttribute('class', 'flecha');
+        flecha.setAttribute('viewBox', '0 0 24 24');
+        flecha.innerHTML = '<polyline points="6 9 12 15 18 9" />';
+        resumen.append(flecha);
+
+        /* ── detalle ── */
+        const detalle = document.createElement('div');
+        detalle.className = 'registro__detalle';
+        detalle.hidden = !abierta;
+
+        if (estado) {
+          const motivo = document.createElement('div');
+          motivo.className = 'motivo';
+          const campos = Object.entries(estado.motivo)
+            .map(([c, v]) => `<span>${escapar(c)}: <b>${escapar(v === '' ? '(vacío)' : v)}</b></span>`)
+            .join('');
+          motivo.innerHTML =
+            `<span class="estado estado--${estado.clase} estado--grande">${estado.texto} ${estado.emoji}</span>` +
+            `<span class="motivo__campos">${campos}</span>`;
+          detalle.append(motivo);
+        }
+
+        const rejilla = document.createElement('div');
+        rejilla.className = 'campos';
+        for (const columna of columnas) {
+          const valor = datos[columna];
+          if (valor === undefined || valor === '') continue;
+          const dato = document.createElement('div');
+          dato.innerHTML =
+            `<span class="dato__clave">${escapar(columna)}</span>` +
+            `<span class="dato__valor">${resaltar(valor, consulta)}</span>`;
+          rejilla.append(dato);
+        }
+        detalle.append(rejilla);
+
+        if (etiqueta) {
+          const pie = document.createElement('p');
+          pie.className = 'apagado';
+          pie.style.margin = '.9rem 0 0';
+          pie.textContent = etiqueta;
+          detalle.append(pie);
+        }
+
+        resumen.addEventListener('click', () => {
+          const abriendo = detalle.hidden;
+          detalle.hidden = !abriendo;
+          tarjeta.classList.toggle('registro--abierto', abriendo);
+          resumen.setAttribute('aria-expanded', abriendo ? 'true' : 'false');
+        });
+
+        if (abierta) tarjeta.classList.add('registro--abierto');
+        tarjeta.append(resumen, detalle);
+        return tarjeta;
+      }
+
 
 
       /* ── Lectura e indexado ──────────────────────────────────── */
@@ -576,34 +995,24 @@
         resumen.append(exportar);
         caja.append(resumen);
 
+        // Una sola coincidencia se abre sola: si buscas un teléfono y sale un
+        // cliente, lo que quieres es su ficha, no tener que pulsarla.
+        const colsEstado = columnasEstado(columnas);
         const desde = (pagina - 1) * POR_PAGINA;
-        for (const indice of indices.slice(desde, desde + POR_PAGINA)) {
+        const pagina_ = indices.slice(desde, desde + POR_PAGINA);
+
+        for (const indice of pagina_) {
           const valores = separarCampos(filas[indice]);
-          const claveTitulo =
-            columnas.find((c, i) => /nombre|titular|cliente|razon/i.test(c) && valores[i]) ||
-            columnas.find((c, i) => valores[i]) || columnas[0];
-
-          const tarjeta = document.createElement('article');
-          tarjeta.className = 'registro';
-          const cabecera = document.createElement('div');
-          cabecera.className = 'registro__cabecera';
-          cabecera.innerHTML =
-            `<div class="registro__titulo">${resaltar(valores[columnas.indexOf(claveTitulo)] || '—', q)}</div>` +
-            `<span class="etiqueta">fila ${(indice + 2).toLocaleString('es-ES')}</span>`;
-          tarjeta.append(cabecera);
-
-          const rejilla = document.createElement('div');
-          rejilla.className = 'campos';
-          columnas.forEach((columna, i) => {
-            const valor = valores[i];
-            if (valor === undefined || valor === '') return;
-            const dato = document.createElement('div');
-            dato.innerHTML = `<span class="dato__clave">${escapar(columna)}</span>` +
-              `<span class="dato__valor">${resaltar(valor, q)}</span>`;
-            rejilla.append(dato);
-          });
-          tarjeta.append(rejilla);
-          caja.append(tarjeta);
+          const datos = {};
+          columnas.forEach((columna, i) => { datos[columna] = valores[i] ?? ''; });
+          caja.append(crearTarjeta({
+            datos,
+            columnas,
+            consulta: q,
+            colsEstado,
+            etiqueta: `Fila ${(indice + 2).toLocaleString('es-ES')} del CSV`,
+            abierta: pagina_.length === 1,
+          }));
         }
 
         const paginas = Math.ceil(indices.length / POR_PAGINA);

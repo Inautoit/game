@@ -504,57 +504,6 @@ input::placeholder {
   margin-top: 1.2rem;
 }
 
-.registro {
-  background: linear-gradient(180deg, var(--panel), var(--fondo-2));
-  border: 1px solid var(--borde);
-  border-radius: var(--radio);
-  padding: 1rem 1.1rem;
-}
-
-.registro__cabecera {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.8rem;
-}
-
-.registro__titulo {
-  font-size: 1.02rem;
-  font-weight: 700;
-}
-
-.registro__campos {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.7rem 1.2rem;
-}
-
-.dato {
-  min-width: 0;
-}
-
-.dato__clave {
-  display: block;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--apagado);
-  margin-bottom: 0.15rem;
-}
-
-.dato__valor {
-  font-size: 0.93rem;
-  overflow-wrap: anywhere;
-}
-
-mark {
-  background: rgba(226, 0, 26, 0.32);
-  color: #fff;
-  border-radius: 3px;
-  padding: 0 2px;
-}
-
 .vacio {
   text-align: center;
   padding: 3rem 1rem;

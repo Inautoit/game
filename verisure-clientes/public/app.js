@@ -2,7 +2,7 @@
    Verisure · Buscador de clientes de baja — lógica de la interfaz
    ═══════════════════════════════════════════════════════════════ */
 
-import { escapar, resaltar } from '/comun.js';
+import { columnasEstado, crearTarjeta, escapar } from '/comun.js';
 
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
 const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
@@ -212,37 +212,22 @@ function pintarResultados(datos, consulta) {
   resumen.append(exportar);
   caja.append(resumen);
 
+  // Una sola coincidencia se abre sola: si buscas un teléfono y sale un
+  // cliente, lo que quieres es su ficha, no tener que pulsarla.
+  const colsEstado = columnasEstado(campos);
+  const abrirTodas = datos.resultados.length === 1;
+
   for (const registro of datos.resultados) {
-    const claves = Object.keys(registro.datos);
-    const claveTitulo =
-      claves.find((c) => /nombre|titular|cliente|razon|razón/i.test(c) && registro.datos[c]) ||
-      claves.find((c) => registro.datos[c]) ||
-      claves[0];
-
-    const tarjeta = document.createElement('article');
-    tarjeta.className = 'registro';
-
-    const cabecera = document.createElement('div');
-    cabecera.className = 'registro__cabecera';
-    cabecera.innerHTML =
-      `<div class="registro__titulo">${resaltar(registro.datos[claveTitulo] || '—', consulta)}</div>` +
-      `<span class="etiqueta">${escapar(registro.origen || '')}</span>`;
-    tarjeta.append(cabecera);
-
-    const rejilla = document.createElement('div');
-    rejilla.className = 'registro__campos';
-    for (const clave of claves) {
-      const valor = registro.datos[clave];
-      if (valor === '' || valor === null || valor === undefined) continue;
-      const dato = document.createElement('div');
-      dato.className = 'dato';
-      dato.innerHTML =
-        `<span class="dato__clave">${escapar(clave)}</span>` +
-        `<span class="dato__valor">${resaltar(valor, consulta)}</span>`;
-      rejilla.append(dato);
-    }
-    tarjeta.append(rejilla);
-    caja.append(tarjeta);
+    caja.append(
+      crearTarjeta({
+        datos: registro.datos,
+        columnas: Object.keys(registro.datos),
+        consulta,
+        colsEstado,
+        etiqueta: registro.origen ? `Origen: ${registro.origen}` : '',
+        abierta: abrirTodas,
+      }),
+    );
   }
 
   const paginacion = $('#paginacion');
