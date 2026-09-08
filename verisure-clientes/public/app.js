@@ -10,6 +10,11 @@ const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
 // holgadamente en los 10 ms de CPU que da el plan gratuito de Workers.
 const FILAS_POR_LOTE = 300;
 
+// Peticiones simultáneas durante la importación. Con un millón de filas son más
+// de tres mil envíos, y en serie se pierde casi todo el tiempo esperando la ida
+// y vuelta de cada uno.
+const ENVIOS_A_LA_VEZ = 4;
+
 let sesion = null;
 let campos = [];
 let ultimaBusqueda = { q: '', campo: '', pagina: 1 };
@@ -456,16 +461,51 @@ async function importar() {
     });
 
     const total = csvPreparado.filas.length;
+    const posiciones = [];
+    for (let i = 0; i < total; i += FILAS_POR_LOTE) posiciones.push(i);
+
     let enviadas = 0;
-    for (let i = 0; i < total; i += FILAS_POR_LOTE) {
-      const lote = csvPreparado.filas.slice(i, i + FILAS_POR_LOTE);
-      await api(`/importaciones/${id}/filas`, { metodo: 'POST', cuerpo: { filas: lote } });
-      enviadas += lote.length;
-      const porcentaje = Math.round((enviadas / total) * 100);
-      $('#progreso-relleno').style.width = `${porcentaje}%`;
-      $('#progreso-texto').textContent =
-        `${enviadas.toLocaleString('es-ES')} de ${total.toLocaleString('es-ES')} filas (${porcentaje} %)`;
-    }
+    let siguiente = 0;
+    const comenzado = Date.now();
+
+    // Cada lote lleva su posición en el fichero, así que el servidor no depende
+    // del orden de llegada y se pueden mandar varios a la vez. Con un millón de
+    // filas son más de tres mil peticiones: en serie se irían muchos minutos
+    // esperando la ida y vuelta de cada una.
+    const enviarLote = async (desde) => {
+      const lote = csvPreparado.filas.slice(desde, desde + FILAS_POR_LOTE);
+      let ultimoError = null;
+      for (let intento = 1; intento <= 3; intento++) {
+        try {
+          await api(`/importaciones/${id}/filas`, { metodo: 'POST', cuerpo: { desde, filas: lote } });
+          enviadas += lote.length;
+          const porcentaje = Math.round((enviadas / total) * 100);
+          const segundos = (Date.now() - comenzado) / 1000;
+          const restantes = enviadas > 0 ? Math.round((segundos / enviadas) * (total - enviadas)) : 0;
+          $('#progreso-relleno').style.width = `${porcentaje}%`;
+          $('#progreso-texto').textContent =
+            `${enviadas.toLocaleString('es-ES')} de ${total.toLocaleString('es-ES')} filas ` +
+            `(${porcentaje} %)` + (restantes > 5 ? ` · quedan unos ${restantes} s` : '');
+          return;
+        } catch (e) {
+          ultimoError = e;
+          // Un límite alcanzado o un rechazo del servidor no se arregla
+          // reintentando; un corte de red, casi siempre sí.
+          if (/límite|permisos|sesión|cerrada|no existe/i.test(e.message)) throw e;
+          await new Promise((r) => setTimeout(r, 500 * intento));
+        }
+      }
+      throw ultimoError;
+    };
+
+    const enHilo = async () => {
+      for (;;) {
+        const indice = siguiente++;
+        if (indice >= posiciones.length) return;
+        await enviarLote(posiciones[indice]);
+      }
+    };
+    await Promise.all(Array.from({ length: ENVIOS_A_LA_VEZ }, enHilo));
 
     const fin = await api(`/importaciones/${id}/finalizar`, { metodo: 'POST' });
     avisar(`Importación completada: ${fin.filas.toLocaleString('es-ES')} registros.`, 'ok');

@@ -47,12 +47,18 @@ CREATE TABLE IF NOT EXISTS importaciones (
 -- impiden que una coincidencia cruce de un campo a otro o de un registro al
 -- siguiente.
 --
--- El id del bloque se calcula (importacion * 100.000.000 + nº de bloque) en vez
--- de dejarlo a AUTOINCREMENT, que costaría una escritura extra por bloque y no
--- permitiría enlazar las dos tablas dentro del mismo lote de inserciones.
+-- El id del bloque se calcula (importacion * 100.000.000 + posición en el CSV)
+-- en vez de dejarlo a AUTOINCREMENT. Así no depende del orden de llegada, que
+-- es lo que permite enviar varios lotes a la vez, y reenviar uno tras un corte
+-- de red sobrescribe el suyo en lugar de duplicarlo.
+--
+-- `n` es cuántos registros lleva el bloque. El total de la carga se calcula
+-- sumándolos al finalizar, no acumulándolos lote a lote: así un reenvío no
+-- falsea la cuenta.
 CREATE TABLE IF NOT EXISTS bloques (
   id             INTEGER PRIMARY KEY,
   importacion_id INTEGER NOT NULL,
+  n              INTEGER NOT NULL,
   norm           TEXT NOT NULL
 );
 

@@ -45,6 +45,7 @@ const RANGO_BLOQUES = 100000000;
 const CREAR_BLOQUES = `CREATE TABLE IF NOT EXISTS bloques (
   id             INTEGER PRIMARY KEY,
   importacion_id INTEGER NOT NULL,
+  n              INTEGER NOT NULL,
   norm           TEXT NOT NULL
 )`;
 
@@ -537,12 +538,22 @@ async function manejarApi(request, env, url, sesion) {
     if (filas.length === 0) return json({ insertadas: 0 });
     if (filas.length > MAX_FILAS_LOTE) return error(`Máximo ${MAX_FILAS_LOTE} filas por lote.`, 413);
 
+    // Posición absoluta de la primera fila del lote dentro del CSV. Es lo que
+    // permite numerar los bloques sin depender del orden de llegada, y por
+    // tanto enviar varios lotes a la vez: cada lote ocupa un rango propio de
+    // identificadores. Reenviar un lote que falló sobrescribe el suyo en vez
+    // de duplicarlo.
+    const desde = Number(cuerpo?.desde);
+    if (!Number.isInteger(desde) || desde < 0 || desde % REGISTROS_POR_BLOQUE !== 0) {
+      return error(`El lote debe indicar "desde" como múltiplo de ${REGISTROS_POR_BLOQUE}.`, 400);
+    }
+
     const columnas = JSON.parse(importacion.columnas);
     const insertarNorm = env.DB.prepare(
-      'INSERT INTO bloques (id, importacion_id, norm) VALUES (?, ?, ?)',
+      'INSERT OR REPLACE INTO bloques (id, importacion_id, n, norm) VALUES (?, ?, ?, ?)',
     );
     const insertarDatos = env.DB.prepare(
-      'INSERT INTO bloques_datos (bloque_id, datos) VALUES (?, ?)',
+      'INSERT OR REPLACE INTO bloques_datos (bloque_id, datos) VALUES (?, ?)',
     );
 
     const sentencias = [];
@@ -552,19 +563,16 @@ async function manejarApi(request, env, url, sesion) {
     for (let i = 0; i < filas.length; i += REGISTROS_POR_BLOQUE) {
       const bloque = prepararBloque(columnas, filas.slice(i, i + REGISTROS_POR_BLOQUE));
       if (!bloque) continue;
-      const idBloque = id * RANGO_BLOQUES + importacion.n_bloques + nBloques;
-      sentencias.push(insertarNorm.bind(idBloque, id, bloque.norm));
+      const idBloque = id * RANGO_BLOQUES + (desde + i) / REGISTROS_POR_BLOQUE;
+      sentencias.push(insertarNorm.bind(idBloque, id, bloque.n, bloque.norm));
       sentencias.push(insertarDatos.bind(idBloque, await comprimir(bloque.datos)));
       insertadas += bloque.n;
       nBloques++;
     }
 
     if (sentencias.length > 0) await env.DB.batch(sentencias);
-    await env.DB.prepare(
-      'UPDATE importaciones SET filas = filas + ?, n_bloques = n_bloques + ? WHERE id = ?',
-    )
-      .bind(insertadas, nBloques, id)
-      .run();
+    // El total no se acumula aquí: reenviar un lote tras un corte de red lo
+    // contaría dos veces. Se calcula al finalizar sumando lo que hay de verdad.
     return json({ insertadas, bloques: nBloques });
   }
 
@@ -573,18 +581,29 @@ async function manejarApi(request, env, url, sesion) {
     exigirAdmin(sesion);
     const id = Number(m[1]);
     const importacion = await env.DB.prepare(
-      'SELECT id, modo, filas, estado FROM importaciones WHERE id = ?',
+      'SELECT id, modo, estado FROM importaciones WHERE id = ?',
     )
       .bind(id)
       .first();
     if (!importacion) return error('La importación no existe.', 404);
     if (importacion.estado !== 'pendiente') return error('La importación ya está cerrada.', 409);
-    if (importacion.filas === 0) {
+
+    const suma = await env.DB.prepare(
+      'SELECT COUNT(*) AS bloques, COALESCE(SUM(n), 0) AS filas FROM bloques WHERE importacion_id = ?',
+    )
+      .bind(id)
+      .first();
+    if (!suma || suma.filas === 0) {
       await borrarImportacion(env, id);
       return error('El CSV no contenía ninguna fila de datos.', 400);
     }
-    await env.DB.prepare("UPDATE importaciones SET estado = 'activa' WHERE id = ?").bind(id).run();
-    return json({ ok: true, filas: importacion.filas });
+
+    await env.DB.prepare(
+      "UPDATE importaciones SET estado = 'activa', filas = ?, n_bloques = ? WHERE id = ?",
+    )
+      .bind(suma.filas, suma.bloques, id)
+      .run();
+    return json({ ok: true, filas: suma.filas });
   }
 
   m = ruta.match(/^\/importaciones\/(\d+)$/);
