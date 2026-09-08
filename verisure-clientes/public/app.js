@@ -2,6 +2,8 @@
    Verisure · Buscador de clientes de baja — lógica de la interfaz
    ═══════════════════════════════════════════════════════════════ */
 
+import { escapar, resaltar } from '/comun.js';
+
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
 const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
 
@@ -54,72 +56,6 @@ function avisar(mensaje, tipo = 'ok') {
   nodo.textContent = mensaje;
   $('#avisos').append(nodo);
   setTimeout(() => nodo.remove(), 5000);
-}
-
-function escapar(texto) {
-  return String(texto).replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-  );
-}
-
-function sinAcentos(valor) {
-  return String(valor).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
-
-const colapsar = (v) => sinAcentos(v).toLowerCase().replace(/[^a-z0-9]/g, '');
-
-function palabras(v) {
-  const t = sinAcentos(v).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  return t ? [...new Set(t.split(' ').filter(Boolean))] : [];
-}
-
-/**
- * Devuelve el valor en HTML con las coincidencias envueltas en <mark>.
- * Compara sin acentos ni signos, pero resalta sobre el texto original.
- */
-function resaltar(valor, consulta) {
-  const texto = String(valor ?? '');
-  if (!texto || !consulta) return escapar(texto);
-
-  // Mapa: posición en el texto normalizado -> posición en el original.
-  let normalizado = '';
-  const mapa = [];
-  for (let i = 0; i < texto.length; i++) {
-    const trozo = colapsar(texto[i]);
-    for (let k = 0; k < trozo.length; k++) mapa.push(i);
-    normalizado += trozo;
-  }
-  if (!normalizado) return escapar(texto);
-
-  const agujas = [colapsar(consulta), ...palabras(consulta).map(colapsar)].filter(
-    (a, i, arr) => a && arr.indexOf(a) === i,
-  );
-
-  const marcado = new Array(texto.length).fill(false);
-  for (const aguja of agujas) {
-    let desde = 0;
-    for (;;) {
-      const pos = normalizado.indexOf(aguja, desde);
-      if (pos === -1) break;
-      for (let k = pos; k < pos + aguja.length; k++) marcado[mapa[k]] = true;
-      desde = pos + 1;
-    }
-  }
-
-  let html = '';
-  let dentro = false;
-  for (let i = 0; i < texto.length; i++) {
-    if (marcado[i] && !dentro) {
-      html += '<mark>';
-      dentro = true;
-    } else if (!marcado[i] && dentro) {
-      html += '</mark>';
-      dentro = false;
-    }
-    html += escapar(texto[i]);
-  }
-  return dentro ? html + '</mark>' : html;
 }
 
 /* ─────────────── Pantallas ─────────────── */

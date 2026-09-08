@@ -20,7 +20,7 @@ import {
   leerToken,
   verificarPassword,
 } from './auth.js';
-import { colapsar, escaparLike, palabras } from './texto.js';
+import { colapsar, criterioBusqueda, escaparLike } from '../public/comun.js';
 
 const REGISTROS_POR_BLOQUE = 100;
 const MAX_FILAS_LOTE = 1000;
@@ -189,37 +189,6 @@ function aObjeto(columnas, valores) {
 /* ------------------------------------------------------------------ */
 /* Criterio de búsqueda                                                */
 /* ------------------------------------------------------------------ */
-
-/**
- * Traduce lo que ha escrito el usuario a un criterio reutilizable: primero
- * para descartar bloques en SQL y después para filtrar registro a registro.
- */
-function criterioBusqueda(consulta) {
-  const colapsada = colapsar(consulta);
-  const tokens = palabras(consulta).map(colapsar).filter(Boolean);
-  if (!colapsada && tokens.length === 0) return null;
-
-  const soloDigitos = colapsada !== '' && /^[0-9]+$/.test(colapsada);
-
-  // Variantes de la consulta completa. Para un número se prueba también sin el
-  // prefijo internacional, para que "+34 600123456" encuentre "600123456".
-  const agujas = [];
-  if (colapsada) {
-    agujas.push(colapsada);
-    if (soloDigitos) {
-      if (/^0034[0-9]{9,}$/.test(colapsada)) agujas.push(colapsada.slice(4));
-      else if (/^34[0-9]{9,}$/.test(colapsada)) agujas.push(colapsada.slice(2));
-    }
-  }
-
-  // Buscar las palabras por separado (para "perez maria" además de "maria
-  // perez") sólo tiene sentido con texto: un número escrito con espacios o
-  // guiones, "638 147 794", es un único dato y no tres fragmentos sueltos.
-  const usarTokens = tokens.length > 1 && !soloDigitos;
-
-  if (agujas.length === 0 && !usarTokens) return null;
-  return { agujas, tokens, usarTokens };
-}
 
 /**
  * Condición SQL para quedarse sólo con los bloques que pueden contener algo.

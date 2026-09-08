@@ -10,7 +10,9 @@
     "db:crear": "wrangler d1 create verisure-clientes",
     "db:migrar": "wrangler d1 migrations apply verisure-clientes --remote",
     "db:migrar:local": "wrangler d1 migrations apply verisure-clientes --local",
-    "secreto": "wrangler secret put AUTH_SECRET"
+    "secreto": "wrangler secret put AUTH_SECRET",
+    "construir": "node scripts/construir-local.mjs",
+    "comparar": "node scripts/comparar-buscadores.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

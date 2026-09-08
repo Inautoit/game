@@ -244,22 +244,67 @@ Se abre en <http://127.0.0.1:8787> con una base de datos SQLite local en
 ## Estructura
 
 ```
-wrangler.toml              Configuración del Worker, los assets y D1
-src/
-  index.js                 API: sesión, búsqueda, importación, usuarios
-  auth.js                  PBKDF2 para contraseñas y cookie firmada (HMAC)
-  texto.js                 Normalización de texto para las búsquedas
 public/
-  index.html               Interfaz (login + aplicación)
-  styles.css               Estilos
-  app.js                   Lógica de la interfaz y lectura del CSV
+  comun.js               LÓGICA DE BÚSQUEDA COMPARTIDA por los dos programas
+  index.html             interfaz de la versión web (login + aplicación)
+  styles.css             estilos
+  app.js                 interfaz: importación del CSV y pintado
+src/
+  index.js               Worker: sesión, búsqueda, importación, usuarios
+  auth.js                PBKDF2 para contraseñas y cookie firmada (HMAC)
+local/
+  plantilla.html         fuente del buscador local (sin la parte compartida)
+buscador-local.html      GENERADO · no editar a mano
 migrations/
-  0001_esquema.sql         Tablas
-  0002_cuentas_iniciales.sql  Cuentas admin y agente
+  0001_esquema.sql       tablas
+  0002_cuentas_iniciales.sql   cuentas admin y agente
 scripts/
-  desplegar.sh             Despliegue completo desde cero
-  crear-hash.mjs           Genera el hash de una contraseña
+  construir-local.mjs    genera buscador-local.html
+  comparar-buscadores.mjs  comprueba que los dos devuelven lo mismo
+  desplegar.sh           despliegue completo desde cero
+  crear-hash.mjs         genera el hash de una contraseña
+wrangler.toml            configuración del Worker, los assets y D1
 ```
+
+## Tocar los dos programas a la vez
+
+Hay dos buscadores —el local y el web— y **comparten `public/comun.js`**: ahí
+está qué significa buscar (cómo se normaliza el texto, cómo se interpreta un
+teléfono con prefijo, cuándo vale con que estén todas las palabras). Un cambio
+ahí llega a los dos.
+
+Lo que no se puede compartir es cómo recorre cada uno los datos: el web lo hace
+con SQLite sobre bloques comprimidos y el local con un `indexOf` sobre una
+cadena en memoria. Por eso hay un comparador que los enfrenta a las mismas
+consultas.
+
+```bash
+# 1. Cambiar la lógica de búsqueda
+$EDITOR public/comun.js          # lo comparten los dos
+$EDITOR src/index.js             # cómo busca el web dentro de los bloques
+$EDITOR local/plantilla.html     # cómo busca el local dentro de la cadena
+
+# 2. Regenerar el archivo local (copia comun.js dentro)
+npm run construir
+
+# 3. Comprobar que los dos siguen devolviendo lo mismo
+npx wrangler dev --port 8793     # en otra terminal
+node scripts/comparar-buscadores.mjs ejemplo-clientes.csv
+
+# 4. Publicar la versión web
+npx wrangler deploy
+```
+
+El comparador carga el mismo CSV en los dos, lanza la misma tanda de consultas
+(identificadores, teléfonos en todos sus formatos, acentos, palabras en otro
+orden, búsqueda por campo…) y falla si alguna cifra no cuadra. Ya ha servido:
+destapó que el buscador local se paraba a los 20.000 resultados mientras el web
+daba el recuento completo.
+
+Cuando los dos avisan de que un recuento está incompleto, el comparador sólo
+exige que coincidan en si hay resultados o no: cada uno deja de contar por un
+motivo distinto (el web por bloques recorridos, el local por número de
+coincidencias).
 
 ---
 
