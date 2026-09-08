@@ -73,11 +73,15 @@ La aplicación va sobre D1, la base de datos de Cloudflare. Lo que marca el
 ritmo no es el espacio sino las **escrituras de fila al día**, que en el plan
 gratuito son 100.000 para toda la cuenta:
 
-| | Gratuito | Workers Paid (5 $/mes) |
+| | Gratuito | Workers Paid (desde 5 $/mes) |
 |---|---|---|
-| Escrituras de fila al día | 100.000 | 50.000.000 |
-| Lecturas de fila al día | 5.000.000 | 25.000 millones/mes |
-| Tamaño máximo de la base | 5 GB en total | 10 GB por base |
+| Escrituras de fila | 100.000 **al día** (límite duro) | Sin límite diario · 50 millones al mes incluidas, después 1 $/millón |
+| Lecturas de fila | 5.000.000 al día (límite duro) | 25.000 millones al mes incluidas |
+| Almacenamiento | 5 GB en total | 5 GB incluidos, después 0,75 $/GB al mes |
+
+Una carga completa de 54.000 clientes son 54.000 escrituras: en el plan de pago
+cabrían unas 900 recargas al mes dentro de lo ya incluido, así que en la
+práctica el coste se queda en los 5 $/mes del plan.
 
 Cada línea del CSV cuesta **una** escritura, así que en el plan gratuito caben
 unos 100.000 clientes al día, en una sola carga. Un fichero de 54.000 registros

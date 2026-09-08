@@ -66,9 +66,8 @@ function mensajeDeError(e, autenticado) {
     return (
       'Se ha agotado el límite de escrituras diarias del plan gratuito de Cloudflare D1 ' +
       '(100.000 filas al día, contando toda la cuenta). Se restablece a las 00:00 UTC ' +
-      '(las 02:00 en España peninsular). Para cargar ficheros de decenas de miles de ' +
-      'registros sin esperar hay que activar el plan Workers Paid (5 $/mes), que sube el ' +
-      'límite a 50 millones de filas al día.'
+      '(las 02:00 en España peninsular). El plan Workers Paid (desde 5 $/mes) elimina el ' +
+      'límite diario e incluye 50 millones de escrituras al mes.'
     );
   }
   if (/daily read/i.test(texto)) {
