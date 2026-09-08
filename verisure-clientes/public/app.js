@@ -5,9 +5,10 @@
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
 const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
 
-// El servidor agrupa cada 100 filas en un bloque, así que un envío de 1.000
-// filas son 10 escrituras en la base de datos.
-const FILAS_POR_LOTE = 1000;
+// El servidor agrupa cada 100 filas en un bloque y comprime sus datos. Se
+// envían 300 filas por petición para que comprimir tres bloques quepa
+// holgadamente en los 10 ms de CPU que da el plan gratuito de Workers.
+const FILAS_POR_LOTE = 300;
 
 let sesion = null;
 let campos = [];

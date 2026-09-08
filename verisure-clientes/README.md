@@ -69,62 +69,75 @@ Base vacía y lista para la primera carga.
 
 ## Cómo se guarda el CSV (y por qué)
 
-La base de datos es D1, y en el plan gratuito su límite real no es el espacio
-sino las **escrituras de fila: 100.000 al día** para toda la cuenta. Convertir
-un fichero de 54.000 clientes en 54.000 filas agota la cuota de un día entero
-con una sola carga.
+La base de datos es D1. En el plan gratuito sus dos límites duros son **100.000
+escrituras de fila al día** y **500 MB por base**, así que convertir un fichero
+de un millón de clientes en un millón de filas es imposible por partida doble.
 
-Por eso el CSV se guarda **troceado en bloques de 100 registros**, no una fila
-por cliente. Cada bloque lleva los mismos registros en dos formatos paralelos:
+Por eso el CSV se guarda **troceado en bloques de 100 registros**, repartidos en
+dos tablas:
 
 ```
-datos  JSON [["1234567","María Pérez","600 123 456"], [...], ...]
-norm   una línea por registro, campos separados por tabulador y normalizados:
-       "1234567\tmariaperez\t600123456"
+bloques        el texto normalizado, que es lo único que se recorre al buscar.
+               Una línea por registro, campos separados por tabulador:
+               "1234567\tmariaperez\t600123456"
+
+bloques_datos  los valores originales en JSON comprimido con gzip (comprime ~5
+               veces). Sólo se piden los de los bloques que salen en pantalla.
 ```
+
+Tenerlos separados importa: al buscar, SQLite recorre únicamente la tabla del
+texto y no arrastra los datos originales, que ocupan otro tanto.
 
 Buscar tiene dos pasadas:
 
-1. Un `LIKE` sobre `norm` dentro de SQLite descarta de golpe los bloques que no
-   contienen el texto. Eso no consume CPU del Worker.
+1. Un `LIKE` sobre `norm` descarta de golpe los bloques que no contienen el
+   texto. Eso ocurre dentro de SQLite y no consume CPU del Worker.
 2. Los bloques que quedan se abren aquí y se mira registro a registro cuál
-   coincide de verdad. Los datos originales sólo se piden para los bloques que
-   acaban saliendo en pantalla.
+   coincide de verdad, comparando sólo el trozo de línea del campo elegido.
 
 Como el texto normalizado sólo tiene letras y números, los tabuladores y saltos
 de línea impiden que una coincidencia cruce de un campo a otro o de un registro
 al siguiente.
 
-### Lo que cuesta en la práctica
+### Medido con un millón de registros de 35 columnas
 
-Medido con 54.000 registros de 35 columnas:
+CSV de partida: 185 MB.
 
-| | Una fila por cliente | En bloques de 100 |
+| | Una fila por cliente | En bloques comprimidos |
 |---|---|---|
-| Escrituras por carga | 54.000 | **540** |
-| Cargas posibles al día (plan gratuito) | 1 | **~185** |
-| Tamaño de la base | 27 MB | 20 MB |
-| Buscar un nº de instalación o teléfono | ~40 ms | ~45 ms |
-| Buscar un término genérico ("madrid") | ~40 ms | ~230 ms |
-| CPU del Worker en el peor caso | — | ~4 ms (el límite gratuito son 10) |
+| Escrituras por carga completa | 1.000.000 ❌ imposible | **20.000** (el 20 % del día) |
+| Cargas completas al día | 0 | **5** |
+| Tamaño de la base | ~4 GB ❌ imposible | **219 MB** de los 500 MB |
+| Tiempo de la carga | — | ~1 minuto |
+| Buscar nº instalación, teléfono o DNI | — | 350-550 ms |
+| Buscar un término genérico | — | ~300 ms |
+| CPU del Worker en el peor caso | — | ~4 ms de los 10 ms del plan |
+
+Comprobado además que los datos vuelven íntegros: 25 registros al azar
+verificados campo a campo contra el CSV original, más la primera y la última
+fila del fichero.
 
 El tope está en 800 bloques por búsqueda, es decir **80.000 registros
-recorridos**. Si el fichero es mayor, el buscador sigue funcionando pero avisa
-de que el recuento es un mínimo ("más de N").
+recorridos**. Ese tope se aplica a los bloques *que ya coinciden*: buscar un
+número de instalación abre uno o dos aunque el fichero tenga millones de
+líneas. Sólo un término muy genérico llega al tope, y entonces la interfaz
+avisa de que el recuento es un mínimo ("más de N") en vez de dar una cifra
+engañosa.
 
 ### Límites del plan
 
 | | Gratuito | Workers Paid (desde 5 $/mes) |
 |---|---|---|
-| Escrituras de fila | 100.000 al día (límite duro) | Sin límite diario · 50 millones al mes incluidas |
-| Lecturas de fila | 5.000.000 al día | 25.000 millones al mes incluidas |
-| Almacenamiento | 5 GB en total | 5 GB incluidos, después 0,75 $/GB al mes |
+| Escrituras de fila | 100.000 al día (límite duro) | Sin límite diario · 50 millones al mes |
+| Lecturas de fila | 5.000.000 al día | 25.000 millones al mes |
+| Tamaño de la base | 500 MB | 10 GB |
 | CPU por petición | 10 ms | 30 s |
 
-Con el diseño en bloques, **el plan gratuito sobra** para un fichero de decenas
-de miles de clientes recargado a diario.
+**Con este diseño el plan gratuito sirve para un millón de clientes.** Sólo
+haría falta pasar al de pago por encima de ~2 millones de registros, que es
+donde los 500 MB empiezan a quedarse cortos.
 
-El modo *Reemplazar todo* vacía la tabla con `DROP TABLE` en vez de borrar
+El modo *Reemplazar todo* vacía las tablas con `DROP TABLE` en vez de borrar
 bloque a bloque, porque borrar también consume escrituras. A cambio, mientras
 dura la importación el buscador se queda sin datos.
 

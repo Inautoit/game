@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS importaciones (
   modo      TEXT NOT NULL,                     -- 'reemplazar' | 'anadir'
   estado    TEXT NOT NULL DEFAULT 'pendiente', -- 'pendiente' | 'activa'
   filas     INTEGER NOT NULL DEFAULT 0,
+  n_bloques INTEGER NOT NULL DEFAULT 0,
   usuario   TEXT NOT NULL,
   creado_en TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -27,28 +28,37 @@ CREATE TABLE IF NOT EXISTS importaciones (
 -- El CSV se guarda TROCEADO EN BLOQUES, no una fila por cliente.
 --
 -- El límite del plan gratuito de D1 son 100.000 escrituras de fila al día, así
--- que convertir 54.000 líneas de CSV en 54.000 filas agota la cuota de un día
--- entero con una sola carga. Guardando 100 registros por fila, esa misma carga
--- son 540 escrituras y se puede repetir tantas veces como haga falta.
+-- que convertir un millón de líneas de CSV en un millón de filas es imposible.
+-- Con 100 registros por bloque, ese mismo fichero son 20.000 escrituras.
 --
--- Cada bloque lleva los mismos registros en dos formatos paralelos:
+-- Los bloques van en dos tablas separadas a propósito:
 --
---   datos  JSON [["1234567","María Pérez","600 123 456"], [...], ...]
---   norm   una línea por registro, campos separados por tabulador, con el
---          texto normalizado: "1234567\tmariaperez\t600123456"
+--   bloques         el texto normalizado, que es lo único que se recorre al
+--                   buscar. Al no llevar los datos al lado, SQLite lee la mitad
+--                   de páginas de disco en cada búsqueda.
+--   bloques_datos   los valores originales en JSON comprimido con gzip. Sólo se
+--                   piden los de los bloques que salen en pantalla. Comprime
+--                   unas 5 veces, que es lo que permite que un millón de
+--                   clientes quepa en los 500 MB del plan gratuito.
 --
--- Buscar es un LIKE sobre `norm`: SQLite descarta de golpe los bloques que no
--- contienen el texto (eso no consume CPU del Worker) y sólo los que quedan se
--- abren para ver qué registros concretos coinciden. Como el texto normalizado
--- sólo tiene letras y números, los tabuladores y saltos de línea impiden que
--- una coincidencia cruce de un campo a otro o de un registro al siguiente.
+-- En `bloques.norm` hay una línea por registro y sus campos van separados por
+-- tabulador, ya normalizados: "1234567\tmariaperez\t600123456". Como el texto
+-- normalizado sólo tiene letras y números, los tabuladores y saltos de línea
+-- impiden que una coincidencia cruce de un campo a otro o de un registro al
+-- siguiente.
 --
--- Sin AUTOINCREMENT: añadiría una escritura extra por cada bloque insertado.
+-- El id del bloque se calcula (importacion * 100.000.000 + nº de bloque) en vez
+-- de dejarlo a AUTOINCREMENT, que costaría una escritura extra por bloque y no
+-- permitiría enlazar las dos tablas dentro del mismo lote de inserciones.
 CREATE TABLE IF NOT EXISTS bloques (
   id             INTEGER PRIMARY KEY,
   importacion_id INTEGER NOT NULL,
-  datos          TEXT NOT NULL,
   norm           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bloques_datos (
+  bloque_id INTEGER PRIMARY KEY,
+  datos     BLOB NOT NULL
 );
 
 -- Intentos de acceso fallidos, para frenar ataques de fuerza bruta.

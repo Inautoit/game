@@ -39,12 +39,41 @@ const MAX_BLOQUES_ABIERTOS = 800;
 const MAX_INTENTOS = 8;
 const VENTANA_INTENTOS_S = 15 * 60;
 
+/** Multiplicador para numerar bloques sin AUTOINCREMENT: importacion * ESTO + n. */
+const RANGO_BLOQUES = 100000000;
+
 const CREAR_BLOQUES = `CREATE TABLE IF NOT EXISTS bloques (
   id             INTEGER PRIMARY KEY,
   importacion_id INTEGER NOT NULL,
-  datos          TEXT NOT NULL,
   norm           TEXT NOT NULL
 )`;
+
+const CREAR_BLOQUES_DATOS = `CREATE TABLE IF NOT EXISTS bloques_datos (
+  bloque_id INTEGER PRIMARY KEY,
+  datos     BLOB NOT NULL
+)`;
+
+/* ------------------------------------------------------------------ */
+/* Compresión (gzip) de los datos originales                           */
+/* ------------------------------------------------------------------ */
+
+async function comprimir(texto) {
+  const flujo = new CompressionStream('gzip');
+  const escritor = flujo.writable.getWriter();
+  escritor.write(new TextEncoder().encode(texto));
+  escritor.close();
+  return new Response(flujo.readable).arrayBuffer();
+}
+
+async function descomprimir(datos) {
+  // D1 puede devolver un BLOB como ArrayBuffer o como array de bytes.
+  const bytes = datos instanceof ArrayBuffer ? new Uint8Array(datos) : Uint8Array.from(datos);
+  const flujo = new DecompressionStream('gzip');
+  const escritor = flujo.writable.getWriter();
+  escritor.write(bytes);
+  escritor.close();
+  return new Response(flujo.readable).text();
+}
 
 /* ------------------------------------------------------------------ */
 /* Respuestas                                                          */
@@ -414,11 +443,12 @@ async function manejarApi(request, env, url, sesion) {
     if (aMostrar.length > 0) {
       const necesarios = [...new Set(aMostrar.map((r) => r.bloqueId))];
       const filas = await env.DB.prepare(
-        `SELECT id, datos FROM bloques WHERE id IN (${necesarios.join(',')})`,
+        `SELECT bloque_id, datos FROM bloques_datos WHERE bloque_id IN (${necesarios.join(',')})`,
       ).all();
-      const datosPorBloque = new Map(
-        (filas.results || []).map((f) => [Number(f.id), JSON.parse(f.datos)]),
-      );
+      const datosPorBloque = new Map();
+      for (const f of filas.results || []) {
+        datosPorBloque.set(Number(f.bloque_id), JSON.parse(await descomprimir(f.datos)));
+      }
       for (const r of aMostrar) {
         const valores = datosPorBloque.get(r.bloqueId)?.[r.indice];
         if (!valores) continue;
@@ -475,7 +505,9 @@ async function manejarApi(request, env, url, sesion) {
     // y con ficheros grandes eso agota el límite diario de D1.
     if (modo === 'reemplazar') {
       await env.DB.prepare('DROP TABLE IF EXISTS bloques').run();
+      await env.DB.prepare('DROP TABLE IF EXISTS bloques_datos').run();
       await env.DB.prepare(CREAR_BLOQUES).run();
+      await env.DB.prepare(CREAR_BLOQUES_DATOS).run();
       await env.DB.prepare('DELETE FROM importaciones').run();
     }
 
@@ -493,7 +525,7 @@ async function manejarApi(request, env, url, sesion) {
     exigirAdmin(sesion);
     const id = Number(m[1]);
     const importacion = await env.DB.prepare(
-      'SELECT id, columnas, estado FROM importaciones WHERE id = ?',
+      'SELECT id, columnas, estado, n_bloques FROM importaciones WHERE id = ?',
     )
       .bind(id)
       .first();
@@ -506,24 +538,34 @@ async function manejarApi(request, env, url, sesion) {
     if (filas.length > MAX_FILAS_LOTE) return error(`Máximo ${MAX_FILAS_LOTE} filas por lote.`, 413);
 
     const columnas = JSON.parse(importacion.columnas);
-    const insertar = env.DB.prepare(
-      'INSERT INTO bloques (importacion_id, datos, norm) VALUES (?, ?, ?)',
+    const insertarNorm = env.DB.prepare(
+      'INSERT INTO bloques (id, importacion_id, norm) VALUES (?, ?, ?)',
     );
+    const insertarDatos = env.DB.prepare(
+      'INSERT INTO bloques_datos (bloque_id, datos) VALUES (?, ?)',
+    );
+
     const sentencias = [];
     let insertadas = 0;
+    let nBloques = 0;
 
     for (let i = 0; i < filas.length; i += REGISTROS_POR_BLOQUE) {
       const bloque = prepararBloque(columnas, filas.slice(i, i + REGISTROS_POR_BLOQUE));
       if (!bloque) continue;
-      sentencias.push(insertar.bind(id, bloque.datos, bloque.norm));
+      const idBloque = id * RANGO_BLOQUES + importacion.n_bloques + nBloques;
+      sentencias.push(insertarNorm.bind(idBloque, id, bloque.norm));
+      sentencias.push(insertarDatos.bind(idBloque, await comprimir(bloque.datos)));
       insertadas += bloque.n;
+      nBloques++;
     }
 
     if (sentencias.length > 0) await env.DB.batch(sentencias);
-    await env.DB.prepare('UPDATE importaciones SET filas = filas + ? WHERE id = ?')
-      .bind(insertadas, id)
+    await env.DB.prepare(
+      'UPDATE importaciones SET filas = filas + ?, n_bloques = n_bloques + ? WHERE id = ?',
+    )
+      .bind(insertadas, nBloques, id)
       .run();
-    return json({ insertadas, bloques: sentencias.length });
+    return json({ insertadas, bloques: nBloques });
   }
 
   m = ruta.match(/^\/importaciones\/(\d+)\/finalizar$/);
@@ -723,9 +765,16 @@ async function borrarImportacion(env, id) {
     // Es la única carga: soltar la tabla entera es instantáneo y no consume
     // escrituras, al contrario que borrar los bloques uno a uno.
     await env.DB.prepare('DROP TABLE IF EXISTS bloques').run();
+    await env.DB.prepare('DROP TABLE IF EXISTS bloques_datos').run();
     await env.DB.prepare(CREAR_BLOQUES).run();
+    await env.DB.prepare(CREAR_BLOQUES_DATOS).run();
   } else {
-    await env.DB.prepare('DELETE FROM bloques WHERE importacion_id = ?').bind(id).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        'DELETE FROM bloques_datos WHERE bloque_id BETWEEN ? AND ?',
+      ).bind(id * RANGO_BLOQUES, (id + 1) * RANGO_BLOQUES - 1),
+      env.DB.prepare('DELETE FROM bloques WHERE importacion_id = ?').bind(id),
+    ]);
   }
   await env.DB.prepare('DELETE FROM importaciones WHERE id = ?').bind(id).run();
 }
