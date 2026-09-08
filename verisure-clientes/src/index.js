@@ -3,6 +3,14 @@
  *
  * Rutas de la API (todo bajo /api). Los archivos estáticos de /public los
  * sirve la plataforma directamente (ver wrangler.toml).
+ *
+ * Cada línea del CSV se guarda como dos arrays JSON en paralelo:
+ *
+ *   valores  ["1234567", "María Pérez", "600 123 456", ...]  tal cual el CSV
+ *   norm     ["1234567", "mariaperez",  "600123456",  ...]   para buscar
+ *
+ * Los nombres de las columnas están una sola vez en `importaciones.columnas`,
+ * así que no se repiten en cada fila. Ver migrations/0003 para el porqué.
  */
 
 import {
@@ -15,12 +23,19 @@ import {
   leerToken,
   verificarPassword,
 } from './auth.js';
-import { colapsar, escaparLike, palabras, tokenizar } from './texto.js';
+import { colapsar, escaparLike, palabras } from './texto.js';
 
 const MAX_FILAS_LOTE = 500;
 const MAX_RESULTADOS = 50;
 const MAX_INTENTOS = 8;
 const VENTANA_INTENTOS_S = 15 * 60;
+
+const CREAR_REGISTROS = `CREATE TABLE IF NOT EXISTS registros (
+  id             INTEGER PRIMARY KEY,
+  importacion_id INTEGER NOT NULL,
+  valores        TEXT NOT NULL,
+  norm           TEXT NOT NULL
+)`;
 
 /* ------------------------------------------------------------------ */
 /* Respuestas                                                          */
@@ -39,6 +54,40 @@ function error(mensaje, status = 400, extra = {}) {
   return json({ error: mensaje, ...extra }, { status });
 }
 
+/**
+ * Convierte un error de D1 en algo que el administrador pueda entender y
+ * accionar. Los límites del plan gratuito son, con diferencia, la causa más
+ * probable al cargar un fichero grande.
+ */
+function mensajeDeError(e, autenticado) {
+  const texto = String(e?.message || e || '');
+
+  if (/daily row write limit/i.test(texto)) {
+    return (
+      'Se ha agotado el límite de escrituras diarias del plan gratuito de Cloudflare D1 ' +
+      '(100.000 filas al día, contando toda la cuenta). Se restablece a las 00:00 UTC ' +
+      '(las 02:00 en España peninsular). Para cargar ficheros de decenas de miles de ' +
+      'registros sin esperar hay que activar el plan Workers Paid (5 $/mes), que sube el ' +
+      'límite a 50 millones de filas al día.'
+    );
+  }
+  if (/daily read/i.test(texto)) {
+    return (
+      'Se ha agotado el límite de lecturas diarias del plan gratuito de Cloudflare D1. ' +
+      'Se restablece a las 00:00 UTC (las 02:00 en España peninsular).'
+    );
+  }
+  if (/storage limit|database is full|too large/i.test(texto)) {
+    return (
+      'La base de datos ha alcanzado el tamaño máximo del plan. Elimina alguna carga ' +
+      'antigua desde "Importar CSV" o activa el plan Workers Paid.'
+    );
+  }
+  // Para personal identificado mostramos el detalle técnico: es una herramienta
+  // interna y así se puede diagnosticar sin abrir los registros del Worker.
+  return autenticado && texto ? `Error interno: ${texto}` : 'Error interno del servidor.';
+}
+
 /* ------------------------------------------------------------------ */
 /* Sesión                                                              */
 /* ------------------------------------------------------------------ */
@@ -51,93 +100,110 @@ function esHttps(request) {
   return new URL(request.url).protocol === 'https:';
 }
 
-async function sesionDe(request, env) {
-  return leerToken(secreto(env), leerCookie(request, COOKIE));
-}
-
 /* ------------------------------------------------------------------ */
 /* Preparación de un registro para búsqueda                            */
 /* ------------------------------------------------------------------ */
 
 function prepararRegistro(columnas, fila) {
-  const datos = {};
-  const norm = {};
-  const normTxt = {};
-  const trozosColapsados = [];
-  const trozosTexto = [];
+  const valores = [];
+  const norm = [];
+  let tieneAlgo = false;
 
-  columnas.forEach((columna, i) => {
+  for (let i = 0; i < columnas.length; i++) {
     const valor = fila[i] === undefined || fila[i] === null ? '' : String(fila[i]).trim();
-    datos[columna] = valor;
     const c = colapsar(valor);
-    const t = tokenizar(valor);
-    norm[columna] = c;
-    normTxt[columna] = t;
-    if (c) trozosColapsados.push(c);
-    if (t) trozosTexto.push(t);
-  });
+    valores.push(valor);
+    norm.push(c);
+    if (c) tieneAlgo = true;
+  }
 
-  return {
-    datos: JSON.stringify(datos),
-    norm: JSON.stringify(norm),
-    normTxt: JSON.stringify(normTxt),
-    busqueda: trozosColapsados.join(' '),
-    busquedaTxt: trozosTexto.join(' '),
-  };
+  return tieneAlgo ? { valores: JSON.stringify(valores), norm: JSON.stringify(norm) } : null;
 }
 
-/** Ruta JSON segura para json_extract, p. ej. $."Nº instalación". */
-function rutaJson(columna) {
-  return '$."' + String(columna).replace(/"/g, '\\"') + '"';
+/** Reconstruye el objeto {columna: valor} que espera la interfaz. */
+function aObjeto(columnas, valores) {
+  const datos = {};
+  columnas.forEach((columna, i) => {
+    datos[columna] = valores[i] ?? '';
+  });
+  return datos;
 }
 
 /* ------------------------------------------------------------------ */
 /* Construcción del WHERE de búsqueda                                  */
 /* ------------------------------------------------------------------ */
 
-function condicionBusqueda(consulta, campo) {
+/**
+ * Devuelve {sql, params} o null si la consulta no da para buscar nada.
+ *
+ * Sin campo, el LIKE va contra el JSON `norm` entero. Como los valores
+ * normalizados sólo contienen letras y números, las comillas y comas que los
+ * separan impiden que una coincidencia cruce de un campo a otro.
+ *
+ * Con campo, se usa json_extract sobre la posición que ocupa esa columna en
+ * cada importación activa (puede ser distinta en cada una).
+ */
+function condicionBusqueda(consulta, campo, activas) {
   const colapsada = colapsar(consulta);
-  const tokens = palabras(consulta);
+  const tokens = palabras(consulta).map(colapsar).filter(Boolean);
   if (!colapsada && tokens.length === 0) return null;
 
-  const alternativas = [];
-  const params = [];
+  const soloDigitos = colapsada !== '' && /^[0-9]+$/.test(colapsada);
 
-  if (campo) {
-    const ruta = rutaJson(campo);
-    if (colapsada) {
-      alternativas.push("json_extract(r.norm, ?) LIKE ? ESCAPE '\\'");
-      params.push(ruta, `%${escaparLike(colapsada)}%`);
-    }
-    if (tokens.length > 1) {
-      const trozos = tokens.map(() => "json_extract(r.norm_txt, ?) LIKE ? ESCAPE '\\'");
-      for (const token of tokens) params.push(ruta, `%${escaparLike(token)}%`);
-      alternativas.push('(' + trozos.join(' AND ') + ')');
-    }
-  } else {
-    if (colapsada) {
-      alternativas.push("r.busqueda LIKE ? ESCAPE '\\'");
-      params.push(`%${escaparLike(colapsada)}%`);
-    }
-    if (tokens.length > 1) {
-      const trozos = tokens.map(() => "r.busqueda_txt LIKE ? ESCAPE '\\'");
-      for (const token of tokens) params.push(`%${escaparLike(token)}%`);
-      alternativas.push('(' + trozos.join(' AND ') + ')');
+  // Variantes de la consulta completa. Para un número se prueba también sin el
+  // prefijo internacional, para que "+34 600123456" encuentre "600123456".
+  const agujas = [];
+  if (colapsada) {
+    agujas.push(colapsada);
+    if (soloDigitos) {
+      if (/^0034[0-9]{9,}$/.test(colapsada)) agujas.push(colapsada.slice(4));
+      else if (/^34[0-9]{9,}$/.test(colapsada)) agujas.push(colapsada.slice(2));
     }
   }
 
-  if (alternativas.length === 0) return null;
-  return { sql: '(' + alternativas.join(' OR ') + ')', params };
+  // Buscar las palabras por separado (para "perez maria" además de "maria
+  // perez") sólo tiene sentido con texto: un número escrito con espacios o
+  // guiones, "638 147 794", es un único dato y no tres fragmentos sueltos.
+  const usarTokens = tokens.length > 1 && !soloDigitos;
+
+  const alternativas = (expresion, params) => {
+    const trozos = [];
+    for (const aguja of agujas) {
+      trozos.push(`${expresion} LIKE ? ESCAPE '\\'`);
+      params.push(`%${escaparLike(aguja)}%`);
+    }
+    if (usarTokens) {
+      trozos.push('(' + tokens.map(() => `${expresion} LIKE ? ESCAPE '\\'`).join(' AND ') + ')');
+      for (const token of tokens) params.push(`%${escaparLike(token)}%`);
+    }
+    return trozos.length ? '(' + trozos.join(' OR ') + ')' : null;
+  };
+
+  const params = [];
+
+  if (!campo) {
+    const sql = alternativas('r.norm', params);
+    return sql ? { sql, params } : null;
+  }
+
+  const grupos = [];
+  for (const importacion of activas) {
+    const indice = importacion.columnas.indexOf(campo);
+    if (indice === -1) continue; // esa carga no tiene esa columna
+    const sub = alternativas(`json_extract(r.norm, '$[${indice}]')`, params);
+    if (sub) grupos.push(`(r.importacion_id = ${Number(importacion.id)} AND ${sub})`);
+  }
+  if (grupos.length === 0) return null;
+  return { sql: '(' + grupos.join(' OR ') + ')', params };
 }
 
 /* ------------------------------------------------------------------ */
 /* Rutas                                                               */
 /* ------------------------------------------------------------------ */
 
-async function manejarApi(request, env, url) {
+async function manejarApi(request, env, url, sesion) {
   const ruta = url.pathname.replace(/^\/api/, '') || '/';
   const metodo = request.method.toUpperCase();
-  const sesion = await sesionDe(request, env);
 
   /* --- login --- */
   if (ruta === '/login' && metodo === 'POST') {
@@ -166,14 +232,26 @@ async function manejarApi(request, env, url) {
 
     const correcta = fila && fila.activo === 1 && (await verificarPassword(password, fila.hash));
     if (!correcta) {
-      await env.DB.prepare('INSERT INTO intentos (usuario, ip, ts) VALUES (?, ?, ?)')
-        .bind(usuario, ip, ahora)
-        .run();
+      // Si no se puede registrar el intento (p. ej. límite de escrituras
+      // agotado) el acceso debe seguir denegándose igualmente.
+      try {
+        await env.DB.prepare('INSERT INTO intentos (usuario, ip, ts) VALUES (?, ?, ?)')
+          .bind(usuario, ip, ahora)
+          .run();
+      } catch (e) {
+        console.error('No se pudo registrar el intento fallido', e?.message);
+      }
       return error('Usuario o contraseña incorrectos.', 401);
     }
 
-    await env.DB.prepare('DELETE FROM intentos WHERE usuario = ? OR ip = ?').bind(usuario, ip).run();
-    await env.DB.prepare('DELETE FROM intentos WHERE ts < ?').bind(desde).run();
+    try {
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM intentos WHERE usuario = ? OR ip = ?').bind(usuario, ip),
+        env.DB.prepare('DELETE FROM intentos WHERE ts < ?').bind(desde),
+      ]);
+    } catch (e) {
+      console.error('No se pudieron limpiar los intentos', e?.message);
+    }
 
     const token = await crearToken(secreto(env), fila);
     return json(
@@ -196,20 +274,26 @@ async function manejarApi(request, env, url) {
 
   /* --- estado general --- */
   if (ruta === '/estado' && metodo === 'GET') {
+    const activas = await importacionesActivas(env);
     const totales = await env.DB.prepare(
-      `SELECT (SELECT COUNT(*) FROM registros r
-                 JOIN importaciones i ON i.id = r.importacion_id
-                WHERE i.estado = 'activa') AS registros,
-              (SELECT COUNT(*) FROM importaciones WHERE estado = 'activa') AS importaciones`,
+      `SELECT COUNT(*) AS n FROM registros r
+        WHERE r.importacion_id IN (SELECT id FROM importaciones WHERE estado = 'activa')`,
     ).first();
     const ultima = await env.DB.prepare(
       `SELECT archivo, filas, usuario, creado_en FROM importaciones
         WHERE estado = 'activa' ORDER BY id DESC LIMIT 1`,
     ).first();
-    const campos = await columnasActivas(env);
+
+    const campos = [];
+    for (const importacion of activas) {
+      for (const columna of importacion.columnas) {
+        if (!campos.includes(columna)) campos.push(columna);
+      }
+    }
+
     return json({
-      registros: totales?.registros || 0,
-      importaciones: totales?.importaciones || 0,
+      registros: totales?.n || 0,
+      importaciones: activas.length,
       ultima: ultima || null,
       campos,
       avisoSecreto: sesion.rol === 'admin' && !env.AUTH_SECRET,
@@ -222,11 +306,12 @@ async function manejarApi(request, env, url) {
     const campo = url.searchParams.get('campo') || '';
     const pagina = Math.max(1, Number(url.searchParams.get('pagina') || 1) || 1);
 
-    const condicion = condicionBusqueda(consulta, campo);
-    if (!condicion) return json({ total: 0, pagina: 1, paginas: 0, resultados: [], campos: [] });
+    const activas = await importacionesActivas(env);
+    const condicion = activas.length ? condicionBusqueda(consulta, campo, activas) : null;
+    if (!condicion) return json({ total: 0, pagina: 1, paginas: 0, resultados: [] });
 
-    const base = `FROM registros r JOIN importaciones i ON i.id = r.importacion_id
-                  WHERE i.estado = 'activa' AND ${condicion.sql}`;
+    const ids = activas.map((i) => Number(i.id)).join(',');
+    const base = `FROM registros r WHERE r.importacion_id IN (${ids}) AND ${condicion.sql}`;
 
     const cuenta = await env.DB.prepare(`SELECT COUNT(*) AS n ${base}`)
       .bind(...condicion.params)
@@ -234,17 +319,21 @@ async function manejarApi(request, env, url) {
     const total = cuenta?.n || 0;
 
     const filas = await env.DB.prepare(
-      `SELECT r.id, r.datos, i.archivo, i.creado_en ${base} ORDER BY r.id LIMIT ? OFFSET ?`,
+      `SELECT r.id, r.importacion_id, r.valores ${base} ORDER BY r.id LIMIT ? OFFSET ?`,
     )
       .bind(...condicion.params, MAX_RESULTADOS, (pagina - 1) * MAX_RESULTADOS)
       .all();
 
-    const resultados = (filas.results || []).map((f) => ({
-      id: f.id,
-      origen: f.archivo,
-      importado: f.creado_en,
-      datos: JSON.parse(f.datos),
-    }));
+    const porId = new Map(activas.map((i) => [Number(i.id), i]));
+    const resultados = (filas.results || []).map((f) => {
+      const importacion = porId.get(Number(f.importacion_id));
+      return {
+        id: f.id,
+        origen: importacion?.archivo || '',
+        importado: importacion?.creado_en || '',
+        datos: aObjeto(importacion?.columnas || [], JSON.parse(f.valores)),
+      };
+    });
 
     return json({
       total,
@@ -252,7 +341,6 @@ async function manejarApi(request, env, url) {
       paginas: Math.ceil(total / MAX_RESULTADOS),
       porPagina: MAX_RESULTADOS,
       resultados,
-      campos: await columnasActivas(env),
     });
   }
 
@@ -264,10 +352,7 @@ async function manejarApi(request, env, url) {
          FROM importaciones ORDER BY id DESC LIMIT 50`,
     ).all();
     return json({
-      importaciones: (filas.results || []).map((f) => ({
-        ...f,
-        columnas: JSON.parse(f.columnas),
-      })),
+      importaciones: (filas.results || []).map((f) => ({ ...f, columnas: JSON.parse(f.columnas) })),
     });
   }
 
@@ -282,6 +367,15 @@ async function manejarApi(request, env, url) {
     if (columnas.length === 0) return error('El CSV no tiene columnas en la primera fila.', 400);
     if (new Set(columnas).size !== columnas.length) {
       return error('Hay nombres de columna repetidos en la cabecera del CSV.', 400);
+    }
+
+    // En modo "reemplazar" se vacía todo ANTES de cargar. Se usa DROP TABLE
+    // porque borrar fila a fila consumiría tantas escrituras como insertarlas,
+    // y con ficheros grandes eso agota el límite diario de D1.
+    if (modo === 'reemplazar') {
+      await env.DB.prepare('DROP TABLE IF EXISTS registros').run();
+      await env.DB.prepare(CREAR_REGISTROS).run();
+      await env.DB.prepare('DELETE FROM importaciones').run();
     }
 
     const res = await env.DB.prepare(
@@ -312,15 +406,13 @@ async function manejarApi(request, env, url) {
 
     const columnas = JSON.parse(importacion.columnas);
     const insertar = env.DB.prepare(
-      `INSERT INTO registros (importacion_id, datos, norm, norm_txt, busqueda, busqueda_txt)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      'INSERT INTO registros (importacion_id, valores, norm) VALUES (?, ?, ?)',
     );
     const sentencias = [];
     for (const fila of filas) {
       if (!Array.isArray(fila)) continue;
       const p = prepararRegistro(columnas, fila);
-      if (!p.busqueda) continue; // fila totalmente vacía
-      sentencias.push(insertar.bind(id, p.datos, p.norm, p.normTxt, p.busqueda, p.busquedaTxt));
+      if (p) sentencias.push(insertar.bind(id, p.valores, p.norm));
     }
     if (sentencias.length > 0) await env.DB.batch(sentencias);
     await env.DB.prepare('UPDATE importaciones SET filas = filas + ? WHERE id = ?')
@@ -343,13 +435,6 @@ async function manejarApi(request, env, url) {
     if (importacion.filas === 0) {
       await borrarImportacion(env, id);
       return error('El CSV no contenía ninguna fila de datos.', 400);
-    }
-
-    if (importacion.modo === 'reemplazar') {
-      const antiguas = await env.DB.prepare('SELECT id FROM importaciones WHERE id != ?')
-        .bind(id)
-        .all();
-      for (const fila of antiguas.results || []) await borrarImportacion(env, fila.id);
     }
     await env.DB.prepare("UPDATE importaciones SET estado = 'activa' WHERE id = ?").bind(id).run();
     return json({ ok: true, filas: importacion.filas });
@@ -402,7 +487,9 @@ async function manejarApi(request, env, url) {
     exigirAdmin(sesion);
     const id = Number(m[1]);
     const cuerpo = await leerJson(request);
-    const destino = await env.DB.prepare('SELECT id, usuario, rol, activo FROM usuarios WHERE id = ?')
+    const destino = await env.DB.prepare(
+      'SELECT id, usuario, rol, activo FROM usuarios WHERE id = ?',
+    )
       .bind(id)
       .first();
     if (!destino) return error('El usuario no existe.', 404);
@@ -420,12 +507,17 @@ async function manejarApi(request, env, url) {
         .run();
     }
     if (cuerpo?.rol !== undefined || cuerpo?.activo !== undefined) {
-      const rol = cuerpo?.rol === undefined ? destino.rol : cuerpo.rol === 'admin' ? 'admin' : 'usuario';
+      const rol =
+        cuerpo?.rol === undefined ? destino.rol : cuerpo.rol === 'admin' ? 'admin' : 'usuario';
       const activo = cuerpo?.activo === undefined ? destino.activo : cuerpo.activo ? 1 : 0;
       if (destino.id === sesion.id && (rol !== 'admin' || activo !== 1)) {
         return error('No puedes quitarte a ti mismo el acceso de administrador.', 400);
       }
-      if (destino.rol === 'admin' && (rol !== 'admin' || activo !== 1) && (await adminsActivos(env)) <= 1) {
+      if (
+        destino.rol === 'admin' &&
+        (rol !== 'admin' || activo !== 1) &&
+        (await adminsActivos(env)) <= 1
+      ) {
         return error('Debe quedar al menos un administrador activo.', 400);
       }
       await env.DB.prepare('UPDATE usuarios SET rol = ?, activo = ? WHERE id = ?')
@@ -509,24 +601,28 @@ async function adminsActivos(env) {
   return fila?.n || 0;
 }
 
-async function borrarImportacion(env, id) {
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM registros WHERE importacion_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM importaciones WHERE id = ?').bind(id),
-  ]);
+async function importacionesActivas(env) {
+  const filas = await env.DB.prepare(
+    `SELECT id, archivo, columnas, creado_en FROM importaciones
+      WHERE estado = 'activa' ORDER BY id DESC`,
+  ).all();
+  return (filas.results || []).map((f) => ({ ...f, columnas: JSON.parse(f.columnas) }));
 }
 
-async function columnasActivas(env) {
-  const filas = await env.DB.prepare(
-    "SELECT columnas FROM importaciones WHERE estado = 'activa' ORDER BY id DESC",
-  ).all();
-  const vistas = [];
-  for (const fila of filas.results || []) {
-    for (const columna of JSON.parse(fila.columnas)) {
-      if (!vistas.includes(columna)) vistas.push(columna);
-    }
+async function borrarImportacion(env, id) {
+  const otras = await env.DB.prepare('SELECT COUNT(*) AS n FROM importaciones WHERE id != ?')
+    .bind(id)
+    .first();
+
+  if ((otras?.n || 0) === 0) {
+    // Es la única carga: soltar la tabla entera es instantáneo y no consume
+    // escrituras, al contrario que borrar decenas de miles de filas.
+    await env.DB.prepare('DROP TABLE IF EXISTS registros').run();
+    await env.DB.prepare(CREAR_REGISTROS).run();
+  } else {
+    await env.DB.prepare('DELETE FROM registros WHERE importacion_id = ?').bind(id).run();
   }
-  return vistas;
+  await env.DB.prepare('DELETE FROM importaciones WHERE id = ?').bind(id).run();
 }
 
 /* ------------------------------------------------------------------ */
@@ -537,12 +633,14 @@ export default {
     if (!url.pathname.startsWith('/api/')) {
       return new Response('No encontrado', { status: 404 });
     }
+    let sesion = null;
     try {
-      return await manejarApi(request, env, url);
+      sesion = await leerToken(secreto(env), leerCookie(request, COOKIE));
+      return await manejarApi(request, env, url, sesion);
     } catch (e) {
       if (e instanceof ErrorHttp) return error(e.message, e.status);
-      console.error('Error inesperado', e);
-      return error('Error interno del servidor.', 500);
+      console.error('Error inesperado', e?.message, e?.stack);
+      return error(mensajeDeError(e, Boolean(sesion)), 500);
     }
   },
 };

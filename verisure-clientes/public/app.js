@@ -438,7 +438,9 @@ async function importar() {
   if (!csvPreparado) return;
   const modo = $$('input[name="modo"]').find((r) => r.checked).value;
   const boton = $('#boton-importar');
+  const cajaError = $('#import-error');
   boton.disabled = true;
+  cajaError.hidden = true;
   $('#progreso').hidden = false;
 
   try {
@@ -465,7 +467,11 @@ async function importar() {
     await cargarEstado();
     await cargarImportaciones();
   } catch (e) {
-    avisar(e.message, 'mal');
+    // El error se deja fijo en pantalla: los avisos flotantes desaparecen y
+    // con un fichero grande el fallo puede llegar minutos después de empezar.
+    cajaError.textContent = e.message;
+    cajaError.hidden = false;
+    avisar('La importación no se ha completado.', 'mal');
   } finally {
     boton.disabled = false;
   }
@@ -474,6 +480,7 @@ async function importar() {
 function cancelarImportacion() {
   csvPreparado = null;
   $('#previo').hidden = true;
+  $('#import-error').hidden = true;
   $('#progreso').hidden = true;
   $('#progreso-relleno').style.width = '0%';
   $('#progreso-texto').textContent = '';

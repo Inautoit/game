@@ -155,13 +155,15 @@
                 <legend>¿Qué hacer con los datos que ya hay?</legend>
                 <label class="opcion">
                   <input type="radio" name="modo" value="reemplazar" checked />
-                  <span><strong>Reemplazar todo</strong><em>Borra las cargas anteriores y deja sólo este archivo.</em></span>
+                  <span><strong>Reemplazar todo</strong><em>Vacía la base antes de cargar, así que el buscador queda sin datos mientras dura la importación. Es la opción recomendada para la actualización periódica del fichero.</em></span>
                 </label>
                 <label class="opcion">
                   <input type="radio" name="modo" value="anadir" />
                   <span><strong>Añadir</strong><em>Mantiene lo anterior y suma estos registros.</em></span>
                 </label>
               </fieldset>
+
+              <p id="import-error" class="error" hidden></p>
 
               <div class="acciones">
                 <button id="boton-importar" class="boton boton--primario">Importar registros</button>
