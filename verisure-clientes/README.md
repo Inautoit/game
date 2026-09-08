@@ -47,6 +47,15 @@ Hay un fichero de muestra en [`ejemplo-clientes.csv`](ejemplo-clientes.csv).
 
 ---
 
+## Aplicación publicada
+
+<https://verisure-clientes.inautoit.workers.dev>
+
+Contiene los 5 registros de muestra de `ejemplo-clientes.csv`. Desaparecen en
+cuanto se sube el fichero real con la opción *Reemplazar todo*.
+
+---
+
 ## Cuentas iniciales
 
 | Usuario | Contraseña | Rol |
