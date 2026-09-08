@@ -47,11 +47,48 @@ Hay un fichero de muestra en [`ejemplo-clientes.csv`](ejemplo-clientes.csv).
 
 ---
 
-## Aplicación publicada
+## Dos formas de usarlo
+
+### 1. Buscador local — `buscador-local.html`
+
+Un único archivo HTML. Se abre haciendo doble clic, se elige el CSV y ya se
+puede buscar. **No instala nada, no sube el fichero a ningún sitio y funciona
+sin conexión**: todo ocurre dentro del navegador.
+
+Es la opción para ficheros grandes: no tiene límites de ningún plan.
+
+Medido con un CSV de 185 MB y 1.000.000 de registros de 35 columnas, en
+Chromium:
+
+| | |
+|---|---|
+| Preparar el fichero (una vez, al abrirlo) | **18 s** |
+| Memoria usada por el navegador | 391 MB |
+| Buscar nº de instalación, teléfono o DNI | **150-290 ms** |
+| Buscar un término sin resultados | 69 ms |
+
+Cómo aguanta un millón de filas sin base de datos: en vez de guardar un objeto
+por cliente, mantiene **una sola cadena de texto** con todo el fichero
+normalizado (sin acentos, en minúsculas y sin espacios ni signos), un salto de
+línea por registro y un tabulador entre campos, más un `Int32Array` con la
+posición en la que empieza cada registro. Buscar es un `indexOf` sobre esa
+cadena: lo resuelve el motor del navegador en código nativo sobre memoria
+contigua, que es la operación de texto más rápida que existe. La posición
+encontrada se traduce a número de registro con una búsqueda binaria.
+
+Comprobada la integridad: la primera fila, la última y varias del medio,
+verificadas campo a campo (las 35 columnas) contra el CSV original.
+
+Lo que no tiene: usuarios ni contraseñas. El control de acceso es quién tiene
+el fichero.
+
+### 2. Aplicación web publicada
 
 <https://verisure-clientes.inautoit.workers.dev>
 
-Base vacía y lista para la primera carga.
+Con login y roles, para que la consulten varios agentes sin repartir el
+fichero. Los administradores suben el CSV desde el navegador. Base vacía y
+lista para la primera carga.
 
 ---
 

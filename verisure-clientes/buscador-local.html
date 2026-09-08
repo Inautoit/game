@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Verisure · Buscador local de clientes</title>
+    <style>
+      :root {
+        --rojo: #e2001a; --rojo-claro: #ff2b3d; --fondo: #070a10; --fondo-2: #0c111b;
+        --panel: #111826; --borde: rgba(255,255,255,.08); --borde-fuerte: rgba(255,255,255,.16);
+        --texto: #e9eef7; --apagado: #8a97ad; --radio: 14px;
+        --sombra: 0 18px 44px rgba(0,0,0,.45);
+        --fuente: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0; font-family: var(--fuente); color: var(--texto);
+        background: radial-gradient(1100px 600px at 12% -10%, rgba(226,0,26,.16), transparent 60%),
+                    radial-gradient(900px 500px at 100% 0%, rgba(40,90,200,.12), transparent 55%), var(--fondo);
+        -webkit-font-smoothing: antialiased;
+      }
+      h1, h2 { margin: 0 0 .35em; letter-spacing: -.02em; line-height: 1.2; }
+      p { margin: 0 0 1em; line-height: 1.55; }
+      .apagado { color: var(--apagado); font-size: .87rem; }
+      [hidden] { display: none !important; }
+
+      .marca { display: flex; align-items: center; gap: 10px; }
+      .marca svg { width: 34px; height: 34px; fill: var(--rojo);
+        filter: drop-shadow(0 6px 18px rgba(226,0,26,.45)); }
+      .marca svg .tick { fill: #fff; }
+      .marca span { font-size: 1.2rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+
+      .envoltorio { max-width: 1180px; margin: 0 auto; padding: clamp(1rem, 3vw, 2rem); }
+      .tarjeta { background: linear-gradient(180deg, var(--panel), var(--fondo-2));
+        border: 1px solid var(--borde); border-radius: var(--radio); padding: 1.4rem; box-shadow: var(--sombra); }
+      .tarjeta + .tarjeta { margin-top: 1.2rem; }
+
+      .inicio { min-height: 100%; display: flex; flex-direction: column; justify-content: center;
+        align-items: center; padding: clamp(1rem, 4vw, 3rem); text-align: center; }
+      .inicio .tarjeta { max-width: 640px; width: 100%; text-align: left; margin-top: 2rem; }
+      .inicio h1 { font-size: clamp(1.7rem, 3.2vw, 2.6rem); margin-top: 1.6rem; }
+      .inicio > p { color: var(--apagado); max-width: 56ch; }
+
+      .zona { display: flex; flex-direction: column; align-items: center; gap: .5rem;
+        padding: 2.4rem 1rem; border: 1.5px dashed var(--borde-fuerte); border-radius: var(--radio);
+        cursor: pointer; transition: border-color .15s, background .15s; }
+      .zona:hover, .zona.encima { border-color: var(--rojo); background: rgba(226,0,26,.06); }
+      .zona svg { width: 34px; height: 34px; fill: none; stroke: var(--rojo); stroke-width: 1.8;
+        stroke-linecap: round; stroke-linejoin: round; }
+
+      input[type=text], input[type=search], select {
+        width: 100%; padding: .72rem .85rem; font: inherit; font-size: .95rem; color: var(--texto);
+        background: rgba(255,255,255,.04); border: 1px solid var(--borde-fuerte); border-radius: 10px;
+        transition: border-color .15s, box-shadow .15s; }
+      input:focus, select:focus, button:focus-visible { outline: none; border-color: var(--rojo);
+        box-shadow: 0 0 0 3px rgba(226,0,26,.22); }
+      input::placeholder { color: #64708a; }
+
+      .boton { font: inherit; font-weight: 600; font-size: .92rem; padding: .7rem 1.2rem;
+        border-radius: 10px; border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+        transition: filter .15s, background .15s; }
+      .boton--primario { color: #fff; background: linear-gradient(180deg, var(--rojo-claro), var(--rojo));
+        box-shadow: 0 8px 22px rgba(226,0,26,.32); }
+      .boton--primario:hover { filter: brightness(1.08); }
+      .boton--fantasma { color: var(--texto); background: rgba(255,255,255,.05); border-color: var(--borde-fuerte); }
+      .boton--fantasma:hover { background: rgba(255,255,255,.1); }
+      .boton--mini { padding: .4rem .7rem; font-size: .8rem; }
+      .boton:disabled { filter: grayscale(.7) brightness(.7); cursor: not-allowed; }
+
+      .progreso { margin-top: 1.2rem; }
+      .barra { height: 8px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+      .barra i { display: block; height: 100%; width: 0; border-radius: 999px;
+        background: linear-gradient(90deg, var(--rojo), var(--rojo-claro)); transition: width .2s; }
+
+      .cabecera { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 1rem;
+        padding: .75rem clamp(1rem, 3vw, 2rem); background: rgba(8,11,18,.82);
+        backdrop-filter: blur(14px); border-bottom: 1px solid var(--borde); flex-wrap: wrap; }
+      .cabecera .marca span { font-size: .9rem; }
+      .cabecera__datos { margin-left: auto; display: flex; align-items: center; gap: .8rem;
+        font-size: .82rem; color: var(--apagado); }
+
+      .buscador { display: grid; grid-template-columns: 1fr 230px auto; gap: .6rem; }
+      .entrada { position: relative; }
+      .entrada input { padding-left: 2.7rem; height: 100%; font-size: 1rem; }
+      .lupa { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); width: 18px;
+        height: 18px; fill: none; stroke: var(--apagado); stroke-width: 2; stroke-linecap: round; }
+      .atajos { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .8rem; }
+      .atajo { font: inherit; font-size: .78rem; color: var(--apagado); background: rgba(255,255,255,.04);
+        border: 1px solid var(--borde); border-radius: 999px; padding: .3rem .75rem; cursor: pointer; }
+      .atajo:hover { color: var(--texto); border-color: var(--borde-fuerte); }
+      .atajo.activo { color: #fff; background: rgba(226,0,26,.18); border-color: rgba(226,0,26,.4); }
+
+      .resultados { display: grid; gap: .8rem; margin-top: 1.2rem; }
+      .registro { background: linear-gradient(180deg, var(--panel), var(--fondo-2));
+        border: 1px solid var(--borde); border-radius: var(--radio); padding: 1rem 1.1rem; }
+      .registro__cabecera { display: flex; align-items: baseline; justify-content: space-between;
+        gap: 1rem; margin-bottom: .8rem; }
+      .registro__titulo { font-size: 1.02rem; font-weight: 700; }
+      .campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .7rem 1.2rem; }
+      .dato__clave { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
+        color: var(--apagado); margin-bottom: .15rem; }
+      .dato__valor { font-size: .93rem; overflow-wrap: anywhere; }
+      mark { background: rgba(226,0,26,.32); color: #fff; border-radius: 3px; padding: 0 2px; }
+      .vacio { text-align: center; padding: 3rem 1rem; color: var(--apagado);
+        border: 1px dashed var(--borde-fuerte); border-radius: var(--radio); }
+      .fila-lista { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        padding: .75rem .9rem; border: 1px solid var(--borde); border-radius: 10px;
+        background: rgba(255,255,255,.02); font-size: .88rem; }
+      .paginacion { display: flex; align-items: center; justify-content: center; gap: 1rem;
+        margin-top: 1.2rem; font-size: .88rem; color: var(--apagado); }
+      .etiqueta { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+        padding: .2rem .5rem; border-radius: 999px; background: rgba(255,255,255,.08); color: var(--apagado); }
+      .error { color: #ff8a95; background: rgba(226,0,26,.1); border: 1px solid rgba(226,0,26,.3);
+        border-radius: 9px; padding: .6rem .75rem; font-size: .87rem; margin: .9rem 0 0; }
+      @media (max-width: 900px) { .buscador { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <!-- ═══════════ Elegir el fichero ═══════════ -->
+    <section id="inicio" class="inicio">
+      <div class="marca">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M16 2 4 6v10c0 7 5 12 12 14 7-2 12-7 12-14V6z" />
+          <path class="tick" d="m10 15 4.5 5L23 11l-2.2-2-6.3 6.6L12 13z" />
+        </svg>
+        <span>Verisure</span>
+      </div>
+      <h1>Buscador local de clientes de baja</h1>
+      <p>
+        Abre tu CSV y búscalo por número de instalación, teléfono, DNI, nombre o cualquier otro
+        campo. El fichero no sale de este ordenador: no se sube a ningún sitio y funciona sin
+        conexión.
+      </p>
+
+      <div class="tarjeta">
+        <label id="zona" class="zona">
+          <input id="archivo" type="file" accept=".csv,.txt,text/csv" hidden />
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+            <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+          </svg>
+          <strong>Arrastra aquí el CSV o haz clic para elegirlo</strong>
+          <span class="apagado">Admite ficheros de cientos de MB y millones de filas.</span>
+        </label>
+        <div id="progreso" class="progreso" hidden>
+          <div class="barra"><i id="relleno"></i></div>
+          <p id="progreso-texto" class="apagado" style="margin:.6rem 0 0"></p>
+        </div>
+        <p id="inicio-error" class="error" hidden></p>
+      </div>
+    </section>
+
+    <!-- ═══════════ Buscador ═══════════ -->
+    <div id="app" hidden>
+      <header class="cabecera">
+        <div class="marca">
+          <svg viewBox="0 0 32 32" aria-hidden="true" style="width:26px;height:26px">
+            <path d="M16 2 4 6v10c0 7 5 12 12 14 7-2 12-7 12-14V6z" />
+            <path class="tick" d="m10 15 4.5 5L23 11l-2.2-2-6.3 6.6L12 13z" />
+          </svg>
+          <span>Verisure</span>
+        </div>
+        <div class="cabecera__datos">
+          <span id="info-fichero">—</span>
+          <button id="boton-otro" class="boton boton--fantasma boton--mini">Cambiar de fichero</button>
+        </div>
+      </header>
+
+      <main class="envoltorio">
+        <div class="tarjeta">
+          <form id="form" class="buscador">
+            <div class="entrada">
+              <svg class="lupa" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" /><line x1="16.5" y1="16.5" x2="21" y2="21" />
+              </svg>
+              <input id="q" type="search" autocomplete="off"
+                placeholder="Nº de instalación, teléfono, DNI, nombre, dirección…" />
+            </div>
+            <select id="campo"><option value="">Todos los campos</option></select>
+            <button class="boton boton--primario" type="submit">Buscar</button>
+          </form>
+          <div id="atajos" class="atajos"></div>
+        </div>
+
+        <div id="resultados" class="resultados"></div>
+        <div id="paginacion" class="paginacion" hidden>
+          <button class="boton boton--fantasma" data-paso="-1">← Anteriores</button>
+          <span id="paginacion-texto"></span>
+          <button class="boton boton--fantasma" data-paso="1">Siguientes →</button>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      /* ═══════════════════════════════════════════════════════════
+         Buscador local. Todo ocurre en este navegador: el CSV no se
+         sube a ningún sitio.
+
+         Cómo aguanta un millón de filas sin base de datos:
+
+           filas    las líneas originales del CSV, tal cual, para mostrarlas
+           blob     UNA sola cadena con todo el fichero normalizado (sin
+                    acentos, minúsculas y sin espacios ni signos), con un
+                    salto de línea por registro y un tabulador entre campos
+           saltos   posición en la que empieza cada registro dentro de `blob`
+
+         Buscar es un indexOf sobre `blob`. Lo resuelve el motor del
+         navegador en código nativo sobre una cadena contigua, que es la
+         operación de texto más rápida que hay: unos 150 ms sobre 150 MB.
+         La posición encontrada se traduce a número de registro con una
+         búsqueda binaria en `saltos`.
+         ═══════════════════════════════════════════════════════════ */
+
+      const $ = (s) => document.querySelector(s);
+      const POR_PAGINA = 50;
+      const MAX_COINCIDENCIAS = 20000;
+
+      let columnas = [];
+      let filas = [];       // líneas originales del CSV (sin la cabecera)
+      let blob = '';        // todo el fichero normalizado
+      let saltos = null;    // Int32Array: dónde empieza cada registro en `blob`
+      let ultima = { q: '', campo: '', pagina: 1, indices: [], parcial: false };
+
+      /* ── Normalización ───────────────────────────────────────── */
+
+      const ACENTOS = [[/[áàäâãå]/g, 'a'], [/[éèëê]/g, 'e'], [/[íìïî]/g, 'i'],
+        [/[óòöôõ]/g, 'o'], [/[úùüû]/g, 'u'], [/ñ/g, 'n'], [/ç/g, 'c']];
+
+      /** Normaliza respetando los tabuladores y saltos de línea. */
+      function normalizar(texto) {
+        let t = texto.toLowerCase();
+        for (const [re, letra] of ACENTOS) t = t.replace(re, letra);
+        return t.replace(/[^a-z0-9\t\n]/g, '');
+      }
+
+      const colapsar = (v) => normalizar(String(v)).replace(/[\t\n]/g, '');
+
+      function palabras(v) {
+        const t = String(v).toLowerCase();
+        let s = t;
+        for (const [re, letra] of ACENTOS) s = s.replace(re, letra);
+        s = s.replace(/[^a-z0-9]+/g, ' ').trim();
+        return s ? [...new Set(s.split(' ').filter(Boolean))] : [];
+      }
+
+      /* ── CSV ─────────────────────────────────────────────────── */
+
+      /** Separa una línea en campos respetando las comillas dobles. */
+      function separarCampos(linea) {
+        if (linea.indexOf('"') === -1) return linea.split(',');
+        const campos = [];
+        let celda = '';
+        let comillas = false;
+        for (let i = 0; i < linea.length; i++) {
+          const c = linea[i];
+          if (comillas) {
+            if (c === '"') {
+              if (linea[i + 1] === '"') { celda += '"'; i++; } else comillas = false;
+            } else celda += c;
+          } else if (c === '"') comillas = true;
+          else if (c === ',') { campos.push(celda); celda = ''; }
+          else celda += c;
+        }
+        campos.push(celda);
+        return campos;
+      }
+
+      /* ── Lectura e indexado ──────────────────────────────────── */
+
+      const esperar = () => new Promise((r) => setTimeout(r, 0));
+
+      function paso(porcentaje, texto) {
+        $('#relleno').style.width = porcentaje + '%';
+        $('#progreso-texto').textContent = texto;
+      }
+
+      async function cargar(archivo) {
+        $('#inicio-error').hidden = true;
+        $('#progreso').hidden = false;
+        paso(5, `Leyendo ${archivo.name} (${(archivo.size / 1048576).toFixed(0)} MB)…`);
+        await esperar();
+
+        let texto = await archivo.text();
+        if (texto.charCodeAt(0) === 0xfeff) texto = texto.slice(1);
+
+        paso(25, 'Separando las líneas…');
+        await esperar();
+        let lineas = texto.split('\n');
+        texto = null; // liberar los 185 MB del fichero entero
+
+        // Una línea puede llevar un salto dentro de unas comillas: en ese caso
+        // el número de comillas es impar y hay que unirla con la siguiente.
+        const unidas = [];
+        let pendiente = null;
+        for (let i = 0; i < lineas.length; i++) {
+          const linea = lineas[i].endsWith('\r') ? lineas[i].slice(0, -1) : lineas[i];
+          const acumulada = pendiente === null ? linea : pendiente + ' ' + linea;
+          const impares = (acumulada.match(/"/g) || []).length % 2 === 1;
+          if (impares) { pendiente = acumulada; continue; }
+          pendiente = null;
+          if (acumulada.trim() !== '') unidas.push(acumulada);
+        }
+        if (pendiente !== null && pendiente.trim() !== '') unidas.push(pendiente);
+        lineas = null;
+
+        if (unidas.length < 2) throw new Error('El archivo no tiene cabecera y al menos una fila.');
+
+        columnas = separarCampos(unidas[0]).map((c, i) => c.trim() || 'Columna ' + (i + 1));
+        const vistas = new Set();
+        columnas = columnas.map((c) => {
+          let nombre = c, n = 2;
+          while (vistas.has(nombre)) nombre = `${c} (${n++})`;
+          vistas.add(nombre);
+          return nombre;
+        });
+        filas = unidas.slice(1);
+
+        // Construcción del texto normalizado, por lotes para poder ir
+        // informando del avance sin bloquear la pantalla.
+        paso(40, 'Preparando el índice de búsqueda…');
+        await esperar();
+        const partes = [];
+        const LOTE = 5000;
+        for (let i = 0; i < filas.length; i += LOTE) {
+          const lote = [];
+          for (let k = i; k < Math.min(i + LOTE, filas.length); k++) {
+            const linea = filas[k];
+            lote.push(linea.indexOf('"') === -1
+              ? linea.replace(/,/g, '\t')
+              : separarCampos(linea).join('\t'));
+          }
+          partes.push(normalizar(lote.join('\n')));
+          if (i % (LOTE * 20) === 0) {
+            paso(40 + Math.round((i / filas.length) * 45),
+              `Preparando el índice… ${i.toLocaleString('es-ES')} de ${filas.length.toLocaleString('es-ES')}`);
+            await esperar();
+          }
+        }
+        blob = partes.join('\n');
+
+        paso(92, 'Localizando los registros…');
+        await esperar();
+        saltos = new Int32Array(filas.length + 1);
+        let pos = 0;
+        for (let i = 0; i < filas.length; i++) {
+          saltos[i] = pos;
+          const siguiente = blob.indexOf('\n', pos);
+          pos = siguiente === -1 ? blob.length : siguiente + 1;
+        }
+        saltos[filas.length] = blob.length + 1;
+
+        paso(100, 'Listo.');
+        return { registros: filas.length, columnas: columnas.length };
+      }
+
+      /* ── Búsqueda ────────────────────────────────────────────── */
+
+      function criterioBusqueda(consulta) {
+        const colapsada = colapsar(consulta);
+        const tokens = palabras(consulta);
+        if (!colapsada && tokens.length === 0) return null;
+
+        const soloDigitos = colapsada !== '' && /^[0-9]+$/.test(colapsada);
+        const agujas = [];
+        if (colapsada) {
+          agujas.push(colapsada);
+          // "+34 600123456" tiene que encontrar "600123456"
+          if (soloDigitos) {
+            if (/^0034[0-9]{9,}$/.test(colapsada)) agujas.push(colapsada.slice(4));
+            else if (/^34[0-9]{9,}$/.test(colapsada)) agujas.push(colapsada.slice(2));
+          }
+        }
+        // Un número con espacios ("638 147 794") es un único dato, no tres.
+        const usarTokens = tokens.length > 1 && !soloDigitos;
+        if (agujas.length === 0 && !usarTokens) return null;
+        return { agujas, tokens, usarTokens };
+      }
+
+      /** De una posición dentro de `blob` al número de registro. */
+      function registroEn(posicion) {
+        let bajo = 0;
+        let alto = filas.length - 1;
+        while (bajo < alto) {
+          const medio = (bajo + alto + 1) >> 1;
+          if (saltos[medio] <= posicion) bajo = medio;
+          else alto = medio - 1;
+        }
+        return bajo;
+      }
+
+      function coincide(indice, criterio, indiceCampo) {
+        let inicio = saltos[indice];
+        let fin = saltos[indice + 1] - 1;
+        if (indiceCampo !== -1) {
+          for (let k = 0; k < indiceCampo; k++) {
+            inicio = blob.indexOf('\t', inicio);
+            if (inicio === -1 || inicio >= fin) return false;
+            inicio++;
+          }
+          const corte = blob.indexOf('\t', inicio);
+          if (corte !== -1 && corte < fin) fin = corte;
+        }
+        const contiene = (aguja) => {
+          const p = blob.indexOf(aguja, inicio);
+          return p !== -1 && p + aguja.length <= fin;
+        };
+        for (const aguja of criterio.agujas) if (contiene(aguja)) return true;
+        if (criterio.usarTokens && criterio.tokens.every(contiene)) return true;
+        return false;
+      }
+
+      function buscar(consulta, campo) {
+        const criterio = criterioBusqueda(consulta);
+        if (!criterio || filas.length === 0) return { indices: [], parcial: false };
+
+        const indiceCampo = campo ? columnas.indexOf(campo) : -1;
+        if (campo && indiceCampo === -1) return { indices: [], parcial: false };
+
+        // Términos con los que barrer el texto. Con las palabras sueltas basta
+        // barrer la más larga (la más selectiva) y comprobar el resto después.
+        const barridos = [...criterio.agujas];
+        if (criterio.usarTokens) {
+          barridos.push([...criterio.tokens].sort((a, b) => b.length - a.length)[0]);
+        }
+
+        const encontrados = new Set();
+        let parcial = false;
+        for (const termino of barridos) {
+          if (!termino) continue;
+          let desde = 0;
+          for (;;) {
+            const posicion = blob.indexOf(termino, desde);
+            if (posicion === -1) break;
+            const indice = registroEn(posicion);
+            if (!encontrados.has(indice) && coincide(indice, criterio, indiceCampo)) {
+              encontrados.add(indice);
+              if (encontrados.size >= MAX_COINCIDENCIAS) { parcial = true; break; }
+            }
+            // Saltar al siguiente registro: dentro de uno ya no hay más que ver.
+            desde = Math.max(posicion + 1, saltos[indice + 1]);
+          }
+          if (parcial) break;
+        }
+
+        return { indices: [...encontrados].sort((a, b) => a - b), parcial };
+      }
+
+      /* ── Pintado ─────────────────────────────────────────────── */
+
+      function escapar(t) {
+        return String(t).replace(/[&<>"']/g, (c) =>
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      }
+
+      /** Envuelve en <mark> las coincidencias, comparando sin acentos ni signos. */
+      function resaltar(valor, consulta) {
+        const texto = String(valor ?? '');
+        if (!texto || !consulta) return escapar(texto);
+        let normalizado = '';
+        const mapa = [];
+        for (let i = 0; i < texto.length; i++) {
+          const trozo = colapsar(texto[i]);
+          for (let k = 0; k < trozo.length; k++) mapa.push(i);
+          normalizado += trozo;
+        }
+        if (!normalizado) return escapar(texto);
+
+        const agujas = [colapsar(consulta), ...palabras(consulta)]
+          .filter((a, i, arr) => a && arr.indexOf(a) === i);
+        const marcado = new Array(texto.length).fill(false);
+        for (const aguja of agujas) {
+          let desde = 0;
+          for (;;) {
+            const p = normalizado.indexOf(aguja, desde);
+            if (p === -1) break;
+            for (let k = p; k < p + aguja.length; k++) marcado[mapa[k]] = true;
+            desde = p + 1;
+          }
+        }
+        let html = '';
+        let dentro = false;
+        for (let i = 0; i < texto.length; i++) {
+          if (marcado[i] && !dentro) { html += '<mark>'; dentro = true; }
+          else if (!marcado[i] && dentro) { html += '</mark>'; dentro = false; }
+          html += escapar(texto[i]);
+        }
+        return dentro ? html + '</mark>' : html;
+      }
+
+      function pintar() {
+        const caja = $('#resultados');
+        caja.innerHTML = '';
+        const { indices, parcial, q, pagina } = ultima;
+
+        if (!q) { $('#paginacion').hidden = true; return; }
+        if (indices.length === 0) {
+          caja.innerHTML = '<div class="vacio">Sin resultados. Prueba con otro dato o cambia el campo de búsqueda.</div>';
+          $('#paginacion').hidden = true;
+          return;
+        }
+
+        const resumen = document.createElement('div');
+        resumen.className = 'fila-lista';
+        resumen.innerHTML = parcial
+          ? `<span>Más de <strong>${indices.length.toLocaleString('es-ES')}</strong> registros coinciden. Afina la búsqueda.</span>`
+          : `<span><strong>${indices.length.toLocaleString('es-ES')}</strong> registro${indices.length === 1 ? '' : 's'} encontrado${indices.length === 1 ? '' : 's'}</span>`;
+        const exportar = document.createElement('button');
+        exportar.className = 'boton boton--fantasma boton--mini';
+        exportar.textContent = 'Exportar esta página a CSV';
+        exportar.addEventListener('click', exportarCsv);
+        resumen.append(exportar);
+        caja.append(resumen);
+
+        const desde = (pagina - 1) * POR_PAGINA;
+        for (const indice of indices.slice(desde, desde + POR_PAGINA)) {
+          const valores = separarCampos(filas[indice]);
+          const claveTitulo =
+            columnas.find((c, i) => /nombre|titular|cliente|razon/i.test(c) && valores[i]) ||
+            columnas.find((c, i) => valores[i]) || columnas[0];
+
+          const tarjeta = document.createElement('article');
+          tarjeta.className = 'registro';
+          const cabecera = document.createElement('div');
+          cabecera.className = 'registro__cabecera';
+          cabecera.innerHTML =
+            `<div class="registro__titulo">${resaltar(valores[columnas.indexOf(claveTitulo)] || '—', q)}</div>` +
+            `<span class="etiqueta">fila ${(indice + 2).toLocaleString('es-ES')}</span>`;
+          tarjeta.append(cabecera);
+
+          const rejilla = document.createElement('div');
+          rejilla.className = 'campos';
+          columnas.forEach((columna, i) => {
+            const valor = valores[i];
+            if (valor === undefined || valor === '') return;
+            const dato = document.createElement('div');
+            dato.innerHTML = `<span class="dato__clave">${escapar(columna)}</span>` +
+              `<span class="dato__valor">${resaltar(valor, q)}</span>`;
+            rejilla.append(dato);
+          });
+          tarjeta.append(rejilla);
+          caja.append(tarjeta);
+        }
+
+        const paginas = Math.ceil(indices.length / POR_PAGINA);
+        $('#paginacion').hidden = paginas <= 1;
+        $('#paginacion-texto').textContent = `Página ${pagina} de ${paginas}`;
+        document.querySelectorAll('#paginacion .boton').forEach((b) => {
+          const destino = pagina + Number(b.dataset.paso);
+          b.disabled = destino < 1 || destino > paginas;
+          b.style.opacity = b.disabled ? 0.4 : 1;
+        });
+      }
+
+      function exportarCsv() {
+        const desde = (ultima.pagina - 1) * POR_PAGINA;
+        const celda = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const lineas = [columnas.map(celda).join(',')];
+        for (const indice of ultima.indices.slice(desde, desde + POR_PAGINA)) {
+          lineas.push(separarCampos(filas[indice]).map(celda).join(','));
+        }
+        const enlace = document.createElement('a');
+        enlace.href = URL.createObjectURL(
+          new Blob(['﻿' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+        enlace.download = 'busqueda-clientes.csv';
+        enlace.click();
+        URL.revokeObjectURL(enlace.href);
+      }
+
+      /* ── Eventos ─────────────────────────────────────────────── */
+
+      function lanzarBusqueda(pagina = 1) {
+        const q = $('#q').value.trim();
+        const campo = $('#campo').value;
+        if (!q) { ultima = { q: '', campo, pagina: 1, indices: [], parcial: false }; pintar(); return; }
+        if (q !== ultima.q || campo !== ultima.campo) {
+          const { indices, parcial } = buscar(q, campo);
+          ultima = { q, campo, pagina: 1, indices, parcial };
+        } else {
+          ultima.pagina = pagina;
+        }
+        pintar();
+      }
+
+      function prepararInterfaz(resumen, archivo) {
+        $('#inicio').hidden = true;
+        $('#app').hidden = false;
+        $('#info-fichero').textContent =
+          `${archivo.name} · ${resumen.registros.toLocaleString('es-ES')} registros · ${resumen.columnas} columnas`;
+
+        const selector = $('#campo');
+        selector.innerHTML = '<option value="">Todos los campos</option>';
+        for (const columna of columnas) {
+          const opcion = document.createElement('option');
+          opcion.value = columna;
+          opcion.textContent = columna;
+          selector.append(opcion);
+        }
+
+        const atajos = $('#atajos');
+        atajos.innerHTML = '';
+        const preferidos = columnas.filter((c) =>
+          /instalac|telef|movil|tlf|phone|dni|nif|cif|contrat|abonad|client|nombre|email|correo|direccion|city/i.test(c));
+        if (preferidos.length) {
+          const crear = (texto, campo) => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = 'atajo'; b.textContent = texto; b.dataset.campo = campo;
+            b.addEventListener('click', () => {
+              $('#campo').value = campo;
+              document.querySelectorAll('.atajo').forEach((a) => a.classList.toggle('activo', a === b));
+              lanzarBusqueda(1);
+            });
+            return b;
+          };
+          atajos.append(crear('Todos los campos', ''));
+          for (const campo of preferidos.slice(0, 8)) atajos.append(crear(campo, campo));
+        }
+        $('#q').focus();
+      }
+
+      const zona = $('#zona');
+      async function recibir(archivo) {
+        if (!archivo) return;
+        try {
+          const resumen = await cargar(archivo);
+          prepararInterfaz(resumen, archivo);
+        } catch (e) {
+          $('#progreso').hidden = true;
+          $('#inicio-error').textContent =
+            e.message + (/memor|allocation/i.test(e.message)
+              ? ' · El fichero no cabe en la memoria del navegador. Prueba a cerrar otras pestañas o a partirlo en dos.'
+              : '');
+          $('#inicio-error').hidden = false;
+        }
+      }
+
+      $('#archivo').addEventListener('change', (e) => recibir(e.target.files[0]));
+      zona.addEventListener('dragover', (e) => { e.preventDefault(); zona.classList.add('encima'); });
+      zona.addEventListener('dragleave', () => zona.classList.remove('encima'));
+      zona.addEventListener('drop', (e) => {
+        e.preventDefault(); zona.classList.remove('encima');
+        recibir(e.dataTransfer.files[0]);
+      });
+
+      $('#form').addEventListener('submit', (e) => { e.preventDefault(); lanzarBusqueda(1); });
+      $('#campo').addEventListener('change', () => {
+        const campo = $('#campo').value;
+        document.querySelectorAll('.atajo').forEach((a) => a.classList.toggle('activo', a.dataset.campo === campo));
+        if ($('#q').value.trim()) lanzarBusqueda(1);
+      });
+      $('#paginacion').addEventListener('click', (e) => {
+        const boton = e.target.closest('.boton');
+        if (boton && !boton.disabled) { ultima.pagina += Number(boton.dataset.paso); pintar(); }
+      });
+      $('#boton-otro').addEventListener('click', () => {
+        blob = ''; filas = []; saltos = null; columnas = [];
+        ultima = { q: '', campo: '', pagina: 1, indices: [], parcial: false };
+        $('#archivo').value = '';
+        $('#progreso').hidden = true;
+        $('#app').hidden = true;
+        $('#inicio').hidden = false;
+      });
+    </script>
+  </body>
+</html>
