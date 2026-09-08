@@ -24,23 +24,30 @@ CREATE TABLE IF NOT EXISTS importaciones (
   creado_en TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Una fila por línea del CSV, con dos arrays JSON en paralelo:
+-- El CSV se guarda TROCEADO EN BLOQUES, no una fila por cliente.
 --
---   valores  ["1234567", "María Pérez", "600 123 456", ...]  tal cual el CSV
---   norm     ["1234567", "mariaperez",  "600123456",  ...]   para buscar
+-- El límite del plan gratuito de D1 son 100.000 escrituras de fila al día, así
+-- que convertir 54.000 líneas de CSV en 54.000 filas agota la cuota de un día
+-- entero con una sola carga. Guardando 100 registros por fila, esa misma carga
+-- son 540 escrituras y se puede repetir tantas veces como haga falta.
 --
--- Buscar en todos los campos es un LIKE sobre `norm` entero: como los valores
--- normalizados sólo tienen letras y números, las comas y comillas del JSON
--- impiden que una coincidencia cruce de un campo a otro. Buscar en un campo
--- concreto es json_extract(norm, '$[n]').
+-- Cada bloque lleva los mismos registros en dos formatos paralelos:
 --
--- Deliberadamente SIN AUTOINCREMENT y SIN índice secundario: ambos añadirían
--- una escritura de fila extra por cada línea importada, y el plan gratuito de
--- D1 permite 100.000 escrituras al día. Así cada línea del CSV cuesta una sola.
-CREATE TABLE IF NOT EXISTS registros (
+--   datos  JSON [["1234567","María Pérez","600 123 456"], [...], ...]
+--   norm   una línea por registro, campos separados por tabulador, con el
+--          texto normalizado: "1234567\tmariaperez\t600123456"
+--
+-- Buscar es un LIKE sobre `norm`: SQLite descarta de golpe los bloques que no
+-- contienen el texto (eso no consume CPU del Worker) y sólo los que quedan se
+-- abren para ver qué registros concretos coinciden. Como el texto normalizado
+-- sólo tiene letras y números, los tabuladores y saltos de línea impiden que
+-- una coincidencia cruce de un campo a otro o de un registro al siguiente.
+--
+-- Sin AUTOINCREMENT: añadiría una escritura extra por cada bloque insertado.
+CREATE TABLE IF NOT EXISTS bloques (
   id             INTEGER PRIMARY KEY,
   importacion_id INTEGER NOT NULL,
-  valores        TEXT NOT NULL,
+  datos          TEXT NOT NULL,
   norm           TEXT NOT NULL
 );
 

@@ -4,13 +4,10 @@
  * Rutas de la API (todo bajo /api). Los archivos estáticos de /public los
  * sirve la plataforma directamente (ver wrangler.toml).
  *
- * Cada línea del CSV se guarda como dos arrays JSON en paralelo:
- *
- *   valores  ["1234567", "María Pérez", "600 123 456", ...]  tal cual el CSV
- *   norm     ["1234567", "mariaperez",  "600123456",  ...]   para buscar
- *
- * Los nombres de las columnas están una sola vez en `importaciones.columnas`,
- * así que no se repiten en cada fila. Ver migrations/0003 para el porqué.
+ * El CSV NO se guarda con una fila de base de datos por cliente, sino troceado
+ * en bloques de 100 registros (ver migrations/0001_esquema.sql). Buscar es un
+ * LIKE que descarta bloques enteros dentro de SQLite, y sólo los que quedan se
+ * abren aquí para ver qué registros concretos coinciden.
  */
 
 import {
@@ -25,15 +22,27 @@ import {
 } from './auth.js';
 import { colapsar, escaparLike, palabras } from './texto.js';
 
-const MAX_FILAS_LOTE = 500;
+const REGISTROS_POR_BLOQUE = 100;
+const MAX_FILAS_LOTE = 1000;
 const MAX_RESULTADOS = 50;
+
+/**
+ * Cuántos registros se recorren como mucho en una búsqueda (en bloques de 100).
+ * Buscar un número de instalación o un teléfono abre uno o dos bloques; un
+ * término muy genérico los abre todos, y medido son ~4 ms de CPU para 54.000
+ * registros, dentro de los 10 ms que da el plan gratuito de Workers. Si el
+ * fichero es mayor que este tope, el recuento se marca como incompleto en vez
+ * de agotar el tiempo de la petición.
+ */
+const MAX_BLOQUES_ABIERTOS = 800;
+
 const MAX_INTENTOS = 8;
 const VENTANA_INTENTOS_S = 15 * 60;
 
-const CREAR_REGISTROS = `CREATE TABLE IF NOT EXISTS registros (
+const CREAR_BLOQUES = `CREATE TABLE IF NOT EXISTS bloques (
   id             INTEGER PRIMARY KEY,
   importacion_id INTEGER NOT NULL,
-  valores        TEXT NOT NULL,
+  datos          TEXT NOT NULL,
   norm           TEXT NOT NULL
 )`;
 
@@ -100,23 +109,42 @@ function esHttps(request) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Preparación de un registro para búsqueda                            */
+/* Bloques de registros                                                */
 /* ------------------------------------------------------------------ */
 
-function prepararRegistro(columnas, fila) {
-  const valores = [];
-  const norm = [];
-  let tieneAlgo = false;
+/**
+ * Empaqueta un grupo de filas del CSV en un bloque.
+ *
+ *   datos  JSON con las filas tal cual venían
+ *   norm   una línea por fila, campos separados por tabulador, normalizados
+ *
+ * Devuelve null si no queda ninguna fila con contenido.
+ */
+function prepararBloque(columnas, filas) {
+  const datos = [];
+  const lineas = [];
 
-  for (let i = 0; i < columnas.length; i++) {
-    const valor = fila[i] === undefined || fila[i] === null ? '' : String(fila[i]).trim();
-    const c = colapsar(valor);
-    valores.push(valor);
-    norm.push(c);
-    if (c) tieneAlgo = true;
+  for (const fila of filas) {
+    if (!Array.isArray(fila)) continue;
+    const valores = [];
+    const normalizados = [];
+    let tieneAlgo = false;
+
+    for (let i = 0; i < columnas.length; i++) {
+      const valor = fila[i] === undefined || fila[i] === null ? '' : String(fila[i]).trim();
+      const c = colapsar(valor);
+      valores.push(valor);
+      normalizados.push(c);
+      if (c) tieneAlgo = true;
+    }
+    if (!tieneAlgo) continue; // fila totalmente vacía
+
+    datos.push(valores);
+    lineas.push(normalizados.join('\t'));
   }
 
-  return tieneAlgo ? { valores: JSON.stringify(valores), norm: JSON.stringify(norm) } : null;
+  if (datos.length === 0) return null;
+  return { datos: JSON.stringify(datos), norm: lineas.join('\n'), n: datos.length };
 }
 
 /** Reconstruye el objeto {columna: valor} que espera la interfaz. */
@@ -129,20 +157,14 @@ function aObjeto(columnas, valores) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Construcción del WHERE de búsqueda                                  */
+/* Criterio de búsqueda                                                */
 /* ------------------------------------------------------------------ */
 
 /**
- * Devuelve {sql, params} o null si la consulta no da para buscar nada.
- *
- * Sin campo, el LIKE va contra el JSON `norm` entero. Como los valores
- * normalizados sólo contienen letras y números, las comillas y comas que los
- * separan impiden que una coincidencia cruce de un campo a otro.
- *
- * Con campo, se usa json_extract sobre la posición que ocupa esa columna en
- * cada importación activa (puede ser distinta en cada una).
+ * Traduce lo que ha escrito el usuario a un criterio reutilizable: primero
+ * para descartar bloques en SQL y después para filtrar registro a registro.
  */
-function condicionBusqueda(consulta, campo, activas) {
+function criterioBusqueda(consulta) {
   const colapsada = colapsar(consulta);
   const tokens = palabras(consulta).map(colapsar).filter(Boolean);
   if (!colapsada && tokens.length === 0) return null;
@@ -165,35 +187,72 @@ function condicionBusqueda(consulta, campo, activas) {
   // guiones, "638 147 794", es un único dato y no tres fragmentos sueltos.
   const usarTokens = tokens.length > 1 && !soloDigitos;
 
-  const alternativas = (expresion, params) => {
-    const trozos = [];
-    for (const aguja of agujas) {
-      trozos.push(`${expresion} LIKE ? ESCAPE '\\'`);
-      params.push(`%${escaparLike(aguja)}%`);
-    }
-    if (usarTokens) {
-      trozos.push('(' + tokens.map(() => `${expresion} LIKE ? ESCAPE '\\'`).join(' AND ') + ')');
-      for (const token of tokens) params.push(`%${escaparLike(token)}%`);
-    }
-    return trozos.length ? '(' + trozos.join(' OR ') + ')' : null;
-  };
+  if (agujas.length === 0 && !usarTokens) return null;
+  return { agujas, tokens, usarTokens };
+}
 
+/**
+ * Condición SQL para quedarse sólo con los bloques que pueden contener algo.
+ * Es deliberadamente amplia: dentro del bloque puede haber una coincidencia
+ * repartida entre registros distintos, y eso ya se descarta después en JS.
+ */
+function sqlBloques(criterio) {
+  const trozos = [];
   const params = [];
 
-  if (!campo) {
-    const sql = alternativas('r.norm', params);
-    return sql ? { sql, params } : null;
+  for (const aguja of criterio.agujas) {
+    trozos.push("b.norm LIKE ? ESCAPE '\\'");
+    params.push(`%${escaparLike(aguja)}%`);
+  }
+  if (criterio.usarTokens) {
+    trozos.push('(' + criterio.tokens.map(() => "b.norm LIKE ? ESCAPE '\\'").join(' AND ') + ')');
+    for (const token of criterio.tokens) params.push(`%${escaparLike(token)}%`);
+  }
+  return { sql: '(' + trozos.join(' OR ') + ')', params };
+}
+
+/**
+ * ¿Coincide este registro? `linea` son sus campos normalizados separados por
+ * tabulador. Con indiceCampo = -1 se busca en todos los campos a la vez: como
+ * las agujas sólo tienen letras y números, no pueden cruzar un tabulador y
+ * mezclar dos campos.
+ */
+function coincideRegistro(linea, criterio, indiceCampo) {
+  // Límites del trozo de línea donde hay que mirar. Se calculan con indexOf en
+  // vez de trocear la línea: con 54.000 registros y 35 columnas, evitar ese
+  // millón y medio de cadenas intermedias es la diferencia entre 450 y 150 ms.
+  let inicio = 0;
+  let fin = linea.length;
+
+  if (indiceCampo !== -1) {
+    for (let k = 0; k < indiceCampo; k++) {
+      inicio = linea.indexOf('\t', inicio);
+      if (inicio === -1) return false;
+      inicio++;
+    }
+    fin = linea.indexOf('\t', inicio);
+    if (fin === -1) fin = linea.length;
   }
 
-  const grupos = [];
-  for (const importacion of activas) {
-    const indice = importacion.columnas.indexOf(campo);
-    if (indice === -1) continue; // esa carga no tiene esa columna
-    const sub = alternativas(`json_extract(r.norm, '$[${indice}]')`, params);
-    if (sub) grupos.push(`(r.importacion_id = ${Number(importacion.id)} AND ${sub})`);
+  const contiene = (aguja) => {
+    const pos = linea.indexOf(aguja, inicio);
+    return pos !== -1 && pos + aguja.length <= fin;
+  };
+
+  for (const aguja of criterio.agujas) {
+    if (contiene(aguja)) return true;
   }
-  if (grupos.length === 0) return null;
-  return { sql: '(' + grupos.join(' OR ') + ')', params };
+  if (criterio.usarTokens) {
+    let todas = true;
+    for (const token of criterio.tokens) {
+      if (!contiene(token)) {
+        todas = false;
+        break;
+      }
+    }
+    if (todas) return true;
+  }
+  return false;
 }
 
 /* ------------------------------------------------------------------ */
@@ -274,10 +333,7 @@ async function manejarApi(request, env, url, sesion) {
   /* --- estado general --- */
   if (ruta === '/estado' && metodo === 'GET') {
     const activas = await importacionesActivas(env);
-    const totales = await env.DB.prepare(
-      `SELECT COUNT(*) AS n FROM registros r
-        WHERE r.importacion_id IN (SELECT id FROM importaciones WHERE estado = 'activa')`,
-    ).first();
+    const registros = activas.reduce((suma, i) => suma + (i.filas || 0), 0);
     const ultima = await env.DB.prepare(
       `SELECT archivo, filas, usuario, creado_en FROM importaciones
         WHERE estado = 'activa' ORDER BY id DESC LIMIT 1`,
@@ -291,7 +347,7 @@ async function manejarApi(request, env, url, sesion) {
     }
 
     return json({
-      registros: totales?.n || 0,
+      registros,
       importaciones: activas.length,
       ultima: ultima || null,
       campos,
@@ -305,37 +361,83 @@ async function manejarApi(request, env, url, sesion) {
     const campo = url.searchParams.get('campo') || '';
     const pagina = Math.max(1, Number(url.searchParams.get('pagina') || 1) || 1);
 
+    const vacio = { total: 0, parcial: false, pagina: 1, paginas: 0, resultados: [] };
     const activas = await importacionesActivas(env);
-    const condicion = activas.length ? condicionBusqueda(consulta, campo, activas) : null;
-    if (!condicion) return json({ total: 0, pagina: 1, paginas: 0, resultados: [] });
+    const criterio = activas.length ? criterioBusqueda(consulta) : null;
+    if (!criterio) return json(vacio);
 
-    const ids = activas.map((i) => Number(i.id)).join(',');
-    const base = `FROM registros r WHERE r.importacion_id IN (${ids}) AND ${condicion.sql}`;
+    // Si se busca en un campo concreto, sólo interesan las cargas que lo tengan.
+    const buscables = campo ? activas.filter((i) => i.columnas.includes(campo)) : activas;
+    if (buscables.length === 0) return json(vacio);
 
+    const { sql, params } = sqlBloques(criterio);
+    const ids = buscables.map((i) => Number(i.id)).join(',');
+    const base = `FROM bloques b WHERE b.importacion_id IN (${ids}) AND ${sql}`;
+
+    // Cuántos bloques encajan en total, para saber si nos dejamos alguno fuera.
     const cuenta = await env.DB.prepare(`SELECT COUNT(*) AS n ${base}`)
-      .bind(...condicion.params)
+      .bind(...params)
       .first();
-    const total = cuenta?.n || 0;
+    const candidatos = cuenta?.n || 0;
+    if (candidatos === 0) return json(vacio);
 
-    const filas = await env.DB.prepare(
-      `SELECT r.id, r.importacion_id, r.valores ${base} ORDER BY r.id LIMIT ? OFFSET ?`,
+    // Primera pasada: sólo el texto normalizado. Los datos originales pesan
+    // otro tanto y de ellos hará falta un puñado de bloques, no todos.
+    const bloques = await env.DB.prepare(
+      `SELECT b.id, b.importacion_id, b.norm ${base} ORDER BY b.id LIMIT ?`,
     )
-      .bind(...condicion.params, MAX_RESULTADOS, (pagina - 1) * MAX_RESULTADOS)
+      .bind(...params, MAX_BLOQUES_ABIERTOS)
       .all();
 
-    const porId = new Map(activas.map((i) => [Number(i.id), i]));
-    const resultados = (filas.results || []).map((f) => {
-      const importacion = porId.get(Number(f.importacion_id));
-      return {
-        id: f.id,
-        origen: importacion?.archivo || '',
-        importado: importacion?.creado_en || '',
-        datos: aObjeto(importacion?.columnas || [], JSON.parse(f.valores)),
-      };
-    });
+    const porId = new Map(buscables.map((i) => [Number(i.id), i]));
+    const desde = (pagina - 1) * MAX_RESULTADOS;
+    const aMostrar = []; // {bloqueId, indice, importacion} de la página pedida
+    let total = 0;
+
+    for (const bloque of bloques.results || []) {
+      const importacion = porId.get(Number(bloque.importacion_id));
+      if (!importacion) continue;
+      const indice = campo ? importacion.columnas.indexOf(campo) : -1;
+
+      const lineas = bloque.norm.split('\n');
+      for (let i = 0; i < lineas.length; i++) {
+        if (!coincideRegistro(lineas[i], criterio, indice)) continue;
+        if (total >= desde && aMostrar.length < MAX_RESULTADOS) {
+          aMostrar.push({ bloqueId: Number(bloque.id), indice: i, importacion });
+        }
+        total++;
+      }
+    }
+
+    // Segunda pasada: los datos originales de los bloques que salen en pantalla.
+    const resultados = [];
+    if (aMostrar.length > 0) {
+      const necesarios = [...new Set(aMostrar.map((r) => r.bloqueId))];
+      const filas = await env.DB.prepare(
+        `SELECT id, datos FROM bloques WHERE id IN (${necesarios.join(',')})`,
+      ).all();
+      const datosPorBloque = new Map(
+        (filas.results || []).map((f) => [Number(f.id), JSON.parse(f.datos)]),
+      );
+      for (const r of aMostrar) {
+        const valores = datosPorBloque.get(r.bloqueId)?.[r.indice];
+        if (!valores) continue;
+        resultados.push({
+          id: `${r.bloqueId}-${r.indice}`,
+          origen: r.importacion.archivo,
+          importado: r.importacion.creado_en,
+          datos: aObjeto(r.importacion.columnas, valores),
+        });
+      }
+    }
+
+    // Si el fichero es mayor que el tope quedan bloques sin mirar: el recuento
+    // es entonces un mínimo, y así se dice en pantalla.
+    const parcial = candidatos > (bloques.results || []).length;
 
     return json({
       total,
+      parcial,
       pagina,
       paginas: Math.ceil(total / MAX_RESULTADOS),
       porPagina: MAX_RESULTADOS,
@@ -372,8 +474,8 @@ async function manejarApi(request, env, url, sesion) {
     // porque borrar fila a fila consumiría tantas escrituras como insertarlas,
     // y con ficheros grandes eso agota el límite diario de D1.
     if (modo === 'reemplazar') {
-      await env.DB.prepare('DROP TABLE IF EXISTS registros').run();
-      await env.DB.prepare(CREAR_REGISTROS).run();
+      await env.DB.prepare('DROP TABLE IF EXISTS bloques').run();
+      await env.DB.prepare(CREAR_BLOQUES).run();
       await env.DB.prepare('DELETE FROM importaciones').run();
     }
 
@@ -405,19 +507,23 @@ async function manejarApi(request, env, url, sesion) {
 
     const columnas = JSON.parse(importacion.columnas);
     const insertar = env.DB.prepare(
-      'INSERT INTO registros (importacion_id, valores, norm) VALUES (?, ?, ?)',
+      'INSERT INTO bloques (importacion_id, datos, norm) VALUES (?, ?, ?)',
     );
     const sentencias = [];
-    for (const fila of filas) {
-      if (!Array.isArray(fila)) continue;
-      const p = prepararRegistro(columnas, fila);
-      if (p) sentencias.push(insertar.bind(id, p.valores, p.norm));
+    let insertadas = 0;
+
+    for (let i = 0; i < filas.length; i += REGISTROS_POR_BLOQUE) {
+      const bloque = prepararBloque(columnas, filas.slice(i, i + REGISTROS_POR_BLOQUE));
+      if (!bloque) continue;
+      sentencias.push(insertar.bind(id, bloque.datos, bloque.norm));
+      insertadas += bloque.n;
     }
+
     if (sentencias.length > 0) await env.DB.batch(sentencias);
     await env.DB.prepare('UPDATE importaciones SET filas = filas + ? WHERE id = ?')
-      .bind(sentencias.length, id)
+      .bind(insertadas, id)
       .run();
-    return json({ insertadas: sentencias.length });
+    return json({ insertadas, bloques: sentencias.length });
   }
 
   m = ruta.match(/^\/importaciones\/(\d+)\/finalizar$/);
@@ -602,7 +708,7 @@ async function adminsActivos(env) {
 
 async function importacionesActivas(env) {
   const filas = await env.DB.prepare(
-    `SELECT id, archivo, columnas, creado_en FROM importaciones
+    `SELECT id, archivo, columnas, filas, creado_en FROM importaciones
       WHERE estado = 'activa' ORDER BY id DESC`,
   ).all();
   return (filas.results || []).map((f) => ({ ...f, columnas: JSON.parse(f.columnas) }));
@@ -615,11 +721,11 @@ async function borrarImportacion(env, id) {
 
   if ((otras?.n || 0) === 0) {
     // Es la única carga: soltar la tabla entera es instantáneo y no consume
-    // escrituras, al contrario que borrar decenas de miles de filas.
-    await env.DB.prepare('DROP TABLE IF EXISTS registros').run();
-    await env.DB.prepare(CREAR_REGISTROS).run();
+    // escrituras, al contrario que borrar los bloques uno a uno.
+    await env.DB.prepare('DROP TABLE IF EXISTS bloques').run();
+    await env.DB.prepare(CREAR_BLOQUES).run();
   } else {
-    await env.DB.prepare('DELETE FROM registros WHERE importacion_id = ?').bind(id).run();
+    await env.DB.prepare('DELETE FROM bloques WHERE importacion_id = ?').bind(id).run();
   }
   await env.DB.prepare('DELETE FROM importaciones WHERE id = ?').bind(id).run();
 }

@@ -5,7 +5,9 @@
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
 const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
 
-const FILAS_POR_LOTE = 200;
+// El servidor agrupa cada 100 filas en un bloque, así que un envío de 1.000
+// filas son 10 escrituras en la base de datos.
+const FILAS_POR_LOTE = 1000;
 
 let sesion = null;
 let campos = [];
@@ -256,9 +258,11 @@ function pintarResultados(datos, consulta) {
 
   const resumen = document.createElement('div');
   resumen.className = 'fila-lista';
-  resumen.innerHTML =
-    `<span><strong>${datos.total.toLocaleString('es-ES')}</strong> ` +
-    `registro${datos.total === 1 ? '' : 's'} encontrado${datos.total === 1 ? '' : 's'}</span>`;
+  resumen.innerHTML = datos.parcial
+    ? `<span>Más de <strong>${datos.total.toLocaleString('es-ES')}</strong> registros ` +
+      `coinciden. Afina la búsqueda o elige un campo concreto para verlos todos.</span>`
+    : `<span><strong>${datos.total.toLocaleString('es-ES')}</strong> ` +
+      `registro${datos.total === 1 ? '' : 's'} encontrado${datos.total === 1 ? '' : 's'}</span>`;
   const exportar = document.createElement('button');
   exportar.className = 'boton boton--fantasma boton--mini';
   exportar.textContent = 'Exportar esta página a CSV';
@@ -301,7 +305,8 @@ function pintarResultados(datos, consulta) {
 
   const paginacion = $('#paginacion');
   paginacion.hidden = datos.paginas <= 1;
-  $('#paginacion-texto').textContent = `Página ${datos.pagina} de ${datos.paginas}`;
+  $('#paginacion-texto').textContent =
+    `Página ${datos.pagina} de ${datos.paginas}${datos.parcial ? '+' : ''}`;
   $$('#paginacion .boton').forEach((b) => {
     const destino = datos.pagina + Number(b.dataset.paso);
     b.disabled = destino < 1 || destino > datos.paginas;

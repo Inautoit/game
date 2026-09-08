@@ -67,36 +67,66 @@ Base vacía y lista para la primera carga.
 
 ---
 
-## Límites de Cloudflare y tamaño del fichero
+## Cómo se guarda el CSV (y por qué)
 
-La aplicación va sobre D1, la base de datos de Cloudflare. Lo que marca el
-ritmo no es el espacio sino las **escrituras de fila al día**, que en el plan
-gratuito son 100.000 para toda la cuenta:
+La base de datos es D1, y en el plan gratuito su límite real no es el espacio
+sino las **escrituras de fila: 100.000 al día** para toda la cuenta. Convertir
+un fichero de 54.000 clientes en 54.000 filas agota la cuota de un día entero
+con una sola carga.
+
+Por eso el CSV se guarda **troceado en bloques de 100 registros**, no una fila
+por cliente. Cada bloque lleva los mismos registros en dos formatos paralelos:
+
+```
+datos  JSON [["1234567","María Pérez","600 123 456"], [...], ...]
+norm   una línea por registro, campos separados por tabulador y normalizados:
+       "1234567\tmariaperez\t600123456"
+```
+
+Buscar tiene dos pasadas:
+
+1. Un `LIKE` sobre `norm` dentro de SQLite descarta de golpe los bloques que no
+   contienen el texto. Eso no consume CPU del Worker.
+2. Los bloques que quedan se abren aquí y se mira registro a registro cuál
+   coincide de verdad. Los datos originales sólo se piden para los bloques que
+   acaban saliendo en pantalla.
+
+Como el texto normalizado sólo tiene letras y números, los tabuladores y saltos
+de línea impiden que una coincidencia cruce de un campo a otro o de un registro
+al siguiente.
+
+### Lo que cuesta en la práctica
+
+Medido con 54.000 registros de 35 columnas:
+
+| | Una fila por cliente | En bloques de 100 |
+|---|---|---|
+| Escrituras por carga | 54.000 | **540** |
+| Cargas posibles al día (plan gratuito) | 1 | **~185** |
+| Tamaño de la base | 27 MB | 20 MB |
+| Buscar un nº de instalación o teléfono | ~40 ms | ~45 ms |
+| Buscar un término genérico ("madrid") | ~40 ms | ~230 ms |
+| CPU del Worker en el peor caso | — | ~4 ms (el límite gratuito son 10) |
+
+El tope está en 800 bloques por búsqueda, es decir **80.000 registros
+recorridos**. Si el fichero es mayor, el buscador sigue funcionando pero avisa
+de que el recuento es un mínimo ("más de N").
+
+### Límites del plan
 
 | | Gratuito | Workers Paid (desde 5 $/mes) |
 |---|---|---|
-| Escrituras de fila | 100.000 **al día** (límite duro) | Sin límite diario · 50 millones al mes incluidas, después 1 $/millón |
-| Lecturas de fila | 5.000.000 al día (límite duro) | 25.000 millones al mes incluidas |
+| Escrituras de fila | 100.000 al día (límite duro) | Sin límite diario · 50 millones al mes incluidas |
+| Lecturas de fila | 5.000.000 al día | 25.000 millones al mes incluidas |
 | Almacenamiento | 5 GB en total | 5 GB incluidos, después 0,75 $/GB al mes |
+| CPU por petición | 10 ms | 30 s |
 
-Una carga completa de 54.000 clientes son 54.000 escrituras: en el plan de pago
-cabrían unas 900 recargas al mes dentro de lo ya incluido, así que en la
-práctica el coste se queda en los 5 $/mes del plan.
+Con el diseño en bloques, **el plan gratuito sobra** para un fichero de decenas
+de miles de clientes recargado a diario.
 
-Cada línea del CSV cuesta **una** escritura, así que en el plan gratuito caben
-unos 100.000 clientes al día, en una sola carga. Un fichero de 54.000 registros
-entra sin problema, pero **no se puede cargar dos veces el mismo día**.
-
-El modo *Reemplazar todo* vacía la tabla con `DROP TABLE` en vez de borrar fila
-a fila, precisamente porque borrar 54.000 filas costaría otras 54.000
-escrituras y no cabría en el día. A cambio, mientras dura la importación el
-buscador se queda sin datos.
-
-Como referencia medida con 54.000 registros de 35 columnas: **27 MB** de base
-de datos y búsquedas de **30-60 ms**.
-
-Si se agota la cuota, la aplicación lo dice con todas las letras y el límite se
-restablece a las 00:00 UTC (las 02:00 en España peninsular).
+El modo *Reemplazar todo* vacía la tabla con `DROP TABLE` en vez de borrar
+bloque a bloque, porque borrar también consume escrituras. A cambio, mientras
+dura la importación el buscador se queda sin datos.
 
 ---
 
