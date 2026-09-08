@@ -238,16 +238,7 @@ export function calcularEstado(datos, cols) {
     : balance <= 149 && npv === 'npv' ? 'LLAMAR'
     : 'NO_RECONECTABLE';
 
-  return {
-    clave,
-    ...ESTADOS[clave],
-    // Lo que ha decidido el resultado, para poder enseñarlo y comprobarlo.
-    motivo: {
-      [cols.balance]: datos[cols.balance] ?? '',
-      [cols.writeoff]: datos[cols.writeoff] ?? '',
-      [cols.npv]: datos[cols.npv] ?? '',
-    },
-  };
+  return { clave, ...ESTADOS[clave] };
 }
 
 /**
@@ -280,6 +271,71 @@ export function camposDestacados(columnas, maximo = 5) {
     if (!elegidas.includes(columna)) elegidas.push(columna);
   }
   return elegidas;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Ficha del cliente
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Enlace al formulario de reconexión. Puede llevar huecos con el nombre de una
+ * columna entre llaves, que se rellenan con los datos del cliente:
+ *
+ *   https://ejemplo.com/reconectar?instalacion={s#ins}&dni={cifnif}
+ *
+ * Vacío mientras no esté el enlace: entonces el botón sale desactivado en vez
+ * de llevar a ninguna parte.
+ */
+export const FORMULARIO_RECONEXION = '';
+
+/**
+ * Qué se enseña al abrir un registro, y con qué nombre. Cada entrada busca su
+ * columna en el CSV comparando sin distinguir mayúsculas, guiones ni espacios;
+ * la que no aparezca en el fichero simplemente no se pinta.
+ */
+const FICHA = [
+  {
+    titulo: 'Dónde',
+    campos: [
+      ['Código postal', 'zip'],
+      ['Dirección', 'direccion'],
+    ],
+  },
+  {
+    titulo: 'Deuda',
+    campos: [
+      ['Balance', 'balancetxt'],
+      ['Write off', 'writeofftxt'],
+      ['NPV', 'npv'],
+    ],
+  },
+];
+
+/** Equipo que tenía instalado: se pinta como etiquetas con su cantidad. */
+const EQUIPO = [
+  ['Cámaras', 'totalcamaras'],
+  ['Fotodetectores', 'totalfotodetector'],
+  ['Magnéticos', 'totalmagnetico'],
+  ['SDI', 'totalsdi'],
+  ['Perimetrales', 'totalperimetrales'],
+  ['ZV', 'totalzv'],
+  ['Llaves', 'totalllave'],
+  ['Mandos', 'totalmando'],
+  ['Sirena', 'totalsirena'],
+  ['Tag reader', 'totaltagreader'],
+  ['Botón SOS', 'totalbotonsos'],
+];
+
+/** Busca una columna del CSV por su nombre normalizado. */
+function buscarColumna(columnas, normalizada) {
+  return columnas.find((c) => colapsar(c) === normalizada);
+}
+
+/** Sustituye los {huecos} del enlace por los datos del cliente. */
+export function enlaceReconexion(datos) {
+  if (!FORMULARIO_RECONEXION) return '';
+  return FORMULARIO_RECONEXION.replace(/\{([^}]+)\}/g, (_, columna) =>
+    encodeURIComponent(datos[columna] ?? ''));
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -331,35 +387,119 @@ export function crearTarjeta({ datos, columnas, consulta, colsEstado, etiqueta, 
   flecha.innerHTML = '<polyline points="6 9 12 15 18 9" />';
   resumen.append(flecha);
 
-  /* ── detalle ── */
+  /* ── detalle: sólo la información que se usa para decidir ── */
   const detalle = document.createElement('div');
   detalle.className = 'registro__detalle';
   detalle.hidden = !abierta;
 
   if (estado) {
-    const motivo = document.createElement('div');
-    motivo.className = 'motivo';
-    const campos = Object.entries(estado.motivo)
-      .map(([c, v]) => `<span>${escapar(c)}: <b>${escapar(v === '' ? '(vacío)' : v)}</b></span>`)
-      .join('');
-    motivo.innerHTML =
-      `<span class="estado estado--${estado.clase} estado--grande">${estado.texto} ${estado.emoji}</span>` +
-      `<span class="motivo__campos">${campos}</span>`;
-    detalle.append(motivo);
+    const cabecera = document.createElement('div');
+    cabecera.className = 'ficha__estado';
+    cabecera.innerHTML =
+      `<span class="estado estado--${estado.clase} estado--grande">${estado.texto} ${estado.emoji}</span>`;
+
+    // El botón sólo tiene sentido si el cliente se puede reconectar.
+    if (estado.clave === 'RECONECTABLE') {
+      const enlace = enlaceReconexion(datos);
+      const boton = document.createElement(enlace ? 'a' : 'button');
+      boton.className = 'boton boton--primario';
+      boton.textContent = 'Reconectar →';
+      if (enlace) {
+        boton.href = enlace;
+        boton.target = '_blank';
+        boton.rel = 'noopener';
+      } else {
+        boton.type = 'button';
+        boton.disabled = true;
+        boton.title = 'Falta configurar el enlace del formulario en public/comun.js';
+        boton.textContent = 'Reconectar (falta el enlace)';
+      }
+      cabecera.append(boton);
+    }
+    detalle.append(cabecera);
   }
 
-  const rejilla = document.createElement('div');
-  rejilla.className = 'campos';
-  for (const columna of columnas) {
-    const valor = datos[columna];
-    if (valor === undefined || valor === '') continue;
-    const dato = document.createElement('div');
-    dato.innerHTML =
-      `<span class="dato__clave">${escapar(columna)}</span>` +
-      `<span class="dato__valor">${resaltar(valor, consulta)}</span>`;
-    rejilla.append(dato);
+  const sinDato = (v) => v === undefined || v === null || String(v).trim() === '';
+
+  for (const seccion of FICHA) {
+    const filas = seccion.campos
+      .map(([etiqueta, normalizada]) => [etiqueta, buscarColumna(columnas, normalizada)])
+      .filter(([, columna]) => columna !== undefined && !sinDato(datos[columna]));
+    if (filas.length === 0) continue;
+
+    const bloque = document.createElement('section');
+    bloque.className = 'ficha__bloque';
+    bloque.innerHTML = `<h3>${escapar(seccion.titulo)}</h3>`;
+    const rejilla = document.createElement('div');
+    rejilla.className = 'campos';
+    for (const [etiqueta, columna] of filas) {
+      const dato = document.createElement('div');
+      dato.innerHTML =
+        `<span class="dato__clave">${escapar(etiqueta)}</span>` +
+        `<span class="dato__valor">${resaltar(datos[columna], consulta)}</span>`;
+      rejilla.append(dato);
+    }
+    bloque.append(rejilla);
+    detalle.append(bloque);
   }
-  detalle.append(rejilla);
+
+  /* ── equipo instalado ── */
+  const colPanel = buscarColumna(columnas, 'panel');
+  const equipo = EQUIPO
+    .map(([etiqueta, normalizada]) => [etiqueta, buscarColumna(columnas, normalizada)])
+    .filter(([, columna]) => columna !== undefined && !sinDato(datos[columna]));
+
+  if ((colPanel && !sinDato(datos[colPanel])) || equipo.length > 0) {
+    const bloque = document.createElement('section');
+    bloque.className = 'ficha__bloque';
+    bloque.innerHTML = '<h3>Equipo instalado</h3>';
+
+    if (colPanel && !sinDato(datos[colPanel])) {
+      const panel = document.createElement('p');
+      panel.className = 'ficha__panel';
+      panel.innerHTML = `<span class="dato__clave">Panel</span>` +
+        `<span class="dato__valor">${resaltar(datos[colPanel], consulta)}</span>`;
+      bloque.append(panel);
+    }
+
+    if (equipo.length > 0) {
+      const lista = document.createElement('div');
+      lista.className = 'equipo';
+      for (const [etiqueta, columna] of equipo) {
+        const valor = String(datos[columna]).trim();
+        const chip = document.createElement('span');
+        // Un cero también informa (no tenía sirena), así que se enseña, pero
+        // apagado para que no compita con lo que sí llevaba instalado.
+        chip.className = 'equipo__pieza' + (aNumero(valor) === 0 ? ' equipo__pieza--cero' : '');
+        chip.innerHTML = `<b>${escapar(valor)}</b> ${escapar(etiqueta)}`;
+        lista.append(chip);
+      }
+      bloque.append(lista);
+    }
+    detalle.append(bloque);
+  }
+
+  /* ── el resto del registro, plegado ── */
+  const otras = columnas.filter((c) => !sinDato(datos[c]));
+  if (otras.length > 0) {
+    const masDetalle = document.createElement('details');
+    masDetalle.className = 'ficha__todo';
+    const resumenTodo = document.createElement('summary');
+    resumenTodo.textContent = `Ver las ${otras.length} columnas del CSV`;
+    masDetalle.append(resumenTodo);
+
+    const rejilla = document.createElement('div');
+    rejilla.className = 'campos';
+    for (const columna of otras) {
+      const dato = document.createElement('div');
+      dato.innerHTML =
+        `<span class="dato__clave">${escapar(columna)}</span>` +
+        `<span class="dato__valor">${resaltar(datos[columna], consulta)}</span>`;
+      rejilla.append(dato);
+    }
+    masDetalle.append(rejilla);
+    detalle.append(masDetalle);
+  }
 
   if (etiqueta) {
     const pie = document.createElement('p');

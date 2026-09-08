@@ -35,7 +35,45 @@ compilación.
   una coincidencia se abre sola.
 - Resalta en rojo la parte coincidente de cada valor.
 
+### Ficha del cliente
+
+Al abrir un registro no se vuelca el CSV entero, sino lo que hace falta para
+decidir qué hacer con ese cliente:
+
+| Bloque | Contenido |
+|---|---|
+| **Dónde** | Código postal y dirección |
+| **Deuda** | Balance, write off y NPV |
+| **Equipo instalado** | Panel, y las cantidades de cámaras, fotodetectores, magnéticos, SDI, perimetrales, ZV, llaves, mandos, sirena, tag reader y botón SOS |
+
+Las cantidades a cero se enseñan igualmente —que no llevara sirena es un dato—
+pero apagadas, para que no compitan con lo que sí tenía instalado.
+
+Al final hay un desplegable con las columnas restantes del CSV, por si alguna
+vez hace falta algo que no está arriba.
+
+La correspondencia con las columnas se define en `FICHA` y `EQUIPO`
+(`public/comun.js`) y se busca sin distinguir mayúsculas, guiones ni espacios,
+así que aguanta que el fichero traiga `total_BotonSOS` o `TOTAL_BOTON_SOS`. La
+columna que no esté en el CSV simplemente no se pinta.
+
+### Botón de reconexión
+
+Cuando el estado es RECONECTABLE ✅ aparece un botón que lleva al formulario de
+reconexión. El enlace se pone en `FORMULARIO_RECONEXION` (`public/comun.js`) y
+admite huecos con el nombre de una columna entre llaves, que se rellenan con
+los datos de ese cliente:
+
+```js
+export const FORMULARIO_RECONEXION =
+  'https://ejemplo.com/reconectar?instalacion={s#ins}&dni={cifnif}';
+```
+
+Mientras esté vacío el botón sale desactivado, para que se vea que falta
+configurarlo en vez de llevar a ninguna parte.
+
 ### Estado de reconexión
+
 
 Cada registro se etiqueta con uno de tres estados, calculado en
 `public/comun.js` (`calcularEstado`) y por tanto idéntico en los dos buscadores:

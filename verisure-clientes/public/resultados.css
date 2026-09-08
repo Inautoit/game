@@ -134,29 +134,76 @@
   border-top: 1px solid var(--borde);
 }
 
-.motivo {
+.ficha__estado {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: .6rem 1.4rem;
-  margin: 1rem 0;
-  padding: .75rem .9rem;
-  border: 1px solid var(--borde);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, .02);
+  justify-content: space-between;
+  gap: .8rem;
+  margin: 1rem 0 1.2rem;
 }
 
-.motivo__campos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .3rem 1.4rem;
-  font-size: .85rem;
+.ficha__bloque + .ficha__bloque {
+  margin-top: 1.2rem;
+}
+
+.ficha__bloque h3 {
+  margin: 0 0 .5rem;
+  font-size: .74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
   color: var(--apagado);
 }
 
-.motivo__campos b {
+.ficha__bloque .campos {
+  margin-top: 0;
+}
+
+.ficha__panel {
+  margin: 0 0 .8rem;
+}
+
+.equipo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.equipo__pieza {
+  font-size: .82rem;
+  padding: .3rem .7rem;
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .03);
+}
+
+.equipo__pieza b {
+  font-weight: 700;
+  margin-right: .15rem;
+}
+
+/* Un cero también informa (no tenía sirena), pero no debe competir con lo que
+   sí llevaba instalado. */
+.equipo__pieza--cero {
+  color: var(--apagado);
+  opacity: .55;
+}
+
+.ficha__todo {
+  margin-top: 1.3rem;
+  border-top: 1px solid var(--borde);
+  padding-top: .9rem;
+}
+
+.ficha__todo summary {
+  cursor: pointer;
+  font-size: .82rem;
+  color: var(--apagado);
+}
+
+.ficha__todo summary:hover {
   color: var(--texto);
-  font-weight: 600;
 }
 
 .campos {
