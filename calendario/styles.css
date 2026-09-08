@@ -932,3 +932,63 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
 .enlace-pie { color: var(--acento-texto); font-size: .8rem; text-decoration: none; }
 .enlace-pie:hover { text-decoration: underline; }
 .enlace-pie:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+/* ---------- partidos aplazados ---------- */
+
+/* Con cuatro datos, dos filas de dos entran mejor que cuatro columnas. */
+.resumen-4 { grid-template-columns: repeat(2, 1fr); }
+
+@media (min-width: 560px) {
+  .resumen-4 { grid-template-columns: repeat(4, 1fr); }
+}
+
+.resumen-dato.es-aplazado strong { color: var(--avisoc); }
+
+.partido.es-aplazado {
+  border-left-color: var(--avisoc);
+  opacity: .85;
+}
+
+.partido.es-aplazado .partido-fecha { background: var(--avisoc-bg); color: var(--avisoc-fg); }
+.partido.es-aplazado .partido-rival { text-decoration: line-through; text-decoration-thickness: 1px; }
+.partido.es-aplazado .partido-hora { color: var(--avisoc); }
+
+.partido-sello.sello-aplazado { background: var(--avisoc-bg); color: var(--avisoc-fg); }
+
+.etiqueta-aplazado { margin-left: .3rem; background: var(--avisoc-bg); color: var(--avisoc-fg); }
+
+.semana-item.aplazado .t { text-decoration: line-through; opacity: .75; }
+
+.marca-aplazado {
+  padding: .02rem .4rem;
+  border-radius: 999px;
+  background: var(--avisoc-bg);
+  color: var(--avisoc-fg);
+  font-size: .66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
+.chip.aplazado { opacity: .6; text-decoration: line-through; }
+
+/* En móvil los chips del mes son puntos: el aplazado se marca vaciándolo. */
+@media (max-width: 599px) {
+  .chip.aplazado { text-decoration: none; opacity: 1; background: transparent; box-shadow: inset 0 0 0 2px var(--avisoc); }
+}
+
+/* Casilla de verificación del formulario, con su explicación debajo. */
+.casilla {
+  display: flex;
+  gap: .6rem;
+  align-items: flex-start;
+  padding: .6rem .7rem;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: var(--relleno);
+  cursor: pointer;
+}
+
+.casilla input { flex: none; width: 1.15rem; height: 1.15rem; margin: .1rem 0 0; accent-color: var(--avisoc); }
+.casilla strong { display: block; font-size: .92rem; }
+.casilla small { display: block; margin-top: .1rem; font-size: .78rem; color: var(--texto-suave); }

@@ -106,6 +106,7 @@
 
     var meta = el('div', 'tarjeta-meta');
     meta.appendChild(etiquetaTipo(entrada.tipo));
+    if (entrada.aplazado) meta.appendChild(el('span', 'etiqueta etiqueta-aplazado', 'Aplazado'));
     if (entrada.lugar) meta.appendChild(document.createTextNode(' · ' + entrada.lugar));
     cuerpo.appendChild(meta);
 
@@ -209,9 +210,10 @@
     var der = el('div', 'semana-lista');
     if (entradas.length) {
       entradas.forEach(function (e) {
-        var it = el('div', 'semana-item');
+        var it = el('div', 'semana-item' + (e.aplazado ? ' aplazado' : ''));
         if (e.horario) it.appendChild(el('span', 'h', e.horario));
         it.appendChild(el('span', 't', e.titulo || TIPOS[e.tipo]));
+        if (e.aplazado) it.appendChild(el('span', 'marca-aplazado', 'Aplazado'));
         if (e.lugar) it.appendChild(el('span', 'l', '· ' + e.lugar));
         der.appendChild(it);
       });
@@ -321,8 +323,9 @@
         // Solo se antepone la hora si de verdad lo es ("16:30"), no
         // textos como "Por confirmar", que quedarían cortados en "Por…".
         var hora = /^\d{1,2}[:.]\d{2}/.test(e.horario) ? e.horario.split(' ')[0] + ' ' : '';
-        var chip = el('div', 'chip tipo-' + e.tipo, hora + texto);
-        chip.title = texto + (e.horario ? ' · ' + e.horario : '') + (e.lugar ? ' · ' + e.lugar : '');
+        var chip = el('div', 'chip tipo-' + e.tipo + (e.aplazado ? ' aplazado' : ''), hora + texto);
+        chip.title = texto + (e.aplazado ? ' (aplazado)' : '') +
+          (e.horario ? ' · ' + e.horario : '') + (e.lugar ? ' · ' + e.lugar : '');
         chips.appendChild(chip);
       });
       if (entradas.length > 3) chips.appendChild(el('div', 'chip', '+' + (entradas.length - 3) + ' más'));
@@ -364,17 +367,24 @@
     var partidos = partidosDeLaTemporada();
     var claveHoy = hoyIso();
 
-    var jugados = partidos.filter(function (p) { return p.fecha < claveHoy; }).length;
-    var quedan = partidos.length - jugados;
+    // Un partido aplazado no cuenta ni como jugado ni como pendiente:
+    // no se jugó, aunque su fecha ya pasara, y todavía no tiene fecha nueva.
+    var aplazados = partidos.filter(function (p) { return p.entrada.aplazado; }).length;
+    var jugados = partidos.filter(function (p) {
+      return !p.entrada.aplazado && p.fecha < claveHoy;
+    }).length;
+    var quedan = partidos.length - jugados - aplazados;
 
-    var resumen = el('div', 'resumen');
-    [[String(partidos.length), 'partidos'], [String(jugados), 'jugados'], [String(quedan), 'por jugar']]
-      .forEach(function (par) {
-        var caja = el('div', 'resumen-dato');
-        caja.appendChild(el('strong', '', par[0]));
-        caja.appendChild(el('span', '', par[1]));
-        resumen.appendChild(caja);
-      });
+    var datos = [[partidos.length, 'partidos'], [jugados, 'jugados'], [quedan, 'por jugar']];
+    if (aplazados) datos.push([aplazados, aplazados === 1 ? 'aplazado' : 'aplazados']);
+
+    var resumen = el('div', 'resumen' + (aplazados ? ' resumen-4' : ''));
+    datos.forEach(function (par) {
+      var caja = el('div', 'resumen-dato' + (par[1].indexOf('aplazad') === 0 ? ' es-aplazado' : ''));
+      caja.appendChild(el('strong', '', String(par[0])));
+      caja.appendChild(el('span', '', par[1]));
+      resumen.appendChild(caja);
+    });
     raiz.appendChild(resumen);
 
     var fed = enlaceFederacion();
@@ -408,11 +418,14 @@
 
   function tarjetaPartido(fecha, entrada, claveHoy) {
     var d = fromIso(fecha);
-    var pasado = fecha < claveHoy;
+    var aplazado = !!entrada.aplazado;
+    var pasado = !aplazado && fecha < claveHoy;
 
-    var card = el('button', 'partido' + (pasado ? ' jugado' : '') + (fecha === claveHoy ? ' es-hoy' : ''));
+    var card = el('button', 'partido' + (pasado ? ' jugado' : '') +
+      (aplazado ? ' es-aplazado' : '') + (!aplazado && fecha === claveHoy ? ' es-hoy' : ''));
     card.type = 'button';
-    card.setAttribute('aria-label', entrada.titulo + ', ' + fechaLarga(d));
+    card.setAttribute('aria-label', entrada.titulo + ', ' + fechaLarga(d) +
+      (aplazado ? '. Aplazado' : ''));
     card.onclick = function () { abrirDia(fecha, false); };
 
     var cal = el('div', 'partido-fecha');
@@ -432,7 +445,8 @@
     if (entrada.notas) cuerpo.appendChild(el('p', 'partido-notas', entrada.notas));
     card.appendChild(cuerpo);
 
-    if (pasado) card.appendChild(el('span', 'partido-sello', 'Jugado'));
+    if (aplazado) card.appendChild(el('span', 'partido-sello sello-aplazado', 'Aplazado'));
+    else if (pasado) card.appendChild(el('span', 'partido-sello', 'Jugado'));
 
     return card;
   }
@@ -873,6 +887,10 @@
     txNotas.value = (existente && existente.notas) || '';
     txNotas.placeholder = 'Convocatoria, material, quedada…';
 
+    var chAplazado = document.createElement('input');
+    chAplazado.type = 'checkbox';
+    chAplazado.checked = !!(existente && existente.aplazado);
+
     form.appendChild(campo('Actividad', inTitulo));
 
     var fila = el('div', 'campos-2');
@@ -886,6 +904,16 @@
     form.appendChild(fila2);
 
     form.appendChild(campo('Notas', txNotas));
+
+    // Marcar un partido como aplazado lo saca de los contadores: ni jugado
+    // ni pendiente, aunque su fecha ya haya pasado.
+    var lblAplazado = el('label', 'casilla');
+    lblAplazado.appendChild(chAplazado);
+    var textoAplazado = el('span');
+    textoAplazado.appendChild(el('strong', '', 'Aplazado'));
+    textoAplazado.appendChild(el('small', '', 'No se jugó ni se hizo. No cuenta en los contadores.'));
+    lblAplazado.appendChild(textoAplazado);
+    form.appendChild(lblAplazado);
 
     var acciones = el('div', 'form-acciones');
     var guardar = el('button', 'btn', existente ? 'Guardar cambios' : 'Añadir');
@@ -906,6 +934,7 @@
         horario: inHorario.value.trim(),
         lugar: inLugar.value.trim(),
         notas: txNotas.value.trim(),
+        aplazado: chAplazado.checked,
       };
       if (!datos.titulo && datos.tipo !== 'descanso') {
         aviso('Ponle un nombre a la actividad', true);

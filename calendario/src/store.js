@@ -27,6 +27,8 @@
       titulo: typeof e.titulo === 'string' ? e.titulo : '',
       lugar: typeof e.lugar === 'string' ? e.lugar : '',
       notas: typeof e.notas === 'string' ? e.notas : '',
+      // Un partido aplazado no se ha jugado aunque su fecha ya pasara.
+      aplazado: e.aplazado === true,
     };
   }
 

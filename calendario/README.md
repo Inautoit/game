@@ -152,6 +152,11 @@ consultar sin cobertura (los cambios necesitan conexión).
 - **Partidos** — todos los partidos de la temporada, por meses, con
   cuántos van jugados y cuántos quedan. Los ya jugados salen atenuados.
   Tocando uno se abre su día.
+
+  Si un partido no llegó a jugarse, se marca **Aplazado** al editarlo y
+  deja de contar: ni jugado ni por jugar, aunque su fecha ya haya pasado.
+  Aparece entonces un cuarto dato con cuántos hay aplazados, para que los
+  números sigan cuadrando con la lista.
 - **Fotos** — la galería del equipo.
 
 En Partidos y en el pie hay un enlace a la **ficha del equipo en la

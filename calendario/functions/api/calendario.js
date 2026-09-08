@@ -22,6 +22,7 @@ function normalizar(raw) {
       titulo: texto(e.titulo),
       lugar: texto(e.lugar),
       notas: texto(e.notas),
+      aplazado: e.aplazado === true,
     }));
     if (limpio.length) dias[fecha] = limpio;
   }
