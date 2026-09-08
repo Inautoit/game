@@ -51,8 +51,7 @@ Hay un fichero de muestra en [`ejemplo-clientes.csv`](ejemplo-clientes.csv).
 
 <https://verisure-clientes.inautoit.workers.dev>
 
-Contiene los 5 registros de muestra de `ejemplo-clientes.csv`. Desaparecen en
-cuanto se sube el fichero real con la opción *Reemplazar todo*.
+Base vacía y lista para la primera carga.
 
 ---
 
@@ -65,6 +64,35 @@ cuanto se sube el fichero real con la opción *Reemplazar todo*.
 
 > **Cámbialas nada más entrar**, desde *Mi cuenta*. Los hashes de estas dos
 > contraseñas están en el repositorio, así que sólo sirven para el primer acceso.
+
+---
+
+## Límites de Cloudflare y tamaño del fichero
+
+La aplicación va sobre D1, la base de datos de Cloudflare. Lo que marca el
+ritmo no es el espacio sino las **escrituras de fila al día**, que en el plan
+gratuito son 100.000 para toda la cuenta:
+
+| | Gratuito | Workers Paid (5 $/mes) |
+|---|---|---|
+| Escrituras de fila al día | 100.000 | 50.000.000 |
+| Lecturas de fila al día | 5.000.000 | 25.000 millones/mes |
+| Tamaño máximo de la base | 5 GB en total | 10 GB por base |
+
+Cada línea del CSV cuesta **una** escritura, así que en el plan gratuito caben
+unos 100.000 clientes al día, en una sola carga. Un fichero de 54.000 registros
+entra sin problema, pero **no se puede cargar dos veces el mismo día**.
+
+El modo *Reemplazar todo* vacía la tabla con `DROP TABLE` en vez de borrar fila
+a fila, precisamente porque borrar 54.000 filas costaría otras 54.000
+escrituras y no cabría en el día. A cambio, mientras dura la importación el
+buscador se queda sin datos.
+
+Como referencia medida con 54.000 registros de 35 columnas: **27 MB** de base
+de datos y búsquedas de **30-60 ms**.
+
+Si se agota la cuota, la aplicación lo dice con todas las letras y el límite se
+restablece a las 00:00 UTC (las 02:00 en España peninsular).
 
 ---
 
