@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Verisure · Buscador de clientes</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23e2001a' d='M16 2 4 6v10c0 7 5 12 12 14 7-2 12-7 12-14V6z'/%3E%3Cpath fill='%23fff' d='m10 15 4.5 5L23 11l-2.2-2-6.3 6.6L12 13z'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <!-- ══════════════════ Acceso ══════════════════ -->
+    <div id="pantalla-login" class="login" hidden>
+      <div class="login__marca">
+        <div class="marca">
+          <svg class="marca__escudo" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 2 4 6v10c0 7 5 12 12 14 7-2 12-7 12-14V6z" />
+            <path class="marca__tick" d="m10 15 4.5 5L23 11l-2.2-2-6.3 6.6L12 13z" />
+          </svg>
+          <span class="marca__texto">Verisure</span>
+        </div>
+        <h1>Buscador de clientes de baja</h1>
+        <p>
+          Herramienta interna de consulta. Los administradores cargan la base de datos en CSV y el
+          equipo la consulta por número de instalación, teléfono o cualquier otro dato.
+        </p>
+        <ul class="login__lista">
+          <li>Búsqueda por cualquier campo del fichero</li>
+          <li>Acceso restringido con usuario y contraseña</li>
+          <li>Roles de administrador y de consulta</li>
+        </ul>
+      </div>
+
+      <div class="login__panel">
+        <form id="form-login" class="tarjeta tarjeta--login" autocomplete="on">
+          <h2>Iniciar sesión</h2>
+          <p class="apagado">Introduce tus credenciales corporativas.</p>
+
+          <label class="campo">
+            <span>Usuario</span>
+            <input id="login-usuario" name="username" type="text" autocomplete="username" required
+              placeholder="p. ej. agente" />
+          </label>
+
+          <label class="campo">
+            <span>Contraseña</span>
+            <input id="login-password" name="password" type="password"
+              autocomplete="current-password" required placeholder="••••••••" />
+          </label>
+
+          <p id="login-error" class="error" hidden></p>
+
+          <button class="boton boton--primario" type="submit">Entrar</button>
+        </form>
+        <p class="login__pie">Uso exclusivo para personal autorizado.</p>
+      </div>
+    </div>
+
+    <!-- ══════════════════ Aplicación ══════════════════ -->
+    <div id="pantalla-app" hidden>
+      <header class="cabecera">
+        <div class="cabecera__marca">
+          <svg class="marca__escudo marca__escudo--pequeno" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 2 4 6v10c0 7 5 12 12 14 7-2 12-7 12-14V6z" />
+            <path class="marca__tick" d="m10 15 4.5 5L23 11l-2.2-2-6.3 6.6L12 13z" />
+          </svg>
+          <div>
+            <strong>Verisure</strong>
+            <span>Clientes de baja</span>
+          </div>
+        </div>
+
+        <nav class="pestanas" id="pestanas">
+          <button class="pestana activa" data-vista="buscar">Buscar</button>
+          <button class="pestana solo-admin" data-vista="importar">Importar CSV</button>
+          <button class="pestana solo-admin" data-vista="usuarios">Usuarios</button>
+          <button class="pestana" data-vista="cuenta">Mi cuenta</button>
+        </nav>
+
+        <div class="cabecera__usuario">
+          <div class="usuario-chip">
+            <span id="chip-nombre">—</span>
+            <span id="chip-rol" class="etiqueta">—</span>
+          </div>
+          <button id="boton-salir" class="boton boton--fantasma">Salir</button>
+        </div>
+      </header>
+
+      <main class="contenido">
+        <!-- ── Buscar ── -->
+        <section class="vista" data-vista="buscar">
+          <div class="tarjeta buscador">
+            <form id="form-buscar" class="buscador__form">
+              <div class="buscador__entrada">
+                <svg class="lupa" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="16.5" y1="16.5" x2="21" y2="21" />
+                </svg>
+                <input id="buscar-q" type="search" placeholder="Nº de instalación, teléfono, DNI, nombre, dirección…"
+                  autocomplete="off" />
+              </div>
+              <select id="buscar-campo" class="selector" title="Campo donde buscar">
+                <option value="">Todos los campos</option>
+              </select>
+              <button class="boton boton--primario" type="submit">Buscar</button>
+            </form>
+            <div id="atajos" class="atajos"></div>
+            <p id="buscar-estado" class="apagado buscador__estado"></p>
+          </div>
+
+          <div id="resultados" class="resultados"></div>
+          <div id="paginacion" class="paginacion" hidden>
+            <button class="boton boton--fantasma" data-paso="-1">← Anteriores</button>
+            <span id="paginacion-texto"></span>
+            <button class="boton boton--fantasma" data-paso="1">Siguientes →</button>
+          </div>
+        </section>
+
+        <!-- ── Importar ── -->
+        <section class="vista" data-vista="importar" hidden>
+          <div class="tarjeta">
+            <h2>Cargar base de datos (CSV)</h2>
+            <p class="apagado">
+              El archivo debe tener una primera fila con los nombres de las columnas y los valores
+              separados por comas. También se detectan automáticamente el punto y coma y el
+              tabulador.
+            </p>
+
+            <label id="zona-archivo" class="zona-archivo">
+              <input id="archivo" type="file" accept=".csv,.txt,text/csv" hidden />
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="zona-archivo__icono">
+                <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
+                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+              </svg>
+              <strong>Arrastra aquí el CSV o haz clic para elegirlo</strong>
+              <span class="apagado">Se procesa en tu navegador y se envía por lotes.</span>
+            </label>
+
+            <div id="previo" hidden>
+              <div class="previo__resumen">
+                <div><span class="apagado">Archivo</span><strong id="previo-nombre">—</strong></div>
+                <div><span class="apagado">Filas</span><strong id="previo-filas">—</strong></div>
+                <div><span class="apagado">Columnas</span><strong id="previo-columnas">—</strong></div>
+                <div><span class="apagado">Separador</span><strong id="previo-separador">—</strong></div>
+              </div>
+
+              <div class="tabla-envoltorio">
+                <table id="previo-tabla" class="tabla"></table>
+              </div>
+
+              <fieldset class="opciones">
+                <legend>¿Qué hacer con los datos que ya hay?</legend>
+                <label class="opcion">
+                  <input type="radio" name="modo" value="reemplazar" checked />
+                  <span><strong>Reemplazar todo</strong><em>Borra las cargas anteriores y deja sólo este archivo.</em></span>
+                </label>
+                <label class="opcion">
+                  <input type="radio" name="modo" value="anadir" />
+                  <span><strong>Añadir</strong><em>Mantiene lo anterior y suma estos registros.</em></span>
+                </label>
+              </fieldset>
+
+              <div class="acciones">
+                <button id="boton-importar" class="boton boton--primario">Importar registros</button>
+                <button id="boton-cancelar-import" class="boton boton--fantasma" type="button">Cancelar</button>
+              </div>
+
+              <div id="progreso" class="progreso" hidden>
+                <div class="progreso__barra"><i id="progreso-relleno"></i></div>
+                <span id="progreso-texto" class="apagado"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="tarjeta">
+            <h2>Cargas realizadas</h2>
+            <div id="lista-importaciones" class="lista"></div>
+          </div>
+        </section>
+
+        <!-- ── Usuarios ── -->
+        <section class="vista" data-vista="usuarios" hidden>
+          <div class="tarjeta">
+            <h2>Nuevo usuario</h2>
+            <form id="form-usuario" class="rejilla-form">
+              <label class="campo">
+                <span>Usuario</span>
+                <input id="nuevo-usuario" type="text" required placeholder="nombre.apellido" />
+              </label>
+              <label class="campo">
+                <span>Nombre completo</span>
+                <input id="nuevo-nombre" type="text" placeholder="Nombre y apellidos" />
+              </label>
+              <label class="campo">
+                <span>Rol</span>
+                <select id="nuevo-rol" class="selector">
+                  <option value="usuario">Usuario (sólo consulta)</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </label>
+              <label class="campo">
+                <span>Contraseña</span>
+                <input id="nuevo-password" type="text" required minlength="8" placeholder="Mínimo 8 caracteres" />
+              </label>
+              <button class="boton boton--primario" type="submit">Crear usuario</button>
+            </form>
+          </div>
+
+          <div class="tarjeta">
+            <h2>Usuarios con acceso</h2>
+            <div class="tabla-envoltorio">
+              <table id="tabla-usuarios" class="tabla"></table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Cuenta ── -->
+        <section class="vista" data-vista="cuenta" hidden>
+          <div class="tarjeta tarjeta--estrecha">
+            <h2>Cambiar mi contraseña</h2>
+            <form id="form-password" class="rejilla-form">
+              <label class="campo">
+                <span>Contraseña actual</span>
+                <input id="pass-actual" type="password" required autocomplete="current-password" />
+              </label>
+              <label class="campo">
+                <span>Nueva contraseña</span>
+                <input id="pass-nueva" type="password" required minlength="8" autocomplete="new-password" />
+              </label>
+              <label class="campo">
+                <span>Repite la nueva contraseña</span>
+                <input id="pass-repetir" type="password" required minlength="8" autocomplete="new-password" />
+              </label>
+              <button class="boton boton--primario" type="submit">Guardar</button>
+            </form>
+          </div>
+
+          <div class="tarjeta tarjeta--estrecha">
+            <h2>Estado de la base de datos</h2>
+            <div id="estado-bbdd" class="lista"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="avisos" class="avisos" aria-live="polite"></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

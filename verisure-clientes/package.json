@@ -1,0 +1,18 @@
+{
+  "name": "verisure-clientes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Buscador interno de clientes de baja: importación de CSV por administradores y consulta por agentes.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:crear": "wrangler d1 create verisure-clientes",
+    "db:migrar": "wrangler d1 migrations apply verisure-clientes --remote",
+    "db:migrar:local": "wrangler d1 migrations apply verisure-clientes --local",
+    "secreto": "wrangler secret put AUTH_SECRET"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

@@ -59,3 +59,12 @@ automáticamente. Detalles en [`assets/README.md`](assets/README.md).
 - Sonido de motor
 - Objetos coleccionables / misiones
 - Día/noche y farolas
+
+---
+
+## Otras aplicaciones de este repositorio
+
+- [`verisure-clientes/`](verisure-clientes/) — Buscador interno de clientes de
+  baja (Cloudflare Workers + D1): login con roles de administrador y usuario,
+  importación de la base de datos en CSV y búsqueda por número de instalación,
+  teléfono o cualquier otro campo.
