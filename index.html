@@ -79,6 +79,13 @@
     <div class="menu-bottom">
       <div class="panel hidden" id="options-panel">
         <div class="row">
+          <span class="row-label">Piloto</span>
+          <div class="chips">
+            <input id="opt-name" class="text-input" type="text" maxlength="16"
+                   autocomplete="off" spellcheck="false" placeholder="Tu nombre" />
+          </div>
+        </div>
+        <div class="row">
           <span class="row-label">Modo</span>
           <div class="chips" id="opt-mode"></div>
         </div>
@@ -105,6 +112,10 @@
 
       <div class="best-row">Récord <b id="menu-best">0</b> <span id="menu-mode-name"></span></div>
       <button id="btn-play" class="cta">JUGAR</button>
+      <div class="two-up">
+        <button id="btn-duel" class="ghost">Duelo online</button>
+        <button id="btn-ranking" class="ghost">Ranking</button>
+      </div>
       <button id="btn-options" class="ghost">Opciones</button>
       <p class="hint">PC: <b>A/D</b> girar · <b>W/S</b> acelerar y frenar · <b>Espacio</b> nitro</p>
     </div>
@@ -127,10 +138,62 @@
       <div><b id="over-near">0</b><span>al límite</span></div>
       <div><b id="over-best">0</b><span>récord</span></div>
     </div>
+    <div class="board hidden" id="over-standings"></div>
     <p id="over-new-best" class="new-best hidden">¡Nuevo récord!</p>
+    <p id="over-rank" class="note hidden"></p>
     <button id="btn-retry" class="cta">Otra vez</button>
     <button id="btn-menu" class="ghost">Menú</button>
   </section>
+
+  <!-- Ranking online -->
+  <section id="ranking" class="screen hidden compact">
+    <h2>Ranking mundial</h2>
+    <div class="chips center" id="rank-mode"></div>
+    <div class="board" id="rank-list"></div>
+    <p class="note" id="rank-you"></p>
+    <button id="btn-rank-close" class="ghost">Volver</button>
+  </section>
+
+  <!-- Crear o entrar en una sala -->
+  <section id="rooms" class="screen hidden compact">
+    <h2>Duelo online</h2>
+    <p class="note">Hasta 6 pilotos en la misma carretera. El que llegue más lejos gana.</p>
+    <button id="btn-create" class="cta">Crear sala</button>
+    <div class="joiner">
+      <input id="join-code" class="text-input code" type="text" maxlength="5"
+             autocomplete="off" spellcheck="false" placeholder="CÓDIGO" />
+      <button id="btn-join" class="ghost">Entrar</button>
+    </div>
+    <p class="note error hidden" id="rooms-error"></p>
+    <button id="btn-rooms-close" class="ghost">Volver</button>
+  </section>
+
+  <!-- Vestíbulo -->
+  <section id="lobby" class="screen hidden compact">
+    <p class="note">Código de la sala</p>
+    <div class="room-code" id="lobby-code">-----</div>
+    <button id="btn-copy" class="ghost">Copiar código</button>
+    <div class="board" id="lobby-players"></div>
+    <div class="panel hidden" id="lobby-host">
+      <div class="row">
+        <span class="row-label">Modo</span>
+        <div class="chips" id="lobby-mode"></div>
+      </div>
+      <div class="row">
+        <span class="row-label">Hora</span>
+        <div class="chips" id="lobby-time"></div>
+      </div>
+    </div>
+    <p class="note" id="lobby-hint">Esperando a que el anfitrión arranque…</p>
+    <button id="btn-launch" class="cta hidden">EMPEZAR</button>
+    <button id="btn-lobby-leave" class="ghost">Salir de la sala</button>
+  </section>
+
+  <!-- Cuenta atrás -->
+  <div id="countdown" class="hidden"><b id="countdown-n">3</b></div>
+
+  <!-- Marcador de rivales durante el duelo -->
+  <div id="versus" class="hidden"></div>
 
   <div id="flash"></div>
 

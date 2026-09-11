@@ -35,10 +35,18 @@ export class UI {
       nitroBtn: document.querySelector('.nitro-btn'),
       toasts: $('toasts'), flash: $('flash'),
       menuBest: $('menu-best'), menuModeName: $('menu-mode-name'),
+      ranking: $('ranking'), rankList: $('rank-list'), rankYou: $('rank-you'),
+      rooms: $('rooms'), roomsError: $('rooms-error'), joinCode: $('join-code'),
+      lobby: $('lobby'), lobbyCode: $('lobby-code'), lobbyPlayers: $('lobby-players'),
+      lobbyHost: $('lobby-host'), lobbyHint: $('lobby-hint'), launch: $('btn-launch'),
+      countdown: $('countdown'), countdownN: $('countdown-n'),
+      versus: $('versus'), name: $('opt-name'),
+      overStandings: $('over-standings'), overRank: $('over-rank'),
     };
 
     this._buildChips();
     this._bindButtons();
+    this._bindOnline();
     this._last = { score: -1, distance: -1, speed: -1, nitro: -1, speedState: -1 };
   }
 
@@ -82,6 +90,174 @@ export class UI {
     $('btn-quit').addEventListener('click', () => this.h.onQuit());
     $('btn-retry').addEventListener('click', () => this.h.onPlay());
     $('btn-menu').addEventListener('click', () => this.h.onQuit());
+  }
+
+  _bindOnline() {
+    this.el.name.addEventListener('change', () => {
+      const value = this.el.name.value.trim();
+      if (value.length >= 2) this.h.onName(value);
+      else this.el.name.value = this.h.currentName?.() || '';
+    });
+
+    $('btn-ranking').addEventListener('click', () => this.h.onRanking(this.settings.mode));
+    $('btn-rank-close').addEventListener('click', () => this.closeOverlays());
+    $('btn-duel').addEventListener('click', () => this.h.onDuel());
+    $('btn-rooms-close').addEventListener('click', () => this.closeOverlays());
+    $('btn-create').addEventListener('click', () => this.h.onCreateRoom());
+    $('btn-join').addEventListener('click', () => {
+      const code = this.el.joinCode.value.trim().toUpperCase();
+      if (/^[A-Z0-9]{5}$/.test(code)) this.h.onJoinRoom(code);
+      else this.roomsError('El código son 5 letras o números');
+    });
+    $('btn-launch').addEventListener('click', () => this.h.onLaunch());
+    $('btn-lobby-leave').addEventListener('click', () => this.h.onLeaveRoom());
+    $('btn-copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(this.el.lobbyCode.textContent.trim());
+        $('btn-copy').textContent = '¡Copiado!';
+        setTimeout(() => { $('btn-copy').textContent = 'Copiar código'; }, 1400);
+      } catch { /* sin permiso de portapapeles */ }
+    });
+
+    this.chips.rankMode = chipGroup($('rank-mode'),
+      Object.values(MODES).map((m) => ({ id: m.id, label: m.name })),
+      (id) => this.h.onRanking(id));
+    this.chips.lobbyMode = chipGroup($('lobby-mode'),
+      Object.values(MODES).map((m) => ({ id: m.id, label: m.name })),
+      (id) => this.h.onLobbySetup('mode', id));
+    this.chips.lobbyTime = chipGroup($('lobby-time'),
+      Object.values(TIMES).map((t) => ({ id: t.id, label: t.name })),
+      (id) => this.h.onLobbySetup('time', id));
+  }
+
+  setName(name) {
+    this.el.name.value = name;
+  }
+
+  closeOverlays() {
+    show(this.el.ranking, false);
+    show(this.el.rooms, false);
+    show(this.el.lobby, false);
+  }
+
+  // --------------------------------------------------------- ranking
+  showRanking(data, mode, youId) {
+    this.chips.rankMode(mode);
+    const list = this.el.rankList;
+    list.innerHTML = '';
+
+    if (!data) {
+      this.el.rankYou.textContent = 'No se ha podido conectar con el ranking.';
+      show(this.el.ranking, true);
+      return;
+    }
+    for (const row of data.rows) {
+      const el = document.createElement('div');
+      el.className = 'board-row' + (row.id === youId ? ' me' : '');
+      el.innerHTML = `<span class="pos">${row.rank}</span>`
+        + `<span class="who"></span>`
+        + `<span class="val">${fmt(row.score)}<span class="sub">${fmt(row.distance)} m</span></span>`;
+      el.querySelector('.who').textContent = row.name;
+      list.appendChild(el);
+    }
+    if (!data.rows.length) {
+      this.el.rankYou.textContent = 'Todavía no hay marcas en este modo. Puedes ser el primero.';
+    } else if (data.you?.rank) {
+      this.el.rankYou.textContent = `Tu puesto: ${data.you.rank}.º con ${fmt(data.you.score)} puntos.`;
+    } else {
+      this.el.rankYou.textContent = 'Aún no tienes marca en este modo.';
+    }
+    show(this.el.ranking, true);
+  }
+
+  // ----------------------------------------------------------- salas
+  showRooms() {
+    this.el.joinCode.value = '';
+    show(this.el.roomsError, false);
+    show(this.el.rooms, true);
+  }
+
+  roomsError(msg) {
+    this.el.roomsError.textContent = msg;
+    show(this.el.roomsError, !!msg);
+  }
+
+  showLobby({ code, players, hostId, youId, isHost, mode, time }) {
+    show(this.el.rooms, false);
+    show(this.el.lobby, true);
+    this.el.lobbyCode.textContent = code;
+    show(this.el.lobbyHost, isHost);
+    show(this.el.launch, isHost);
+    this.chips.lobbyMode(mode);
+    this.chips.lobbyTime(time);
+
+    this.el.lobbyHint.textContent = isHost
+      ? (players.length < 2 ? 'Pasa el código a tus rivales. Hacen falta al menos dos.' : 'Cuando queráis.')
+      : 'Esperando a que el anfitrión arranque…';
+
+    const list = this.el.lobbyPlayers;
+    list.innerHTML = '';
+    players.forEach((p, i) => {
+      const el = document.createElement('div');
+      el.className = 'board-row' + (p.id === youId ? ' me' : '');
+      const hex = PAINT_OPTIONS[p.paint % PAINT_OPTIONS.length]?.hex ?? 0x999999;
+      el.innerHTML = `<span class="pos">${i + 1}</span>`
+        + `<span class="dot" style="background:#${hex.toString(16).padStart(6, '0')}"></span>`
+        + `<span class="who"></span>`
+        + `<span class="val">${p.id === hostId ? '<span class="crown">anfitrión</span>' : ''}</span>`;
+      el.querySelector('.who').textContent = p.name;
+      list.appendChild(el);
+    });
+  }
+
+  countdown(n) {
+    if (n === null) return show(this.el.countdown, false);
+    this.el.countdownN.textContent = n > 0 ? String(n) : '¡YA!';
+    this.el.countdownN.style.animation = 'none';
+    void this.el.countdownN.offsetWidth;          // reinicia la animación
+    this.el.countdownN.style.animation = '';
+    show(this.el.countdown, true);
+  }
+
+  // Marcador de rivales durante la carrera.
+  versus(rows, left) {
+    if (!rows) return show(this.el.versus, false);
+    const box = this.el.versus;
+    box.innerHTML = '';
+    for (const r of rows) {
+      const el = document.createElement('div');
+      el.className = 'vs-row' + (r.crashed ? ' dead' : '');
+      const hex = PAINT_OPTIONS[r.paint % PAINT_OPTIONS.length]?.hex ?? 0x999999;
+      const gap = Math.round(r.gap);
+      const cls = gap > 0 ? 'ahead' : 'behind';
+      el.innerHTML = `<span class="dot" style="background:#${hex.toString(16).padStart(6, '0')}"></span>`
+        + `<span class="who"></span>`
+        + `<span class="gap ${r.crashed ? '' : cls}">${r.crashed ? 'fuera' : (gap > 0 ? '+' : '') + gap + ' m'}</span>`;
+      el.querySelector('.who').textContent = r.name;
+      box.appendChild(el);
+    }
+    if (left != null) {
+      const tag = document.createElement('div');
+      tag.className = 'vs-left';
+      tag.textContent = left === 1 ? 'último en pie' : `quedan ${left}`;
+      box.appendChild(tag);
+    }
+    show(box, true);
+  }
+
+  showStandings(results, youId) {
+    const box = this.el.overStandings;
+    box.innerHTML = '';
+    for (const r of results) {
+      const el = document.createElement('div');
+      el.className = 'board-row' + (r.id === youId ? ' me' : '');
+      el.innerHTML = `<span class="pos">${r.place}</span>`
+        + `<span class="who"></span>`
+        + `<span class="val">${fmt(r.distance)} m<span class="sub">${fmt(r.score)} pts</span></span>`;
+      el.querySelector('.who').textContent = r.name;
+      box.appendChild(el);
+    }
+    show(box, true);
   }
 
   _set(key, value) {
@@ -131,10 +307,16 @@ export class UI {
     show(this.el.controls, false);
     show(this.el.pause, false);
     show(this.el.over, false);
+    show(this.el.versus, false);
+    this.closeOverlays();
     this.syncChips();
   }
 
   showGame() {
+    this.closeOverlays();
+    show(this.el.versus, false);
+    show(this.el.overStandings, false);
+    show(this.el.overRank, false);
     show(this.el.menu, false);
     show(this.el.pause, false);
     show(this.el.over, false);
@@ -150,10 +332,18 @@ export class UI {
     $('over-overtakes').textContent = fmt(stats.overtakes);
     $('over-near').textContent = fmt(stats.nearMisses);
     $('over-best').textContent = fmt(stats.best);
+    document.querySelector('#over-best + span').textContent = stats.bestLabel || 'récord';
     $('over-title').textContent = stats.title;
     show($('over-new-best'), stats.newBest);
+    show(this.el.overStandings, false);
+    show(this.el.overRank, false);
+    if (stats.rank) {
+      this.el.overRank.textContent = `Puesto ${stats.rank}.º en el ranking mundial.`;
+      show(this.el.overRank, true);
+    }
     show(this.el.over, true);
     show(this.el.controls, false);
+    show(this.el.versus, false);
   }
 
   // ------------------------------------------------------------- en juego

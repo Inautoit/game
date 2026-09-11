@@ -63,6 +63,60 @@ igual pero cuesta bastante más.
 
 ---
 
+## Online
+
+### Cuenta
+
+No hay registro. La primera vez que juegas se crea una cuenta anónima y el
+móvil guarda la credencial; el nombre se cambia en Opciones. Para llevártela
+a otro aparato está el **código de recuperación** de 10 caracteres. Ni email,
+ni contraseña, ni ningún dato personal que proteger.
+
+### Ranking mundial
+
+Cada partida en solitario se manda al ranking del modo en que la has jugado.
+En la pantalla final ves tu puesto, y el botón *Ranking* lista el top 25.
+
+Las partidas llevan un **vale firmado** con marca de tiempo, y el servidor
+comprueba que lo que cuentas cuadra: la distancia con el tiempo, los
+adelantamientos con la carretera que ha dado tiempo a recorrer, y los puntos
+con todo lo anterior. Una partida no se puede reenviar dos veces. Esto para
+al que enchufa un número desde la consola del navegador, no al que se
+empeñe de verdad; para eso habría que mandar la repetición y revalidarla.
+
+### Duelo online (hasta 6)
+
+*Duelo online* → **Crear sala** te da un código de 5 letras. Los demás entran
+con él. El anfitrión elige modo y hora, y arranca.
+
+Corréis todos por la misma carretera, cada uno con su coche y viendo el mismo
+tráfico. Arriba a la derecha tienes a cada rival con los metros que te saca o
+que le sacas. **Cuando alguien choca, los demás siguen**: se avisa de quién ha
+caído y cuántos quedan, y tú, si te has estrellado, pasas a ver la carrera
+desde el que va líder. Gana el que llegue más lejos.
+
+Los duelos no puntúan para el ranking mundial: las condiciones no son las
+mismas que en una partida en solitario.
+
+#### Cómo va por dentro
+
+- Una sala es un **Durable Object** direccionado por su código. No simula
+  nada: reparte mensajes y lleva quién sigue vivo. Con la API de hibernación
+  no factura mientras nadie habla.
+- Como tu coche nunca se mueve en Z, colocar a un rival es trivial:
+  `z = suDistancia − miDistancia`. Por la red sólo viajan seis números por
+  jugador a 10 Hz, unos 30 bytes.
+- **El tráfico lo simula el anfitrión y lo retransmite** a 8 Hz. Es la única
+  forma de que los seis veáis los mismos coches en el mismo sitio sin
+  depender de que seis simulaciones no se separen nunca. Los invitados
+  reconcilian por identificador y avanzan por estima entre paquete y
+  paquete, así que no dan saltos. Si el anfitrión se cae, cada uno pasa a
+  simular su propio tráfico en vez de quedarse en un mundo congelado.
+- Los mensajes entrantes se facturan 20:1, así que una partida de seis a
+  10 Hz sale por unas 540 peticiones de las 100.000 diarias gratuitas.
+
+---
+
 ## Despliegue
 
 Ya está publicado en Cloudflare (proyecto `urus-traffic`, cuenta
@@ -129,6 +183,9 @@ src/
   vehicles.js   Geometrías procedurales de coche, furgoneta, camión y bus
   road.js       Carretera infinita y decorado reciclado por chunks
   postfx.js     Desenfoque radial, rayos, aberración y viñeta (una pasada)
+  account.js    Cuenta anónima, ranking y envío de marcas
+  net.js        Cliente de la sala (WebSocket)
+  remote.js     Los coches de los rivales y sus nombres
   sky.js        Mapa de entorno procedural (los reflejos de la chapa)
   input.js      Teclado, botones, deslizar e inclinación
   audio.js      Motor, choque y avisos sintetizados con WebAudio
@@ -136,6 +193,7 @@ src/
   config.js     Todos los números del juego en un solo sitio
 assets/urus.glb El coche (3,1 MB) — ver assets/README.md
 vendor/         Three.js r160 + GLTFLoader + decoder de meshopt
+worker/         API de cuentas y ranking (D1) + salas (Durable Object)
 tools/          Script de optimización del modelo
 ```
 
@@ -164,6 +222,11 @@ tools/          Script de optimización del modelo
 ---
 
 ## Ideas para seguir
+
+- Coches desbloqueables con cifras propias (la Supra está a medio camino).
+- Revalidar la repetición en el servidor para blindar el ranking.
+- Choques entre jugadores en el duelo (hoy os atravesáis: con 100 ms de
+  latencia, un choque injusto arruina una partida).
 
 - Garaje con varios coches y mejoras (motor, frenos, nitro).
 - Misiones: llegar a X metros, N adelantamientos al límite, contrarreloj.

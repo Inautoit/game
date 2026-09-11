@@ -58,12 +58,20 @@ export class Traffic {
     this.cars = [];
     this.mode = null;
     this.spawnTimer = 0;
+    this.nextId = 1;
+
+    // 'solo' | 'host' | 'guest'. En duelo el tráfico lo simula el
+    // anfitrión y lo retransmite: así todos ven los mismos coches en el
+    // mismo sitio sin depender de que dos simulaciones no se separen.
+    this.role = 'solo';
   }
 
-  reset(mode) {
+  reset(mode, role = 'solo') {
     this.mode = mode;
+    this.role = role;
     this.cars.length = 0;
     this.spawnTimer = 0.4;
+    this.nextId = 1;
     this._sync();
   }
 
@@ -78,11 +86,20 @@ export class Traffic {
     this._sync();
   }
 
-  update(dt, playerSpeed, distance) {
+  // range = {front, back}: hasta dónde llega el rival más adelantado y el
+  // más rezagado, en metros respecto a mí. El anfitrión necesita cubrirlos
+  // a todos, no sólo su propio tramo.
+  update(dt, playerSpeed, distance, range = null) {
+    if (this.role === 'guest') return this._updateGuest(dt, playerSpeed);
+
+    const front = Math.max(0, range?.front || 0);
+    const back = Math.min(0, range?.back || 0);
+
     // La densidad sube con la distancia: el juego se pone difícil solo.
     const ramp = Math.min(1, distance / 6000);
-    const maxActive = Math.round(TRAFFIC.maxActive * (0.7 + 0.3 * ramp));
-    const interval = 1.05 - 0.6 * ramp;
+    const spread = 1 + (front - back) / 500;
+    const maxActive = Math.min(22, Math.round(TRAFFIC.maxActive * (0.7 + 0.3 * ramp) * spread));
+    const interval = (1.05 - 0.6 * ramp) / spread;
 
     for (const car of this.cars) {
       car.prevZ = car.z;
@@ -109,19 +126,78 @@ export class Traffic {
       }
     }
 
-    this.cars = this.cars.filter((c) => {
-      const alive = c.z > -TRAFFIC.despawnBehind && c.z < TRAFFIC.despawnAhead;
-      if (!alive) this._release(c);
-      return alive;
-    });
+    this.cars = this.cars.filter((c) => (
+      c.z > -TRAFFIC.despawnBehind + back && c.z < TRAFFIC.despawnAhead + front
+    ));
 
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0 && this.cars.length < maxActive) {
       this.spawnTimer = interval * (0.6 + Math.random() * 0.8);
-      this._spawn(ramp);
+      this._spawn(ramp, null, front);
     }
 
     this._sync();
+  }
+
+  // Invitado: no simula nada. Avanza por estima y se corrige suavemente
+  // hacia lo último que ha mandado el anfitrión.
+  _updateGuest(dt, playerSpeed) {
+    for (const car of this.cars) {
+      car.prevZ = car.z;
+      const drift = (car.speed * car.dir - playerSpeed) * dt;
+      car.z += drift;
+      car.zTarget += drift;
+      car.z += (car.zTarget - car.z) * Math.min(1, dt * 5);
+      car.x += (car.targetX - car.x) * Math.min(1, dt * 5);
+    }
+    this._sync();
+  }
+
+  // Empaqueta el tráfico para mandarlo. Redondeado a un decimal: no hace
+  // falta más y el paquete baja a la mitad.
+  serialize() {
+    return this.cars.map((c) => [
+      c.id,
+      this.pools.indexOf(c.pool),
+      Math.round(c.x * 10),
+      Math.round(c.z * 10),
+      Math.round(c.speed * c.dir * 10),
+      c.colorIdx,
+    ]);
+  }
+
+  // hostDistance = metros del anfitrión. La z que manda es relativa a él,
+  // así que la paso a relativa a mí sumando la diferencia.
+  applyRemote(hostDistance, packed, myDistance) {
+    const shift = hostDistance - myDistance;
+    const seen = new Set();
+
+    for (const [id, poolIdx, x10, z10, v10, colorIdx] of packed) {
+      const pool = this.pools[poolIdx];
+      if (!pool) continue;
+      seen.add(id);
+      const x = x10 / 10;
+      const z = z10 / 10 + shift;
+      const vz = v10 / 10;
+
+      let car = this.cars.find((c) => c.id === id);
+      if (!car) {
+        car = {
+          id, pool, lane: 0, dir: vz < 0 ? -1 : 1, x, targetX: x, z, zTarget: z, prevZ: z,
+          speed: Math.abs(vz), baseSpeed: Math.abs(vz), cruise: Math.abs(vz), laneTimer: 99,
+          colorIdx, halfW: pool.size[0] / 2, halfL: pool.size[2] / 2, height: pool.size[1],
+          counted: z < 0,
+        };
+        this.cars.push(car);
+      } else {
+        car.zTarget = z;
+        car.targetX = x;
+        car.speed = Math.abs(vz);
+        car.dir = vz < 0 ? -1 : 1;
+      }
+    }
+
+    this.cars = this.cars.filter((c) => seen.has(c.id));
   }
 
   _carAhead(car) {
@@ -154,11 +230,11 @@ export class Traffic {
     return true;
   }
 
-  _spawn(ramp, atZ = null) {
+  _spawn(ramp, atZ = null, front = 0) {
     const lanes = this.mode.lanes;
     const laneIdx = (Math.random() * lanes.length) | 0;
     const lane = lanes[laneIdx];
-    const z = atZ ?? (lane.dir === 1 ? TRAFFIC.spawnAhead : TRAFFIC.spawnAhead + 60);
+    const z = atZ ?? (front + (lane.dir === 1 ? TRAFFIC.spawnAhead : TRAFFIC.spawnAhead + 60));
     if (!this._laneFree(laneIdx, z, TRAFFIC.minGap)) return;
 
     // Elegir tipo respetando pesos y el tope de instancias libres
@@ -175,12 +251,14 @@ export class Traffic {
     const [lo, hi] = pool.type.speed;
     const base = lo + Math.random() * (hi - lo) * (1 - 0.25 * ramp);
     this.cars.push({
+      id: this.nextId++,
       pool,
       lane: laneIdx,
       dir: lane.dir,
       x: lane.x,
       targetX: lane.x,
       z,
+      zTarget: z,
       prevZ: z,
       speed: base,
       baseSpeed: base,
@@ -199,8 +277,6 @@ export class Traffic {
     for (const c of this.cars) if (c.pool === pool) n++;
     return n;
   }
-
-  _release() { /* el pool se recalcula entero en _sync */ }
 
   _sync() {
     const counters = new Map(this.pools.map((p) => [p, 0]));

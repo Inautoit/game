@@ -3,8 +3,12 @@ import { MODES, TIMES, SCORE, PLAYER, FX, DRAW_DISTANCE, roadHalfWidth } from '.
 import { Road } from './road.js';
 import { Traffic } from './traffic.js';
 import { makeEnvironment } from './sky.js';
+import { Remotes } from './remote.js';
 
 const STATE = { MENU: 'menu', PLAYING: 'playing', PAUSED: 'paused', OVER: 'over' };
+
+// Entrada muerta: durante la cuenta atrás el coche no obedece.
+const NEUTRAL = { steer: 0, throttle: 0, brake: false };
 
 export class Game {
   constructor({ renderer, scene, camera, player, input, sound, ui }) {
@@ -13,6 +17,8 @@ export class Game {
     this.state = STATE.MENU;
     this.road = new Road(scene);
     this.traffic = new Traffic(scene);
+    this.remotes = new Remotes(scene);
+    this.mp = null;
 
     this.hemi = new THREE.HemisphereLight(0xcfe8ff, 0x4a5a46, 1);
     scene.add(this.hemi);
@@ -114,6 +120,7 @@ export class Game {
     this.comboTimer = 0;
     this.shake = 0;
     this.kick = 0;
+    this.topSpeed = 0;
     this._fxNitro = 0;
     this._camX = this.mode.lanes[this.mode.startLane].x * 0.88;
     this.overDelay = 0;
@@ -147,8 +154,26 @@ export class Game {
     if (this.state === STATE.PAUSED) return;
 
     this.input.update();
+    const mp = this.mp;
+    const now = Date.now();
 
-    if (this.state === STATE.PLAYING && this.input.consumeNitro() && this.player.tryNitro()) {
+    // Cuenta atrás del duelo: el mundo ya está vivo, tú todavía no.
+    if (mp && mp.locked) {
+      const left = Math.max(0, Math.ceil((mp.startAt - now) / 1000));
+      if (left !== mp.shownCount) { mp.shownCount = left; this.ui.countdown(left); }
+      if (now >= mp.startAt) {
+        mp.locked = false;
+        this.ui.countdown(null);
+        this.input.reset();
+      } else {
+        this.player.speed = 0;
+      }
+    }
+
+    const driving = !mp || (!mp.locked && !mp.spectating);
+
+    if (driving && this.state === STATE.PLAYING
+        && this.input.consumeNitro() && this.player.tryNitro()) {
       this.sound.nitro();
       this.ui.toast('¡NITRO!', 'big');
       this.ui.flash('nitro');
@@ -156,12 +181,26 @@ export class Game {
       if (navigator.vibrate) navigator.vibrate(28);
     }
 
-    this.player.update(dt, this.input, this.roadHalf);
-    this.distance += this.player.speed * dt;
-    this.road.update(this.distance);
-    this.traffic.update(dt, this.player.speed, this.distance);
+    if (mp && mp.spectating) {
+      this._spectate(dt);
+    } else {
+      this.player.update(dt, mp && mp.locked ? NEUTRAL : this.input, this.roadHalf);
+      if (!mp || !mp.locked) this.distance += this.player.speed * dt;
+    }
 
-    if (this.state === STATE.PLAYING) {
+    this.road.update(this.distance);
+
+    if (mp) {
+      this.remotes.tick(dt, this.distance);
+      this.traffic.update(dt, this.player.speed, this.distance, this._trafficRange());
+      this._netTick(now);
+      if (now - mp.lastVersus > 200) { mp.lastVersus = now; this._versus(); }
+      this._checkHostAlive(now);
+    } else {
+      this.traffic.update(dt, this.player.speed, this.distance);
+    }
+
+    if (this.state === STATE.PLAYING && driving) {
       this._scoring(dt);
       this._collisions();
     } else if (this.state === STATE.OVER) {
@@ -169,10 +208,208 @@ export class Game {
       if (this.overDelay <= 0 && !this._overShown) this._showOver();
     }
 
+    if (mp && mp.out && !mp.spectating && mp.spectateIn > 0) {
+      mp.spectateIn -= dt;
+      if (mp.spectateIn <= 0) this._startSpectating();
+    }
+
     this._updateCamera(dt);
     this._updateFx(dt);
     this._updateHud();
     this._updateSound();
+  }
+
+  // ------------------------------------------------------------ duelo
+  startMultiplayer({ net, players, mode, time, at, youId, isHost }) {
+    this.mode = MODES[mode] || this.mode;
+    this.time = TIMES[time] || this.time;
+    this.applyTime(this.time);
+    this.road.build(this.mode, this.time, this.renderer);
+    this.roadHalf = roadHalfWidth(this.mode);
+
+    const index = Math.max(0, players.findIndex((p) => p.id === youId));
+    const lanes = this.mode.lanes.filter((l) => l.dir === 1);
+    const lane = lanes[index % lanes.length];
+
+    this.state = STATE.PLAYING;
+    this.distance = 0;
+    this.score = 0;
+    this.overtakes = 0;
+    this.nearMisses = 0;
+    this.combo = 0;
+    this.comboTimer = 0;
+    this.shake = 0;
+    this.kick = 0;
+    this.topSpeed = 0;
+    this._fxNitro = 0;
+    this._camX = lane.x * 0.88;
+    this.overDelay = 0;
+    this._overShown = true;               // el final lo decide la sala
+
+    this.player.reset(lane.x);
+    this.player.group.visible = true;
+    this.traffic.reset(this.mode, isHost ? 'host' : 'guest');
+    if (isHost) this.traffic.prefill();
+    this.remotes.sync(players, youId);
+    this.remotes.reset();
+
+    this.mp = {
+      net, youId, isHost, players,
+      locked: true, startAt: at, out: false, spectating: false, spectateIn: 0,
+      lastState: 0, lastTraffic: 0, lastVersus: 0, lastTrafficAt: 0,
+      shownCount: -1, hostGone: false, left: players.length,
+    };
+
+    this.input.reset();
+    this.input.recenterTilt();
+    this.ui.resetHud();
+    this.ui.showGame();
+    this.sound.start();
+    this.sound.resume();
+    this.sound.setActive(true);
+    this.camera.fov = 58;
+    this.camera.updateProjectionMatrix();
+  }
+
+  onRemoteState(msg) {
+    if (this.mp) this.remotes.onState(msg);
+  }
+
+  onRemoteOut(msg) {
+    if (!this.mp) return;
+    this.remotes.onCrash(msg.id);
+    this.mp.left = msg.left;
+    if (msg.id !== this.mp.youId) {
+      this.ui.toast(`${msg.name} ha chocado`, 'pass');
+      this.sound.blip(420, 0.12, 'sawtooth', 0.14);
+    }
+  }
+
+  onDuelEnd(results) {
+    if (!this.mp) return;
+    this.state = STATE.OVER;
+    this.mp.spectating = false;
+    this.ui.countdown(null);
+    const mine = results.find((r) => r.id === this.mp.youId);
+    this.ui.showOver({
+      title: mine?.place === 1 ? '¡Has ganado!' : `Puesto ${mine?.place ?? '-'}`,
+      score: mine?.score ?? this.score,
+      distance: mine?.distance ?? this.distance,
+      overtakes: this.overtakes,
+      nearMisses: this.nearMisses,
+      best: results[0]?.distance ?? 0,
+      bestLabel: 'del ganador',
+      newBest: mine?.place === 1,
+    });
+    this.ui.showStandings(results, this.mp.youId);
+    this.sound.setActive(false);
+  }
+
+  // Vuelta al vestíbulo tras un duelo, sin soltar la conexión.
+  backToLobby() {
+    this.mp = null;
+    this.remotes.clear();
+    this.ui.countdown(null);
+    this.ui.versus(null);
+    this.player.group.visible = true;
+    this.traffic.reset(this.mode, 'solo');
+    this.toMenu();
+  }
+
+  leaveMultiplayer() {
+    this.mp = null;
+    this.remotes.clear();
+    this.ui.countdown(null);
+    this.ui.versus(null);
+    this.player.group.visible = true;
+    this.traffic.reset(this.mode, 'solo');
+  }
+
+  // El anfitrión tiene que sembrar tráfico para el que va más adelantado y
+  // conservarlo para el más rezagado, no sólo para su propio tramo.
+  _trafficRange() {
+    if (!this.mp?.isHost) return null;
+    let front = 0, back = 0;
+    for (const r of this.remotes.standings()) {
+      if (r.crashed) continue;
+      const z = r.d - this.distance;
+      if (z > front) front = z;
+      if (z < back) back = z;
+    }
+    return { front, back };
+  }
+
+  _netTick(now) {
+    const mp = this.mp;
+    if (!mp.net.connected || this.state !== STATE.PLAYING) return;
+
+    if (!mp.out) {
+      mp.net.sendState(now, this.distance, this.player.x,
+        this.player.speed, this.player.yaw, this.player.nitroActive > 0);
+    }
+    if (mp.isHost && now - mp.lastTraffic > 125) {
+      mp.lastTraffic = now;
+      mp.net.send({ t: 'traffic', hd: Math.round(this.distance * 10) / 10, c: this.traffic.serialize() });
+    }
+  }
+
+  applyRemoteTraffic(msg) {
+    if (this.mp && !this.mp.isHost) {
+      this.mp.lastTrafficAt = Date.now();
+      this.traffic.applyRemote(msg.hd, msg.c, this.distance);
+    }
+  }
+
+  // El tráfico lo manda el anfitrión. Si deja de llegar, el invitado se
+  // quedaría atravesando un mundo congelado: pasamos a simular en local.
+  _checkHostAlive(now) {
+    const mp = this.mp;
+    if (mp.isHost || mp.hostGone || !mp.lastTrafficAt) return;
+    if (now - mp.lastTrafficAt < 3000) return;
+    mp.hostGone = true;
+    this.traffic.role = 'solo';
+    this.ui.toast('El anfitrión se ha ido', 'pass');
+  }
+
+  _versus() {
+    const rows = [];
+    for (const p of this.mp.players) {
+      if (p.id === this.mp.youId) continue;
+      const car = this.remotes.cars.get(p.id);
+      if (!car) continue;
+      rows.push({ name: p.name, paint: p.paint, gap: car.d - this.distance, crashed: car.crashed });
+    }
+    rows.sort((a, b) => b.gap - a.gap);
+    this.ui.versus(rows, this.mp.left);
+  }
+
+  _startSpectating() {
+    const leader = this._leader();
+    if (!leader) return;
+    this.mp.spectating = true;
+    this.player.group.visible = false;
+    this.distance = leader.d;
+    this.ui.toast('Siguiendo al líder', 'pass');
+  }
+
+  _leader() {
+    let best = null;
+    for (const car of this.remotes.cars.values()) {
+      if (car.crashed || !car.started) continue;
+      if (!best || car.d > best.d) best = car;
+    }
+    return best;
+  }
+
+  // De espectador, la cámara va pegada al que manda: movemos nuestra propia
+  // referencia a la suya y el mundo se desplaza con él.
+  _spectate(dt) {
+    const leader = this._leader();
+    if (!leader) return;
+    this.distance = leader.d;
+    this.player.x = leader.x;
+    this.player.speed = leader.vel;
+    this.player.group.position.set(leader.x, 0, 0);
   }
 
   // Desenfoque radial, aberración y viñeta en función de la velocidad.
@@ -263,22 +500,33 @@ export class Game {
     if (!hit) return;
     this.player.crash(Math.sign(this.player.x - hit.x) * (0.4 + Math.random() * 0.5));
     this.sound.crash();
-    this.sound.setActive(false);
     this.ui.flash();
     this.shake = 1;
     this.kick = 1.3;
+    if (navigator.vibrate) navigator.vibrate([40, 60, 120]);
+
+    // En duelo la partida no acaba: quedas fuera y pasas a ver el final.
+    if (this.mp) {
+      this.mp.out = true;
+      this.mp.spectateIn = 2.6;
+      this.mp.net.send({ t: 'crash', d: Math.round(this.distance), s: Math.round(this.score) });
+      return;
+    }
+
+    this.sound.setActive(false);
     this.state = STATE.OVER;
     this.overDelay = 1.5;
     this._overShown = false;
-    if (navigator.vibrate) navigator.vibrate([40, 60, 120]);
   }
 
   _showOver() {
     this._overShown = true;
+    if (this.mp) return;
     const best = this.best;
     const newBest = this.score > best;
     if (newBest) this.best = this.score;
-    this.ui.showOver({
+
+    const screen = {
       title: '¡Choque!',
       score: this.score,
       distance: this.distance,
@@ -286,6 +534,18 @@ export class Game {
       nearMisses: this.nearMisses,
       best: Math.max(best, this.score),
       newBest,
+    };
+    this.ui.showOver(screen);
+
+    // main.js la manda al ranking; si no hay red, no pasa nada.
+    this.onRunFinished?.({
+      mode: this.mode.id,
+      score: Math.round(this.score),
+      distance: Math.round(this.distance),
+      overtakes: this.overtakes,
+      nearMisses: this.nearMisses,
+      topSpeed: Math.round(this.topSpeed),
+      screen,
     });
   }
 
@@ -331,6 +591,7 @@ export class Game {
   }
 
   _updateHud() {
+    if (this.player.speedKmh > this.topSpeed) this.topSpeed = this.player.speedKmh;
     this.ui.setScore(this.score);
     this.ui.setDistance(this.distance);
     this.ui.setSpeed(this.player.speedKmh, this.player.nitroActive > 0);

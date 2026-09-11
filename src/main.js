@@ -8,6 +8,8 @@ import { UI } from './ui.js';
 import { Player } from './player.js';
 import { Game, STATE } from './game.js';
 import { PostFX } from './postfx.js';
+import { Account, defaultName } from './account.js';
+import { Net, makeRoomCode } from './net.js';
 import { DRAW_DISTANCE } from './config.js';
 
 // --------------------------------------------------------------- Renderer
@@ -39,16 +41,170 @@ const sound = new Sound();
 const player = new Player();
 scene.add(player.group);
 
+const account = new Account();
+const net = new Net();
+let room = null;          // { code, creating, players, hostId, mode, time }
+
 const ui = new UI({
-  onPlay: () => { sound.start(); sound.resume(); game.start(); },
+  onPlay: () => onPlayPressed(),
   onPause: () => game.pause(true),
   onResume: () => game.pause(false),
-  onQuit: () => game.toMenu(),
+  onQuit: () => quitToMenu(),
   onChange: (key, value) => onSettingChange(key, value),
+
+  currentName: () => account.name,
+  onName: (name) => { account.rename(name).then(() => ui.setName(account.name)); },
+  onRanking: (mode) => showRanking(mode),
+  onDuel: () => ui.showRooms(),
+  onCreateRoom: () => openRoom(makeRoomCode(), true),
+  onJoinRoom: (code) => openRoom(code, false),
+  onLaunch: () => net.send({ t: 'start' }),
+  onLeaveRoom: () => leaveRoom(),
+  onLobbySetup: (key, value) => net.send({ t: 'setup', mode: room?.mode, time: room?.time, [key]: value }),
 });
 ui.adopt({ steer: input.steerMode, autoGas: input.autoGas, sound: sound.enabled });
+ui.setName(account.name);
 
 const game = new Game({ renderer, scene, camera, player, input, sound, ui });
+
+// ------------------------------------------------------------ partidas
+function onPlayPressed() {
+  // Tras un duelo, "Otra vez" devuelve al vestíbulo en vez de empezar
+  // una partida en solitario.
+  if (game.mp || room) {
+    if (net.isHost) net.send({ t: 'again' });
+    else ui.toast('Esperando al anfitrión…', 'pass');
+    return;
+  }
+  startSolo();
+}
+
+async function startSolo() {
+  sound.start();
+  sound.resume();
+  await account.ensure(account.name).catch(() => null);
+  ui.setName(account.name);
+  account.startRun();                 // sin await: si tarda, no frena el juego
+  game.start();
+}
+
+function quitToMenu() {
+  if (game.mp) leaveRoom();
+  else game.toMenu();
+}
+
+// Al acabar una partida en solitario, mandamos la marca al ranking.
+game.onRunFinished = async (stats) => {
+  const res = await account.submit(stats);
+  if (res?.rank) ui.showOver({ ...stats.screen, rank: res.rank });
+};
+
+async function showRanking(mode) {
+  await account.ensure(account.name).catch(() => null);
+  const data = await account.leaderboard(mode);
+  ui.showRanking(data, mode, account.id);
+}
+
+// --------------------------------------------------------------- salas
+async function openRoom(code, creating) {
+  await account.ensure(account.name).catch(() => null);
+  ui.setName(account.name);
+  ui.roomsError('');
+  room = { code, creating, players: [], hostId: null, mode: ui.settings.mode, time: ui.settings.time };
+  net.connect(code, {
+    id: account.id || 'local-' + Math.random().toString(36).slice(2),
+    name: account.name,
+    paint: ui.settings.paint,
+  });
+}
+
+function leaveRoom() {
+  net.close();
+  room = null;
+  game.leaveMultiplayer();
+  game.toMenu();
+}
+
+net.on('welcome', (msg) => {
+  if (!room) return;
+  room.hostId = msg.host;
+  room.mode = msg.mode;
+  room.time = msg.time;
+
+  // Colisión de código al crear: hemos caído en la sala de otro.
+  if (room.creating && msg.host !== msg.you) {
+    net.close();
+    return openRoom(makeRoomCode(), true);
+  }
+  // Al entrar con código: si la sala estaba vacía, es que no existía.
+  if (!room.creating && msg.host === msg.you) {
+    net.close();
+    room = null;
+    return ui.roomsError('Esa sala no existe o ya ha terminado');
+  }
+  renderLobby();
+});
+
+net.on('players', (msg) => {
+  if (!room) return;
+  room.players = msg.players;
+  room.hostId = msg.host;
+  if (game.mp) game.mp.players = msg.players;
+  renderLobby();
+});
+
+net.on('setup', (msg) => {
+  if (!room) return;
+  room.mode = msg.mode;
+  room.time = msg.time;
+  renderLobby();
+});
+
+net.on('go', (msg) => {
+  if (!room) return;
+  const offset = msg.now - Date.now();          // reloj del servidor - el mío
+  ui.closeOverlays();
+  game.startMultiplayer({
+    net,
+    players: room.players,
+    mode: msg.mode,
+    time: msg.time,
+    at: msg.at - offset,
+    youId: net.you,
+    isHost: net.you === msg.host,
+  });
+});
+
+net.on('s', (msg) => game.onRemoteState(msg));
+net.on('tr', (msg) => game.applyRemoteTraffic(msg));
+net.on('out', (msg) => game.onRemoteOut(msg));
+net.on('end', (msg) => game.onDuelEnd(msg.results));
+net.on('lobby', () => {
+  if (!room) return;
+  game.backToLobby();
+  renderLobby();
+});
+net.on('err', (msg) => {
+  if (game.mp) ui.toast(msg.msg, 'pass');
+  else ui.roomsError(msg.msg);
+});
+net.on('closed', () => {
+  if (game.mp) ui.toast('Se ha perdido la conexión', 'big');
+});
+net.on('failed', () => ui.roomsError('No se ha podido conectar con la sala'));
+
+function renderLobby() {
+  if (!room) return;
+  ui.showLobby({
+    code: room.code,
+    players: room.players,
+    hostId: room.hostId,
+    youId: net.you,
+    isHost: net.isHost,
+    mode: room.mode,
+    time: room.time,
+  });
+}
 
 function onSettingChange(key, value) {
   switch (key) {
