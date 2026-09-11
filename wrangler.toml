@@ -1,0 +1,6 @@
+# Cloudflare Pages — despliegue de sitio estático.
+#   npm run deploy      -> sube la carpeta del repo a Pages
+#   npm run preview     -> servidor local en http://localhost:8000
+name = "urus-traffic"
+compatibility_date = "2026-09-01"
+pages_build_output_dir = "."

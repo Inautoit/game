@@ -1,103 +1,148 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
 import { Input } from './input.js';
-import { Car } from './car.js';
-import { buildWorld } from './world.js';
+import { Sound } from './audio.js';
+import { UI } from './ui.js';
+import { Player } from './player.js';
+import { Game, STATE } from './game.js';
+import { DRAW_DISTANCE } from './config.js';
 
-// ---------- Renderer ----------
+// --------------------------------------------------------------- Renderer
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: window.devicePixelRatio < 2,
+  powerPreference: 'high-performance',
+  stencil: false,
+});
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+let pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+renderer.setPixelRatio(pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-// ---------- Escena y cielo ----------
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8fc7ff);
-scene.fog = new THREE.Fog(0x8fc7ff, 120, 340);
+const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.35, DRAW_DISTANCE);
 
-// ---------- Cámara ----------
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 8, -12);
-
-// ---------- Luces ----------
-scene.add(new THREE.HemisphereLight(0xbfe3ff, 0x3a5a34, 0.9));
-const sun = new THREE.DirectionalLight(0xfff2d6, 1.5);
-sun.position.set(60, 90, 40);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.near = 10;
-sun.shadow.camera.far = 260;
-const S = 90;
-sun.shadow.camera.left = -S;
-sun.shadow.camera.right = S;
-sun.shadow.camera.top = S;
-sun.shadow.camera.bottom = -S;
-scene.add(sun);
-scene.add(sun.target);
-
-// ---------- Mundo y coche ----------
-buildWorld(scene);
-const car = new Car();
-scene.add(car.group);
-
+// ------------------------------------------------------------ Composición
 const input = new Input();
+const sound = new Sound();
+const player = new Player();
+scene.add(player.group);
 
-// ---------- Cargar modelo del coche (opcional) ----------
-// Si existe assets/car.glb se usa; si no, se queda el placeholder.
-const loader = new GLTFLoader();
+const ui = new UI({
+  onPlay: () => { sound.start(); sound.resume(); game.start(); },
+  onPause: () => game.pause(true),
+  onResume: () => game.pause(false),
+  onQuit: () => game.toMenu(),
+  onChange: (key, value) => onSettingChange(key, value),
+});
+ui.adopt({ steer: input.steerMode, autoGas: input.autoGas, sound: sound.enabled });
+
+const game = new Game({ renderer, scene, camera, player, input, sound, ui });
+
+function onSettingChange(key, value) {
+  switch (key) {
+    case 'mode': game.setMode(value); ui.refreshBest(game.best); break;
+    case 'time': game.setTime(value); break;
+    case 'paint': player.setPaint(ui.paintHex); break;
+    case 'steer': input.setSteerMode(value); break;
+    case 'autoGas': input.setAutoGas(value); break;
+    case 'sound': sound.setEnabled(value); break;
+    default: break;
+  }
+}
+
+// --------------------------------------------------------- Carga del coche
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 loader.load(
-  './assets/car.glb',
+  './assets/urus.glb',
   (gltf) => {
-    car.setModel(gltf.scene);
-    console.log('✅ Modelo de coche cargado desde assets/car.glb');
+    player.setModel(gltf.scene);
+    player.setPaint(ui.paintHex);
+    game.applyTime(game.time);
+    ui.hideLoading();
+    game.toMenu();
+    start();
   },
-  undefined,
-  () => console.log('ℹ️ Sin assets/car.glb — usando coche placeholder.')
+  (e) => {
+    if (e.lengthComputable) {
+      ui.setLoading(`Cargando el Urus… ${Math.round((e.loaded / e.total) * 100)}%`);
+    }
+  },
+  (err) => {
+    console.error('No se pudo cargar assets/urus.glb', err);
+    ui.setLoading('No se pudo cargar el coche. Recarga la página.');
+  },
 );
 
-// ---------- Cámara que sigue al coche (tercera persona) ----------
-const camTarget = new THREE.Vector3();
-const camPos = new THREE.Vector3();
-const followOffset = new THREE.Vector3(0, 5.2, -9.5); // detrás y arriba
-
-function updateCamera(dt) {
-  // Posición deseada: detrás del coche según su orientación
-  const off = followOffset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), car.heading);
-  camPos.copy(car.position).add(off);
-
-  // Suavizado (lerp dependiente de dt)
-  const k = 1 - Math.pow(0.001, dt);
-  camera.position.lerp(camPos, k);
-
-  camTarget.copy(car.position).add(new THREE.Vector3(0, 1.4, 0));
-  camera.lookAt(camTarget);
-
-  // La sombra del sol sigue al coche para mantener resolución
-  sun.position.set(car.position.x + 60, 90, car.position.z + 40);
-  sun.target.position.copy(car.position);
-}
-
-// ---------- Bucle ----------
-const speedEl = document.getElementById('speed');
-const loadingEl = document.getElementById('loading');
-loadingEl.classList.add('hidden');
-
+// ------------------------------------------------------------------ Bucle
 const clock = new THREE.Clock();
-function tick() {
-  const dt = Math.min(clock.getDelta(), 0.05); // clamp para evitar saltos
-  car.update(input, dt);
-  updateCamera(dt);
-  speedEl.textContent = car.speedKmh;
-  renderer.render(scene, camera);
-  requestAnimationFrame(tick);
-}
-tick();
+let running = false;
 
-// ---------- Resize ----------
+// Calidad adaptativa: si el móvil no da los 50 fps, bajamos resolución.
+let frames = 0;
+let acc = 0;
+let quality = 1;
+
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  game.update(dt);
+  renderer.render(scene, camera);
+
+  acc += dt;
+  frames++;
+  if (acc >= 2) {
+    const fps = frames / acc;
+    if (fps < 48 && quality > 0.55) {
+      quality = Math.max(0.55, quality - 0.18);
+      renderer.setPixelRatio(pixelRatio * quality);
+    } else if (fps > 58 && quality < 1) {
+      quality = Math.min(1, quality + 0.08);
+      renderer.setPixelRatio(pixelRatio * quality);
+    }
+    acc = 0;
+    frames = 0;
+  }
+}
+
+function start() {
+  if (running) return;
+  running = true;
+  clock.getDelta();
+  tick();
+}
+
+// ---------------------------------------------------------------- Eventos
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(pixelRatio * quality);
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.state === STATE.PLAYING) game.pause(true);
+});
+
+// El audio necesita un gesto previo del usuario en móvil.
+const unlock = () => { if (sound.enabled) { sound.start(); sound.resume(); } };
+window.addEventListener('pointerdown', unlock, { once: true });
+window.addEventListener('keydown', unlock, { once: true });
+
+// Evitar el zoom por doble toque en iOS
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => { /* opcional */ });
+  });
+}

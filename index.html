@@ -2,12 +2,18 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0b1020" />
-  <title>Open Drive 3D</title>
+  <meta name="description" content="Juego 3D de tráfico para móvil: conduce un Lamborghini Urus Mansory esquivando coches a toda velocidad." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Urus Traffic — Juego 3D de tráfico</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="./styles.css" />
 
-  <!-- Three.js vendored en el repo (sin CDN): funciona offline y directo en el navegador -->
+  <!-- Three.js va vendorizado en el repo: cero CDN, funciona offline -->
   <script type="importmap">
   {
     "imports": {
@@ -20,32 +26,117 @@
 <body>
   <canvas id="game"></canvas>
 
-  <!-- HUD -->
-  <div id="hud">
-    <div class="speedo">
-      <span id="speed">0</span><small>km/h</small>
+  <!-- Zona de deslizar (modo de control "deslizar") -->
+  <div id="swipe-zone" aria-hidden="true"></div>
+
+  <!-- HUD de partida -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="stat">
+        <span class="label">Puntos</span>
+        <b id="score">0</b>
+      </div>
+      <div class="stat">
+        <span class="label">Distancia</span>
+        <b><span id="distance">0</span> m</b>
+      </div>
+      <button id="btn-pause" class="icon-btn" aria-label="Pausa">❚❚</button>
     </div>
-    <div class="hint" id="hint">
-      <strong>PC:</strong> W/S acelerar · A/D girar · Espacio freno de mano
+
+    <div id="toasts"></div>
+
+    <div class="hud-bottom">
+      <div class="speedo">
+        <b id="speed">0</b><span>km/h</span>
+      </div>
+      <div class="nitro">
+        <div class="nitro-bar"><i id="nitro-fill"></i></div>
+        <span class="label">Nitro</span>
+      </div>
     </div>
   </div>
 
-  <!-- Controles táctiles (solo visibles en móvil) -->
-  <div id="touch-controls">
+  <!-- Controles táctiles -->
+  <div id="controls" class="hidden">
     <div class="pad pad-left">
-      <button class="tbtn" data-key="left">◀</button>
-      <button class="tbtn" data-key="right">▶</button>
+      <button class="tbtn steer" data-btn="left" aria-label="Izquierda">◀</button>
+      <button class="tbtn steer" data-btn="right" aria-label="Derecha">▶</button>
     </div>
     <div class="pad pad-right">
-      <button class="tbtn gas" data-key="up">▲</button>
-      <button class="tbtn brake" data-key="down">▼</button>
+      <button class="tbtn nitro-btn" data-btn="nitro" aria-label="Nitro">NOS</button>
+      <button class="tbtn brake" data-btn="brake" aria-label="Frenar">▼</button>
+      <button class="tbtn gas" data-btn="gas" aria-label="Acelerar">▲</button>
     </div>
   </div>
 
-  <!-- Pantalla de carga -->
+  <!-- Menú principal -->
+  <section id="menu" class="screen">
+    <header class="brand">
+      <h1>URUS<em>TRAFFIC</em></h1>
+      <p class="tag">Esquiva el tráfico. Aprieta hasta el último metro.</p>
+    </header>
+
+    <div class="menu-bottom">
+      <div class="panel hidden" id="options-panel">
+        <div class="row">
+          <span class="row-label">Modo</span>
+          <div class="chips" id="opt-mode"></div>
+        </div>
+        <div class="row">
+          <span class="row-label">Hora</span>
+          <div class="chips" id="opt-time"></div>
+        </div>
+        <div class="row">
+          <span class="row-label">Color</span>
+          <div class="chips swatches" id="opt-paint"></div>
+        </div>
+        <div class="row">
+          <span class="row-label">Control</span>
+          <div class="chips" id="opt-steer"></div>
+        </div>
+        <div class="row">
+          <span class="row-label">Extras</span>
+          <div class="chips">
+            <button class="chip" id="opt-autogas">Auto‑acelerar</button>
+            <button class="chip" id="opt-sound">Sonido</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="best-row">Récord <b id="menu-best">0</b> <span id="menu-mode-name"></span></div>
+      <button id="btn-play" class="cta">JUGAR</button>
+      <button id="btn-options" class="ghost">Opciones</button>
+      <p class="hint">PC: <b>A/D</b> girar · <b>W/S</b> acelerar y frenar · <b>Espacio</b> nitro</p>
+    </div>
+  </section>
+
+  <!-- Pausa -->
+  <section id="pause" class="screen hidden compact">
+    <h2>Pausa</h2>
+    <button id="btn-resume" class="cta">Continuar</button>
+    <button id="btn-quit" class="ghost">Salir al menú</button>
+  </section>
+
+  <!-- Fin de partida -->
+  <section id="over" class="screen hidden compact">
+    <h2 id="over-title">¡Choque!</h2>
+    <div class="score-big"><b id="over-score">0</b><span>puntos</span></div>
+    <div class="stats-grid">
+      <div><b id="over-distance">0</b><span>metros</span></div>
+      <div><b id="over-overtakes">0</b><span>adelantamientos</span></div>
+      <div><b id="over-near">0</b><span>al límite</span></div>
+      <div><b id="over-best">0</b><span>récord</span></div>
+    </div>
+    <p id="over-new-best" class="new-best hidden">¡Nuevo récord!</p>
+    <button id="btn-retry" class="cta">Otra vez</button>
+    <button id="btn-menu" class="ghost">Menú</button>
+  </section>
+
+  <div id="flash"></div>
+
   <div id="loading">
     <div class="spinner"></div>
-    <p>Cargando mundo…</p>
+    <p id="loading-text">Cargando el Urus…</p>
   </div>
 
   <script type="module" src="./src/main.js"></script>

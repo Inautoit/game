@@ -1,61 +1,160 @@
-# Open Drive 3D 🏎️
+# Urus Traffic 🏁
 
-Juego de coches **3D de mundo abierto** para navegador (PC y móvil).
-Conduce libremente por una ciudad con carreteras, edificios y árboles,
-con cámara en tercera persona.
+Juego **3D de tráfico para móvil** que se abre directamente en el navegador.
+Conduces un **Lamborghini Urus Mansory** esquivando el tráfico: cuanto más
+rápido vas y más cerca pasas, más puntos sacas.
 
-Hecho con [Three.js](https://threejs.org/). Sin instalación ni build: se
-abre directamente en el navegador.
+Hecho con [Three.js](https://threejs.org/). **Sin build, sin CDN y sin
+dependencias en tiempo de ejecución**: se despliega tal cual en Cloudflare
+Pages.
 
-## Cómo jugar
+---
 
-### PC (teclado)
-| Tecla | Acción |
-|-------|--------|
-| `W` / `↑` | Acelerar |
-| `S` / `↓` | Frenar / marcha atrás |
-| `A` / `←` | Girar a la izquierda |
-| `D` / `→` | Girar a la derecha |
-| `Espacio` | Freno de mano |
+## Cómo se juega
 
-### Móvil (táctil)
-Botones en pantalla: flechas de dirección (izquierda) y acelerar/frenar
-(derecha). Aparecen automáticamente en dispositivos táctiles.
+Aceleras solo (se puede desactivar) y lo único que tienes que hacer es
+esquivar. Se puntúa por:
 
-## Ejecutar en local
+| Acción | Puntos |
+|---|---|
+| Cada metro recorrido | ×0,55 (**doble** por encima de 108 km/h) |
+| Adelantar un coche | +15 |
+| Adelantar **rozando** (< 2,1 m) | +60, y ×2 si viene de frente |
+| Combo de roces seguidos | +15 % por cada uno |
 
-Necesitas servir los archivos por HTTP (los módulos ES no funcionan con
-`file://`). Con Python:
+Los roces llenan el **nitro**: a partir del 35 % puedes soltarlo y subir a
+324 km/h durante 3 segundos. Un solo choque termina la partida.
+
+### Modos
+
+- **Una dirección** — 4 carriles, todo el tráfico en tu sentido.
+- **Dos direcciones** — 6 carriles con tráfico de frente y ×1,8 de puntos.
+
+### Hora del día
+
+**Día**, **Atardecer** y **Noche**. De noche se encienden faros, pilotos,
+farolas y las ventanas de los edificios; se ve mucho menos, así que puntúa
+igual pero cuesta bastante más.
+
+### Controles
+
+**Móvil** (tres modos, se eligen en Opciones):
+
+- **Botones** — flechas a la izquierda, freno y nitro a la derecha.
+- **Deslizar** — arrastras el dedo por la mitad inferior y el coche sigue.
+- **Inclinar** — giroscopio. En iOS hay que aceptar el permiso que aparece.
+
+**PC**: `A`/`D` o `←`/`→` girar · `W`/`S` acelerar y frenar · `Espacio` nitro.
+
+---
+
+## Desplegar en Cloudflare Pages
+
+El repo **es** el sitio: no hay paso de compilación. Tres formas, de la más
+cómoda a la más manual.
+
+### A) Conectando el repositorio (recomendado)
+
+En el panel de Cloudflare → **Workers & Pages** → *Create* → *Pages* →
+*Connect to Git* y elige este repositorio. Cuando pida la configuración:
+
+| Campo | Valor |
+|---|---|
+| Framework preset | `None` |
+| Build command | *(vacío)* |
+| Build output directory | `/` |
+
+A partir de ahí, cada `git push` publica una versión nueva.
+
+### B) Desde tu terminal con Wrangler
 
 ```bash
-python3 -m http.server 8000
+npm install
+npx wrangler login
+npm run deploy
 ```
 
-Luego abre <http://localhost:8000> en el navegador.
+`wrangler.toml` ya declara el proyecto (`urus-traffic`) y que la salida es la
+raíz del repo.
 
-## Estructura
+### C) Desde GitHub Actions
+
+`.github/workflows/deploy.yml` publica en cada push a la rama por defecto.
+Sólo hay que dar de alta dos secretos en *Settings → Secrets and variables →
+Actions*:
+
+- `CLOUDFLARE_API_TOKEN` — token con permiso *Cloudflare Pages: Edit*.
+- `CLOUDFLARE_ACCOUNT_ID` — el ID de cuenta que sale en el panel.
+
+### Detalles del despliegue
+
+- `_headers` marca `assets/` y `vendor/` como inmutables durante un año y el
+  HTML como `no-cache`, para que una versión nueva se vea al instante sin
+  volver a bajar los 3 MB del coche.
+- El `.glb` pesa 3,1 MB, muy por debajo del límite de 25 MiB por fichero de
+  Pages.
+- Hay un service worker (`sw.js`): tras la primera visita el juego funciona
+  **sin conexión** y se puede instalar en la pantalla de inicio del móvil.
+  Al desplegar cambios grandes, sube el número de `CACHE` en `sw.js`.
+
+---
+
+## Ejecutarlo en local
+
+Los módulos ES no funcionan con `file://`, así que hace falta un servidor:
+
+```bash
+npm run preview   # http://localhost:8000
+```
+
+---
+
+## Cómo está hecho
 
 ```
-index.html      Página y HUD
-styles.css      Estilos e interfaz táctil
+index.html      Pantallas, HUD y controles táctiles
+styles.css      Interfaz (vertical, horizontal y safe areas de iPhone)
 src/
-  main.js       Escena, luces, cámara, bucle del juego
-  car.js        Coche + físicas de conducción
-  world.js      Mundo procedural (carreteras, edificios, árboles)
-  input.js      Entrada de teclado y táctil
-assets/         Modelos 3D (.glb) — ver assets/README.md
+  main.js       Renderer, carga del modelo, bucle y calidad adaptativa
+  game.js       Máquina de estados, puntuación, colisiones y cámara
+  player.js     El Urus: físicas, ruedas, faros y pintura
+  traffic.js    Tráfico con InstancedMesh (18 coches, ~10 draw calls)
+  vehicles.js   Geometrías procedurales de coche, furgoneta, camión y bus
+  road.js       Carretera infinita y decorado reciclado por chunks
+  sky.js        Mapa de entorno procedural (los reflejos de la chapa)
+  input.js      Teclado, botones, deslizar e inclinación
+  audio.js      Motor, choque y avisos sintetizados con WebAudio
+  ui.js         DOM: menú, HUD, pausa y fin de partida
+  config.js     Todos los números del juego en un solo sitio
+assets/urus.glb El coche (3,1 MB) — ver assets/README.md
+vendor/         Three.js r160 + GLTFLoader + decoder de meshopt
+tools/          Script de optimización del modelo
 ```
 
-## Añadir tu coche 3D
+### Decisiones pensando en el móvil
 
-Exporta tu modelo como `assets/car.glb` y el juego lo usará
-automáticamente. Detalles en [`assets/README.md`](assets/README.md).
+- **El coche nunca se mueve en Z.** Lo que se mueve es el mundo: la textura
+  de la calzada hace scroll y los chunks de decorado se reciclan. Así no hay
+  pérdida de precisión ni aunque juegues una hora seguida.
+- **Sin shadow maps.** Cada vehículo lleva una sombra de mancha (un plano con
+  un degradado), que en un móvil cuesta una fracción de lo que cuesta un mapa
+  de sombras y aquí se ve igual de bien.
+- **Todo el tráfico son `InstancedMesh`**: dos draw calls por tipo de
+  vehículo, más uno para las sombras y otro para los faros.
+- **Cada chunk de decorado es una sola geometría fusionada** con colores por
+  vértice: un draw call para los edificios, árboles, farolas y quitamiedos de
+  60 metros de ciudad.
+- **Calidad adaptativa**: si el dispositivo no llega a 48 fps, `main.js` baja
+  la resolución de render y la vuelve a subir si sobra margen.
+- **Sin ficheros de audio**: el motor, el choque y los avisos se sintetizan
+  con WebAudio.
 
-## Próximas mejoras posibles
+---
 
-- Coche importado con materiales reales
-- Tráfico y peatones
-- Minimapa
-- Sonido de motor
-- Objetos coleccionables / misiones
-- Día/noche y farolas
+## Ideas para seguir
+
+- Garaje con varios coches y mejoras (motor, frenos, nitro).
+- Misiones: llegar a X metros, N adelantamientos al límite, contrarreloj.
+- Tabla de récords online (Cloudflare Workers + KV encaja perfecto).
+- Lluvia y niebla como modificadores de dificultad.
+- Policía que te persigue si pasas de 200 km/h.

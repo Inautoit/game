@@ -1,0 +1,20 @@
+{
+  "name": "urus-traffic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Juego 3D de tráfico para móvil con un Lamborghini Urus Mansory. Three.js, sin build.",
+  "type": "module",
+  "scripts": {
+    "preview": "python3 -m http.server 8000",
+    "deploy": "wrangler pages deploy . --project-name=urus-traffic",
+    "optimize-model": "node tools/optimize-model.mjs"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.0",
+    "@gltf-transform/extensions": "^4.5.0",
+    "@gltf-transform/functions": "^4.5.0",
+    "meshoptimizer": "^1.2.0",
+    "sharp": "^0.34.0",
+    "wrangler": "^4.0.0"
+  }
+}
