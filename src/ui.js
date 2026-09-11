@@ -31,6 +31,7 @@ export class UI {
       controls: $('controls'), loading: $('loading'),
       score: $('score'), distance: $('distance'), speed: $('speed'),
       nitroFill: $('nitro-fill'), nitroBar: document.querySelector('.nitro-bar'),
+      speedo: document.querySelector('.speedo'),
       nitroBtn: document.querySelector('.nitro-btn'),
       toasts: $('toasts'), flash: $('flash'),
       menuBest: $('menu-best'), menuModeName: $('menu-mode-name'),
@@ -38,7 +39,7 @@ export class UI {
 
     this._buildChips();
     this._bindButtons();
-    this._last = { score: -1, distance: -1, speed: -1, nitro: -1 };
+    this._last = { score: -1, distance: -1, speed: -1, nitro: -1, speedState: -1 };
   }
 
   _buildChips() {
@@ -168,10 +169,18 @@ export class UI {
     this._last.distance = n;
     this.el.distance.textContent = fmt(n);
   }
-  setSpeed(v) {
-    if (v === this._last.speed) return;
-    this._last.speed = v;
-    this.el.speed.textContent = v;
+  setSpeed(v, boost) {
+    if (v !== this._last.speed) {
+      this._last.speed = v;
+      this.el.speed.textContent = v;
+    }
+    // 0 normal · 1 rápido · 2 con nitro
+    const state = boost ? 2 : (v >= 180 ? 1 : 0);
+    if (state !== this._last.speedState) {
+      this._last.speedState = state;
+      this.el.speedo.classList.toggle('fast', state === 1);
+      this.el.speedo.classList.toggle('boost', state === 2);
+    }
   }
   setNitro(pct, ready) {
     const n = Math.round(pct);
@@ -191,13 +200,16 @@ export class UI {
     while (this.el.toasts.children.length > 4) this.el.toasts.firstChild.remove();
   }
 
-  flash() {
-    this.el.flash.classList.add('on');
-    setTimeout(() => this.el.flash.classList.remove('on'), 90);
+  flash(kind = 'crash') {
+    const el = this.el.flash;
+    el.classList.remove('crash', 'nitro');
+    el.classList.add(kind, 'on');
+    clearTimeout(this._flashTimer);
+    this._flashTimer = setTimeout(() => el.classList.remove('on'), kind === 'nitro' ? 130 : 90);
   }
 
   resetHud() {
-    this._last = { score: -1, distance: -1, speed: -1, nitro: -1 };
+    this._last = { score: -1, distance: -1, speed: -1, nitro: -1, speedState: -1 };
     this.el.toasts.innerHTML = '';
   }
 }

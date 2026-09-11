@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODES, TIMES, SCORE, PLAYER, DRAW_DISTANCE, roadHalfWidth } from './config.js';
+import { MODES, TIMES, SCORE, PLAYER, FX, DRAW_DISTANCE, roadHalfWidth } from './config.js';
 import { Road } from './road.js';
 import { Traffic } from './traffic.js';
 import { makeEnvironment } from './sky.js';
@@ -27,8 +27,21 @@ export class Game {
     this.combo = 0;
     this.comboTimer = 0;
     this.shake = 0;
+    this.kick = 0;
     this.overDelay = 0;
     this.menuAngle = 0;
+    this.clockT = 0;
+
+    // Parámetros que lee el post-proceso cada frame.
+    this.fx = {
+      active: false,
+      blur: 0,
+      aberration: 0,
+      vignette: 0,
+      streak: 0,
+      tint: new THREE.Color(1, 1, 1),
+      tintAmount: 0,
+    };
 
     this.mode = MODES[ui.settings.mode];
     this.time = TIMES[ui.settings.time];
@@ -100,6 +113,9 @@ export class Game {
     this.combo = 0;
     this.comboTimer = 0;
     this.shake = 0;
+    this.kick = 0;
+    this._fxNitro = 0;
+    this._camX = this.mode.lanes[this.mode.startLane].x * 0.88;
     this.overDelay = 0;
     this.player.reset(this.mode.lanes[this.mode.startLane].x);
     this.player.speed = 22;
@@ -135,6 +151,9 @@ export class Game {
     if (this.state === STATE.PLAYING && this.input.consumeNitro() && this.player.tryNitro()) {
       this.sound.nitro();
       this.ui.toast('¡NITRO!', 'big');
+      this.ui.flash('nitro');
+      this.kick = 1;
+      if (navigator.vibrate) navigator.vibrate(28);
     }
 
     this.player.update(dt, this.input, this.roadHalf);
@@ -151,11 +170,43 @@ export class Game {
     }
 
     this._updateCamera(dt);
+    this._updateFx(dt);
     this._updateHud();
     this._updateSound();
   }
 
+  // Desenfoque radial, aberración y viñeta en función de la velocidad.
+  _updateFx(dt) {
+    const p = this.player;
+    const span = Math.max(1, PLAYER.maxSpeed - FX.startSpeed);
+    const raw = THREE.MathUtils.clamp((p.speed - FX.startSpeed) / span, 0, 1);
+    const t = Math.pow(raw, 0.85);             // que a 180 ya se note de verdad
+    const nitro = p.nitroActive > 0 ? 1 : 0;
+
+    // El suavizado evita que un frenazo corte el efecto de golpe.
+    this._fxNitro = this._fxNitro ?? 0;
+    this._fxNitro += (nitro - this._fxNitro) * Math.min(1, dt * 6);
+
+    const crash = this.player.crashed ? 1 : 0;
+    const fx = this.fx;
+    fx.active = true;
+    fx.blur = t * FX.blur + this._fxNitro * FX.blurNitro + crash * 0.5;
+    fx.aberration = t * FX.aberration + this._fxNitro * FX.aberrationNitro;
+    fx.streak = t * FX.streak + this._fxNitro * FX.streakNitro;
+    fx.vignette = FX.vignetteBase + t * FX.vignetteSpeed
+      + this._fxNitro * FX.vignetteNitro + crash * 0.25;
+
+    if (crash) {
+      fx.tint.setHex(FX.crashTint);
+      fx.tintAmount = 0.55;
+    } else {
+      fx.tint.setHex(FX.nitroTint);
+      fx.tintAmount = this._fxNitro * 0.45;
+    }
+  }
+
   _menuFrame(dt) {
+    this.fx.active = false;
     // Vuelta de presentación alrededor del coche.
     this.menuAngle += dt * 0.3;
     if (this.camera.fov !== 42) {
@@ -190,10 +241,13 @@ export class Game {
         pts += SCORE.nearMiss * (pass.oncoming ? 2 : 1);
         this.player.addNitro(SCORE.nitroPerNearMiss);
         this.sound.nearMiss();
+        this.sound.whoosh(pass.pan, 1);
         this.ui.toast(this.combo > 1 ? `¡AL LÍMITE x${this.combo}!` : '¡AL LÍMITE!', 'near');
+        if (navigator.vibrate) navigator.vibrate(18);
       } else {
         this.player.addNitro(SCORE.nitroPerOvertake);
         this.sound.overtake();
+        this.sound.whoosh(pass.pan, 0.35);
       }
       this.score += pts * (1 + this.combo * 0.15) * this.mode.scoreMult;
     }
@@ -212,6 +266,7 @@ export class Game {
     this.sound.setActive(false);
     this.ui.flash();
     this.shake = 1;
+    this.kick = 1.3;
     this.state = STATE.OVER;
     this.overDelay = 1.5;
     this._overShown = false;
@@ -237,15 +292,26 @@ export class Game {
   _updateCamera(dt) {
     const p = this.player;
     const sp = p.speed / PLAYER.maxSpeed;
-    const back = 8.3 + sp * 1.7;
-    const height = 2.95 + sp * 0.4;
+    this.clockT += dt;
+
+    // El "kick" es el tirón de cámara al meter nitro o al chocar.
+    if (this.kick > 0) this.kick = Math.max(0, this.kick - dt * 2.2);
+    const kick = this.kick * this.kick;
+
+    const back = 8.3 + sp * 1.7 + kick * FX.kickBack;
+    const height = 2.95 + sp * 0.4 - kick * 0.2;
 
     const targetX = p.x * 0.88;
     this._camX = this._camX ?? targetX;
     this._camX += (targetX - this._camX) * Math.min(1, dt * 5.5);
 
     this.camera.position.set(this._camX, height, -back);
-    this.camera.position.y += Math.min(0.12, sp * 0.05) * Math.sin(performance.now() * 0.012);
+
+    // Vibración del asfalto: dos senos desfasados para que no suene a patrón.
+    const t = this.clockT;
+    const rumble = FX.rumble * sp * sp;
+    this.camera.position.y += rumble * (Math.sin(t * 37.1) + 0.6 * Math.sin(t * 23.3));
+    this.camera.position.x += rumble * 0.7 * Math.sin(t * 41.7);
 
     if (this.shake > 0) {
       this.shake = Math.max(0, this.shake - dt * 1.4);
@@ -255,10 +321,11 @@ export class Game {
     }
 
     this.camera.lookAt(p.x * 0.94, 1.45, 13);
+    this.camera.rotation.z += rumble * 0.5 * Math.sin(t * 19.7);
 
-    const wantFov = 58 + sp * 14 + (p.nitroActive > 0 ? 8 : 0);
+    const wantFov = 58 + sp * 14 + (p.nitroActive > 0 ? 8 : 0) + kick * FX.kickFov;
     if (Math.abs(this.camera.fov - wantFov) > 0.05) {
-      this.camera.fov += (wantFov - this.camera.fov) * Math.min(1, dt * 3.2);
+      this.camera.fov += (wantFov - this.camera.fov) * Math.min(1, dt * 5);
       this.camera.updateProjectionMatrix();
     }
   }
@@ -266,7 +333,7 @@ export class Game {
   _updateHud() {
     this.ui.setScore(this.score);
     this.ui.setDistance(this.distance);
-    this.ui.setSpeed(this.player.speedKmh);
+    this.ui.setSpeed(this.player.speedKmh, this.player.nitroActive > 0);
     const pct = (this.player.nitro / PLAYER.nitroMax) * 100;
     this.ui.setNitro(pct, this.player.nitro >= PLAYER.nitroMax * 0.35 && this.player.nitroActive <= 0);
   }

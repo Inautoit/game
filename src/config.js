@@ -93,4 +93,23 @@ export const SCORE = {
   nitroPerOvertake: 5,
 };
 
+// Efectos de velocidad. Todo lo que hace que 250 km/h se noten.
+export const FX = {
+  startSpeed: 30,          // m/s en que empieza a notarse (~108 km/h)
+  blur: 1.0,               // desenfoque radial a velocidad punta
+  blurNitro: 0.6,          // extra mientras dura el nitro
+  streak: 1.3,            // rayos de velocidad
+  streakNitro: 0.55,
+  aberration: 0.0028,
+  aberrationNitro: 0.0075,
+  vignetteBase: 0.10,
+  vignetteSpeed: 0.34,
+  vignetteNitro: 0.20,
+  nitroTint: 0xb4d4ff,     // azulado al soltar el nitro
+  crashTint: 0xff8a5a,
+  rumble: 0.020,           // vibración de la cámara por el asfalto
+  kickBack: 2.4,           // cuánto se retrasa la cámara al meter nitro
+  kickFov: 8,
+};
+
 export const DRAW_DISTANCE = 900;

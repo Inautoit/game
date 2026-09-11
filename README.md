@@ -27,6 +27,19 @@ esquivar. Se puntúa por:
 Los roces llenan el **nitro**: a partir del 35 % puedes soltarlo y subir a
 324 km/h durante 3 segundos. Un solo choque termina la partida.
 
+### Sensación de velocidad
+
+A partir de unos 110 km/h el juego empieza a deformarse contigo: desenfoque
+radial que crece con la aguja, rayos de velocidad, aberración cromática,
+viñeta y vibración de la cámara por el asfalto. El coche se queda nítido
+siempre — el efecto respeta una zona alrededor de él — para que sigas viendo
+lo que haces. Al meter nitro la cámara da un tirón hacia atrás, todo se tiñe
+de azul y se dispara.
+
+Los coches que adelantas suenan: un *whoosh* que barre de agudo a grave y
+cruza el estéreo hacia el lado por el que han pasado. Si el roce es al
+límite, suena el doble y el móvil vibra.
+
 ### Modos
 
 - **Una dirección** — 4 carriles, todo el tráfico en tu sentido.
@@ -115,6 +128,7 @@ src/
   traffic.js    Tráfico con InstancedMesh (18 coches, ~10 draw calls)
   vehicles.js   Geometrías procedurales de coche, furgoneta, camión y bus
   road.js       Carretera infinita y decorado reciclado por chunks
+  postfx.js     Desenfoque radial, rayos, aberración y viñeta (una pasada)
   sky.js        Mapa de entorno procedural (los reflejos de la chapa)
   input.js      Teclado, botones, deslizar e inclinación
   audio.js      Motor, choque y avisos sintetizados con WebAudio
@@ -138,8 +152,12 @@ tools/          Script de optimización del modelo
 - **Cada chunk de decorado es una sola geometría fusionada** con colores por
   vértice: un draw call para los edificios, árboles, farolas y quitamiedos de
   60 metros de ciudad.
-- **Calidad adaptativa**: si el dispositivo no llega a 48 fps, `main.js` baja
-  la resolución de render y la vuelve a subir si sobra margen.
+- **El post-proceso es una sola pasada**, no una cadena: un render target y
+  un shader que hace desenfoque, rayos, aberración y viñeta de golpe. Una
+  cadena de pasadas en un móvil cuesta varios render targets.
+- **Calidad adaptativa**: si el dispositivo no llega a 46 fps, `main.js` baja
+  la resolución de render escalón a escalón y la vuelve a subir si sobra
+  margen. Los efectos de velocidad son lo último que se sacrifica.
 - **Sin ficheros de audio**: el motor, el choque y los avisos se sintetizan
   con WebAudio.
 
@@ -150,5 +168,7 @@ tools/          Script de optimización del modelo
 - Garaje con varios coches y mejoras (motor, frenos, nitro).
 - Misiones: llegar a X metros, N adelantamientos al límite, contrarreloj.
 - Tabla de récords online (Cloudflare Workers + KV encaja perfecto).
-- Lluvia y niebla como modificadores de dificultad.
+- Lluvia y niebla como modificadores de dificultad, con asfalto mojado.
+- Motor con capas reales (ralentí/medio/alto, turbo y petardeo).
+- Curvas y tramos temáticos: túnel, puente, desierto.
 - Policía que te persigue si pasas de 200 km/h.

@@ -264,8 +264,11 @@ export class Traffic {
     for (const car of this.cars) {
       if (car.counted || car.prevZ <= 0 || car.z > 0) continue;
       car.counted = true;
-      const gap = Math.abs(car.x - px) - halfW - car.halfW;
-      out.push({ near: gap < SCORE.nearMissDist, oncoming: car.dir === -1, gap });
+      const dx = car.x - px;
+      const gap = Math.abs(dx) - halfW - car.halfW;
+      // En pantalla la derecha es -X, de ahí el signo: pan +1 = oído derecho.
+      const pan = Math.max(-1, Math.min(1, -dx / 3.5));
+      out.push({ near: gap < SCORE.nearMissDist, oncoming: car.dir === -1, gap, pan });
     }
     return out;
   }

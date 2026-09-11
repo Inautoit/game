@@ -41,10 +41,11 @@ export class Sound {
       return o;
     });
 
-    // Ruido de rodadura / viento
+    // Ruido de rodadura / viento. El mismo búfer lo reutiliza el whoosh.
     const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    this.noiseBuf = buf;
     this.noise = ctx.createBufferSource();
     this.noise.buffer = buf;
     this.noise.loop = true;
@@ -101,6 +102,50 @@ export class Sound {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(this.master);
     o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  // El coche que te acaba de rozar: ruido filtrado que barre de agudo a
+  // grave (efecto Doppler) y cruza el estéreo hacia el lado por el que pasó.
+  //   pan   -1 izquierda .. +1 derecha
+  //   power 0..1 (un roce al límite suena mucho más que un adelantamiento)
+  whoosh(pan = 0, power = 1) {
+    if (!this.ctx || !this.enabled) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const dur = 0.3 + power * 0.14;
+    const side = Math.max(-1, Math.min(1, pan));
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    src.loop = true;
+    src.playbackRate.value = 0.85 + Math.random() * 0.3;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 0.85;
+    filter.frequency.setValueAtTime(1900 + power * 1100, t);
+    filter.frequency.exponentialRampToValueAtTime(360, t + dur);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.07 + power * 0.28, t + dur * 0.24);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    src.connect(filter);
+    filter.connect(gain);
+
+    let out = gain;
+    if (ctx.createStereoPanner) {
+      const panner = ctx.createStereoPanner();
+      panner.pan.setValueAtTime(side * 0.3, t);
+      panner.pan.linearRampToValueAtTime(side, t + dur);
+      gain.connect(panner);
+      out = panner;
+    }
+    out.connect(this.master);
+
+    src.start(t);
+    src.stop(t + dur + 0.05);
   }
 
   nearMiss() { this.blip(1250, 0.08, 'triangle', 0.18); }

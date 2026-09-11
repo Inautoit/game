@@ -101,6 +101,9 @@ export class Input {
       if (!a) return;
       e.preventDefault();
       if (down) this._keys.add(a); else this._keys.delete(a);
+      // El nitro se engancha al pulsar: si el toque cae entre dos frames
+      // (pasa con fps bajos) el juego se lo comería.
+      if (a === 'nitro' && down) this.nitroPressed = true;
     };
     window.addEventListener('keydown', (e) => set(e, true));
     window.addEventListener('keyup', (e) => set(e, false));

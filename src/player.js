@@ -244,9 +244,14 @@ export class Player {
     this.yaw += (lat * 0.20 - this.yaw) * Math.min(1, dt * 9);
     this.roll += (-lat * 0.055 - this.roll) * Math.min(1, dt * 7);
 
+    // A tope de velocidad el chasis vibra un poco: se nota en el bajo.
+    this._t = (this._t || 0) + dt;
+    const sr = this.speed / PLAYER.maxSpeed;
+    const buzz = Math.sin(this._t * 33) * 0.0035 * sr * sr;
+
     this.group.position.set(this.x, 0, 0);
     this.group.rotation.y = this.yaw;
-    this.body.rotation.z = this.roll;
+    this.body.rotation.z = this.roll + buzz;
     this.body.rotation.x = THREE.MathUtils.clamp(
       (t < 0 ? 0.018 : 0) - (t > 0 ? this.speed / max * 0.010 : 0), -0.02, 0.02);
 

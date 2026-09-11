@@ -90,7 +90,14 @@ html, body {
   padding: 6px 14px;
   backdrop-filter: blur(8px);
 }
-.speedo b { font-size: 34px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.speedo b { font-size: 34px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; transition: color .18s; }
+.speedo { transition: box-shadow .18s, border-color .18s; }
+.speedo.fast b { color: var(--accent); }
+.speedo.boost b { color: var(--accent-2); }
+.speedo.boost {
+  border-color: rgba(35, 211, 255, .7);
+  box-shadow: 0 0 24px rgba(35, 211, 255, .45);
+}
 .speedo span { font-size: 12px; color: var(--muted); }
 
 .nitro { display: flex; align-items: center; gap: 8px; }
@@ -346,10 +353,15 @@ h2 { margin: 0; font-size: 28px; font-weight: 900; letter-spacing: .03em; }
   z-index: 8;
   pointer-events: none;
   opacity: 0;
-  background: radial-gradient(120% 100% at 50% 50%, rgba(255, 90, 40, 0) 40%, rgba(255, 70, 30, .75) 100%);
   transition: opacity .45s ease-out;
 }
-#flash.on { opacity: 1; transition: opacity .06s; }
+#flash.crash {
+  background: radial-gradient(120% 100% at 50% 50%, rgba(255, 90, 40, 0) 40%, rgba(255, 70, 30, .75) 100%);
+}
+#flash.nitro {
+  background: radial-gradient(120% 110% at 50% 62%, rgba(150, 230, 255, 0) 32%, rgba(60, 190, 255, .8) 100%);
+}
+#flash.on { opacity: 1; transition: opacity .05s; }
 
 #loading {
   position: fixed;

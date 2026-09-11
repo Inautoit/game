@@ -7,6 +7,7 @@ import { Sound } from './audio.js';
 import { UI } from './ui.js';
 import { Player } from './player.js';
 import { Game, STATE } from './game.js';
+import { PostFX } from './postfx.js';
 import { DRAW_DISTANCE } from './config.js';
 
 // --------------------------------------------------------------- Renderer
@@ -27,6 +28,10 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.35, DRAW_DISTANCE);
+
+// Post-proceso de velocidad. Si el dispositivo no soporta render targets
+// half-float, se queda desactivado y el juego pinta directo a pantalla.
+const postfx = new PostFX(renderer);
 
 // ------------------------------------------------------------ Composición
 const input = new Input();
@@ -84,29 +89,43 @@ loader.load(
 const clock = new THREE.Clock();
 let running = false;
 
-// Calidad adaptativa: si el móvil no da los 50 fps, bajamos resolución.
+// Calidad adaptativa. Vamos bajando por esta escalera si el móvil no llega a
+// los 50 fps, y subiendo si le sobra margen. Primero se recorta resolución;
+// los efectos de velocidad son lo último que se sacrifica.
+const LEVELS = [
+  { scale: 1.0, fx: true },
+  { scale: 0.85, fx: true },
+  { scale: 0.7, fx: true },
+  { scale: 0.6, fx: true },
+  { scale: 0.6, fx: false },
+  { scale: 0.5, fx: false },
+];
+let level = 0;
 let frames = 0;
 let acc = 0;
-let quality = 1;
+
+function applyLevel() {
+  const l = LEVELS[level];
+  renderer.setPixelRatio(pixelRatio * l.scale);
+  postfx.enabled = l.fx;
+  postfx.setSize();
+}
 
 function tick() {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
 
   game.update(dt);
-  renderer.render(scene, camera);
+
+  if (postfx.active && game.fx.active) postfx.render(scene, camera, game.fx, dt);
+  else renderer.render(scene, camera);
 
   acc += dt;
   frames++;
   if (acc >= 2) {
     const fps = frames / acc;
-    if (fps < 48 && quality > 0.55) {
-      quality = Math.max(0.55, quality - 0.18);
-      renderer.setPixelRatio(pixelRatio * quality);
-    } else if (fps > 58 && quality < 1) {
-      quality = Math.min(1, quality + 0.08);
-      renderer.setPixelRatio(pixelRatio * quality);
-    }
+    if (fps < 46 && level < LEVELS.length - 1) { level++; applyLevel(); }
+    else if (fps > 58 && level > 0) { level--; applyLevel(); }
     acc = 0;
     frames = 0;
   }
@@ -125,7 +144,7 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-  renderer.setPixelRatio(pixelRatio * quality);
+  applyLevel();
 });
 
 document.addEventListener('visibilitychange', () => {
