@@ -6,6 +6,7 @@
 .wrangler
 node_modules
 tools
+worker
 package.json
 package-lock.json
 wrangler.toml
