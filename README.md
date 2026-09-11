@@ -93,8 +93,12 @@ empeñe de verdad; para eso habría que mandar la repetición y revalidarla.
 
 ### Duelo online (hasta 6)
 
-*Duelo online* → **Crear sala** te da un código de 5 letras. Los demás entran
-con él. El anfitrión elige modo y hora, y arranca.
+*Duelo online* → **Crear sala** te da un **código de 5 números**. Los demás
+entran con él. El anfitrión elige modo y hora, y arranca.
+
+Son números y no letras a propósito: se dictan por teléfono sin deletrear, no
+hay mayúsculas ni caracteres que se confundan, y en el móvil sale el teclado
+numérico en vez del alfabético.
 
 Corréis todos por la misma carretera, cada uno con su coche y viendo el mismo
 tráfico. Arriba a la derecha tienes a cada rival con los metros que te saca o
@@ -107,7 +111,7 @@ mismas que en una partida en solitario.
 
 #### Cómo va por dentro
 
-- Una sala es un **Durable Object** direccionado por su código. No simula
+- Una sala es un **Durable Object** direccionado por su código de 5 números. No simula
   nada: reparte mensajes y lleva quién sigue vivo. Con la API de hibernación
   no factura mientras nadie habla.
 - Como tu coche nunca se mueve en Z, colocar a un rival es trivial:

@@ -1,6 +1,6 @@
 // Service worker mínimo: el juego funciona sin conexión una vez cargado.
 // Cambia CACHE al desplegar una versión nueva para invalidar lo antiguo.
-const CACHE = 'urus-traffic-v4';
+const CACHE = 'urus-traffic-v5';
 
 const PRECACHE = [
   './',
@@ -38,11 +38,22 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
-  );
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    const stale = keys.filter((k) => k !== CACHE);
+    await Promise.all(stale.map((k) => caches.delete(k)));
+    await self.clients.claim();
+
+    // Veníamos de una versión anterior: las pestañas abiertas siguen
+    // ejecutando el JavaScript viejo que les sirvió el service worker
+    // anterior, y no se enteran solas. Las recargamos una vez.
+    if (stale.length) {
+      const windows = await self.clients.matchAll({ type: 'window' });
+      for (const client of windows) {
+        try { await client.navigate(client.url); } catch { /* la cerró */ }
+      }
+    }
+  })());
 });
 
 self.addEventListener('fetch', (e) => {

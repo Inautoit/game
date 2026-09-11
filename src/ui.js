@@ -105,9 +105,9 @@ export class UI {
     $('btn-rooms-close').addEventListener('click', () => this.closeOverlays());
     $('btn-create').addEventListener('click', () => this.h.onCreateRoom());
 
-    // Mayúsculas al vuelo y fuera lo que no esté en el alfabeto de códigos.
+    // Sólo dígitos, por si el teclado cuela algo más.
     this.el.joinCode.addEventListener('input', () => {
-      const clean = this.el.joinCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+      const clean = this.el.joinCode.value.replace(/[^0-9]/g, '').slice(0, 5);
       if (clean !== this.el.joinCode.value) this.el.joinCode.value = clean;
       this.roomsError('');
       if (clean.length === 5) this.el.joinCode.blur();     // cierra el teclado
@@ -116,9 +116,9 @@ export class UI {
       if (e.key === 'Enter') { e.preventDefault(); $('btn-join').click(); }
     });
     $('btn-join').addEventListener('click', () => {
-      const code = this.el.joinCode.value.trim().toUpperCase();
-      if (/^[A-Z0-9]{5}$/.test(code)) this.h.onJoinRoom(code);
-      else this.roomsError('El código son 5 letras o números');
+      const code = this.el.joinCode.value.trim();
+      if (/^[0-9]{5}$/.test(code)) this.h.onJoinRoom(code);
+      else this.roomsError('El código son 5 números');
     });
     $('btn-launch').addEventListener('click', () => this.h.onLaunch());
     $('btn-lobby-leave').addEventListener('click', () => this.h.onLeaveRoom());

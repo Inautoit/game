@@ -161,8 +161,9 @@
     <button id="btn-create" class="cta">Crear sala</button>
     <div class="joiner">
       <input id="join-code" class="text-input code" type="text" maxlength="5"
-             autocomplete="off" spellcheck="false" autocapitalize="characters"
-             autocorrect="off" enterkeyhint="go" placeholder="CÓDIGO" />
+             inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+             spellcheck="false" autocorrect="off" enterkeyhint="go"
+             placeholder="00000" />
       <button id="btn-join" class="ghost">Entrar</button>
     </div>
     <p class="note error hidden" id="rooms-error"></p>

@@ -36,8 +36,8 @@ function routeRoom(request, env, url) {
   if (request.headers.get('Upgrade') !== 'websocket') {
     return new Response('Se esperaba una conexión WebSocket', { status: 426 });
   }
-  const code = url.pathname.split('/')[2]?.toUpperCase();
-  if (!code || !/^[A-Z0-9]{5}$/.test(code)) return new Response('Código inválido', { status: 400 });
+  const code = url.pathname.split('/')[2];
+  if (!code || !/^[0-9]{5}$/.test(code)) return new Response('Código inválido', { status: 400 });
 
   const id = env.ROOMS.idFromName(code);
   return env.ROOMS.get(id).fetch(request);

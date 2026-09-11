@@ -317,6 +317,16 @@ document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: fals
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  // Si ya había un service worker mandando, la página se cargó con SU copia
+  // del código. Cuando entra uno nuevo, recargamos una vez: si no, te quedas
+  // con el HTML nuevo y el JavaScript viejo hasta que recargues a mano.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => { /* opcional */ });
   });

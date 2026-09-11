@@ -1,11 +1,12 @@
 // Cliente de la sala. Un WebSocket contra el Durable Object que lleva el
 // código de 5 letras. Sólo transporta: la lógica está en game.js.
 
-const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // sin I, O, 0, 1
-
+// Códigos de sala sólo con números: se dictan por teléfono sin deletrear,
+// no hay mayúsculas ni letras que se confundan, y en el móvil sale el
+// teclado numérico.
 export function makeRoomCode() {
-  const bytes = crypto.getRandomValues(new Uint8Array(5));
-  return [...bytes].map((b) => ALPHABET[b % ALPHABET.length]).join('');
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 100000;
+  return String(n).padStart(5, '0');
 }
 
 export class Net {
