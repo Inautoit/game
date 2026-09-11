@@ -1,6 +1,10 @@
-# Cloudflare Pages — despliegue de sitio estático.
-#   npm run deploy      -> sube la carpeta del repo a Pages
-#   npm run preview     -> servidor local en http://localhost:8000
+# Cloudflare (Pages sobre Workers) — sitio estático, sin paso de compilación.
+#   npm run deploy   -> publica el repo entero
+#   npm run preview  -> servidor local en http://localhost:8000
+#
+# Qué NO se sube está en .assetsignore.
 name = "urus-traffic"
 compatibility_date = "2026-09-01"
-pages_build_output_dir = "."
+
+[assets]
+directory = "."

@@ -1,0 +1,13 @@
+# Ficheros del repositorio que no forman parte del sitio publicado.
+.git
+.github
+.gitignore
+.assetsignore
+.wrangler
+node_modules
+tools
+package.json
+package-lock.json
+wrangler.toml
+README.md
+assets/README.md

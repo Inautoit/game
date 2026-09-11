@@ -1,5 +1,7 @@
 # Urus Traffic 🏁
 
+**▶ Jugar: <https://urus-traffic.inautoit.workers.dev>**
+
 Juego **3D de tráfico para móvil** que se abre directamente en el navegador.
 Conduces un **Lamborghini Urus Mansory** esquivando el tráfico: cuanto más
 rápido vas y más cerca pasas, más puntos sacas.
@@ -48,54 +50,46 @@ igual pero cuesta bastante más.
 
 ---
 
-## Desplegar en Cloudflare Pages
+## Despliegue
 
-El repo **es** el sitio: no hay paso de compilación. Tres formas, de la más
-cómoda a la más manual.
+Ya está publicado en Cloudflare (proyecto `urus-traffic`, cuenta
+`inautoit@outlook.es`) en <https://urus-traffic.inautoit.workers.dev>.
 
-### A) Conectando el repositorio (recomendado)
+El repo **es** el sitio: no hay paso de compilación. `wrangler.toml` declara
+la raíz como directorio de assets y `.assetsignore` deja fuera lo que no
+forma parte del juego (README, `tools/`, workflows, `package.json`…).
 
-En el panel de Cloudflare → **Workers & Pages** → *Create* → *Pages* →
-*Connect to Git* y elige este repositorio. Cuando pida la configuración:
-
-| Campo | Valor |
-|---|---|
-| Framework preset | `None` |
-| Build command | *(vacío)* |
-| Build output directory | `/` |
-
-A partir de ahí, cada `git push` publica una versión nueva.
-
-### B) Desde tu terminal con Wrangler
+### Publicar una versión nueva
 
 ```bash
 npm install
-npx wrangler login
+npx wrangler login     # sólo la primera vez
 npm run deploy
 ```
 
-`wrangler.toml` ya declara el proyecto (`urus-traffic`) y que la salida es la
-raíz del repo.
-
-### C) Desde GitHub Actions
+### O automáticamente desde GitHub Actions
 
 `.github/workflows/deploy.yml` publica en cada push a la rama por defecto.
 Sólo hay que dar de alta dos secretos en *Settings → Secrets and variables →
 Actions*:
 
-- `CLOUDFLARE_API_TOKEN` — token con permiso *Cloudflare Pages: Edit*.
-- `CLOUDFLARE_ACCOUNT_ID` — el ID de cuenta que sale en el panel.
+- `CLOUDFLARE_API_TOKEN` — token con permiso de edición de Workers/Pages.
+- `CLOUDFLARE_ACCOUNT_ID` — `65d459cf690cddf4d4b15c2d02195cd0`.
 
-### Detalles del despliegue
+### Dominio propio
+
+En el panel de Cloudflare, dentro del proyecto `urus-traffic` →
+*Settings → Domains & Routes*, se puede enganchar un dominio propio.
+
+### Detalles
 
 - `_headers` marca `assets/` y `vendor/` como inmutables durante un año y el
   HTML como `no-cache`, para que una versión nueva se vea al instante sin
   volver a bajar los 3 MB del coche.
-- El `.glb` pesa 3,1 MB, muy por debajo del límite de 25 MiB por fichero de
-  Pages.
 - Hay un service worker (`sw.js`): tras la primera visita el juego funciona
   **sin conexión** y se puede instalar en la pantalla de inicio del móvil.
-  Al desplegar cambios grandes, sube el número de `CACHE` en `sw.js`.
+  Al desplegar cambios, sube el número de `CACHE` en `sw.js` para que los
+  navegadores que ya lo tengan cacheado se enteren.
 
 ---
 
