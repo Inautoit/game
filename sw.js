@@ -1,6 +1,6 @@
 // Service worker mínimo: el juego funciona sin conexión una vez cargado.
 // Cambia CACHE al desplegar una versión nueva para invalidar lo antiguo.
-const CACHE = 'urus-traffic-v3';
+const CACHE = 'urus-traffic-v4';
 
 const PRECACHE = [
   './',
@@ -63,7 +63,27 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // El resto: caché primero (el modelo pesa 3 MB, no tiene sentido repetirlo).
+  const path = new URL(req.url).pathname;
+
+  // El código va primero a la red. Si no, un despliegue puede dejarte con
+  // el HTML nuevo y el JavaScript viejo en caché: la página carga, pero los
+  // botones nuevos no tienen a nadie escuchando. Son unos 100 KB.
+  if (path.startsWith('/src/') || path.endsWith('.css')) {
+    e.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req)),
+    );
+    return;
+  }
+
+  // Lo grande y estable (el modelo de 3 MB, Three.js) sí de caché primero.
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
       if (res.ok) {

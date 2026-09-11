@@ -209,12 +209,14 @@ export class Player {
     if (this.nitroActive > 0) this.nitroActive = Math.max(0, this.nitroActive - dt);
 
     // --- Motor ---
+    // El último tramo hasta la punta cuesta de verdad: los 300 hay que
+    // ganárselos en recta limpia, y cuestan mucho más que los 200.
     const t = input.throttle;
     const max = this.maxSpeed;
     if (t > 0) {
-      const power = this.nitroActive > 0 ? 20 : 12;
-      const curve = 1 - Math.min(1, this.speed / max) * 0.72;
-      this.speed += power * curve * dt;
+      const power = this.nitroActive > 0 ? PLAYER.powerNitro : PLAYER.power;
+      const ratio = Math.min(1, this.speed / max);
+      this.speed += power * (1 - ratio * ratio * 0.82) * dt;
     } else if (t < 0) {
       this.speed -= PLAYER.brake * dt;
     }
@@ -222,10 +224,13 @@ export class Player {
     this.speed = Math.max(0, Math.min(max, this.speed));
 
     // --- Movimiento lateral ---
-    // A poca velocidad el coche responde menos: da sensación de peso.
-    const grip = 0.45 + 0.55 * Math.min(1, this.speed / 26);
-    const target = input.steer * PLAYER.lateralMax * grip;
-    const k = 1 - Math.pow(0.0008, dt);
+    // Dos cosas se estrechan con la velocidad: cuánto te puedes mover de
+    // lado y lo que tardas en conseguirlo. A tope el coche pesa.
+    const fast = Math.min(1, this.speed / PLAYER.maxSpeed);
+    const agility = 1 - PLAYER.agilityLoss * Math.pow(fast, 1.2);
+    const rolling = Math.min(1, this.speed / 10);     // parado no se desliza
+    const target = input.steer * PLAYER.lateralMax * agility * rolling;
+    const k = 1 - Math.pow(0.0008 + 0.055 * fast, dt);
     this.lateral += (target - this.lateral) * k;
     this.x += this.lateral * dt;
 

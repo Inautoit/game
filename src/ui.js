@@ -104,6 +104,17 @@ export class UI {
     $('btn-duel').addEventListener('click', () => this.h.onDuel());
     $('btn-rooms-close').addEventListener('click', () => this.closeOverlays());
     $('btn-create').addEventListener('click', () => this.h.onCreateRoom());
+
+    // Mayúsculas al vuelo y fuera lo que no esté en el alfabeto de códigos.
+    this.el.joinCode.addEventListener('input', () => {
+      const clean = this.el.joinCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+      if (clean !== this.el.joinCode.value) this.el.joinCode.value = clean;
+      this.roomsError('');
+      if (clean.length === 5) this.el.joinCode.blur();     // cierra el teclado
+    });
+    this.el.joinCode.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); $('btn-join').click(); }
+    });
     $('btn-join').addEventListener('click', () => {
       const code = this.el.joinCode.value.trim().toUpperCase();
       if (/^[A-Z0-9]{5}$/.test(code)) this.h.onJoinRoom(code);

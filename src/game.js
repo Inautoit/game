@@ -465,7 +465,9 @@ export class Game {
   }
 
   _scoring(dt) {
-    const fast = this.player.speed > SCORE.fastBonusSpeed ? 2 : 1;
+    // Multiplicador continuo: 1x parado, 3x a fondo. Arriesgar renta.
+    const ratio = Math.min(1, this.player.speed / PLAYER.maxSpeed);
+    const fast = 1 + ratio * ratio * 2;
     this.score += this.player.speed * dt * SCORE.perMeter * fast * this.mode.scoreMult;
 
     for (const pass of this.traffic.collectPasses(this.player.x, this.player.halfWidth)) {

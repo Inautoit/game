@@ -97,6 +97,10 @@ export class Input {
       Space: 'nitro', ShiftLeft: 'nitro',
     };
     const set = (e, down) => {
+      // Si estás escribiendo en un campo, el teclado no es del coche: si no,
+      // A, D, W y S (girar y acelerar) desaparecen al teclearlas, y el
+      // alfabeto de los códigos de sala las lleva.
+      if (isTyping(e.target)) return;
       const a = map[e.code];
       if (!a) return;
       e.preventDefault();
@@ -193,6 +197,12 @@ export class Input {
 }
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+function isTyping(target) {
+  if (!target) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable === true;
+}
 
 function load(key, def) {
   try {

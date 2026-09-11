@@ -19,13 +19,20 @@ esquivar. Se puntúa por:
 
 | Acción | Puntos |
 |---|---|
-| Cada metro recorrido | ×0,55 (**doble** por encima de 108 km/h) |
+| Cada metro recorrido | ×0,55, y hasta **×3** según lo rápido que vayas |
 | Adelantar un coche | +15 |
 | Adelantar **rozando** (< 2,1 m) | +60, y ×2 si viene de frente |
 | Combo de roces seguidos | +15 % por cada uno |
 
 Los roces llenan el **nitro**: a partir del 35 % puedes soltarlo y subir a
-324 km/h durante 3 segundos. Un solo choque termina la partida.
+346 km/h durante 3 segundos. Un solo choque termina la partida.
+
+El coche llega a **299 km/h**, pero el último tramo cuesta: de 0 a 200 vas en
+cuatro segundos y de 250 a 295 tardas otros seis. Y cuanto más rápido vas,
+menos se mueve de lado: a 300 por hora cambiar de carril lleva casi el triple
+que a 100. Eso significa que **no se esquiva sólo girando**: hay que levantar
+el pie y frenar para recuperar agilidad, sabiendo que al frenar pierdes el
+multiplicador de puntos. Ese es el juego.
 
 ### Sensación de velocidad
 

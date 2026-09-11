@@ -62,14 +62,18 @@ export const PLAYER = {
   length: 5.0,            // m (se escala el modelo a esta longitud)
   halfWidth: 1.02,
   halfLength: 2.5,
-  maxSpeed: 72,           // m/s  (~259 km/h)
-  nitroSpeed: 90,         // m/s  (~324 km/h)
-  reverseSpeed: 6,
-  brake: 26,
-  drag: 0.0009,
+  maxSpeed: 83,           // m/s  (~299 km/h)
+  nitroSpeed: 96,         // m/s  (~346 km/h)
+  brake: 30,              // frenar tiene que ser una herramienta, no un castigo
+  drag: 0.00028,
   rollResist: 3.2,
-  lateralMax: 11,         // m/s de desplazamiento lateral a tope
-  lateralAccel: 34,
+  power: 16,              // empuje del motor en seco
+  powerNitro: 22,
+  lateralMax: 12.5,       // m/s de desplazamiento lateral estando suelto
+  // Cuánta agilidad pierdes al ir a tope. Con 0.55, a 300 por hora el coche
+  // se mueve de lado a menos de la mitad que a 100: para esquivar hay que
+  // levantar el pie, no basta con girar.
+  agilityLoss: 0.55,
   nitroMax: 100,
 };
 
@@ -85,7 +89,6 @@ export const TRAFFIC = {
 
 export const SCORE = {
   perMeter: 0.55,
-  fastBonusSpeed: 30,     // m/s a partir del cual puntúa doble
   overtake: 15,
   nearMiss: 60,
   nearMissDist: 2.1,      // separación lateral para "casi rozas"
