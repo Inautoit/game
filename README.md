@@ -101,8 +101,11 @@ hay mayúsculas ni caracteres que se confundan, y en el móvil sale el teclado
 numérico en vez del alfabético.
 
 Corréis todos por la misma carretera, cada uno con su coche y viendo el mismo
-tráfico. Arriba a la derecha tienes a cada rival con los metros que te saca o
-que le sacas. **Cuando alguien choca, los demás siguen**: se avisa de quién ha
+tráfico. Cada rival lleva **un anillo de color en el asfalto y su nombre
+encima**, para no confundirlo con un coche del tráfico: usan el mismo modelo.
+Arriba a la derecha tienes a cada uno con los metros que te saca o que le
+sacas, y como el juego no tiene retrovisor, **abajo aparece quién te viene
+por detrás** y por qué lado. **Cuando alguien choca, los demás siguen**: se avisa de quién ha
 caído y cuántos quedan, y tú, si te has estrellado, pasas a ver la carrera
 desde el que va líder. Gana el que llegue más lejos.
 
@@ -125,6 +128,18 @@ mismas que en una partida en solitario.
   simular su propio tráfico en vez de quedarse en un mundo congelado.
 - Los mensajes entrantes se facturan 20:1, así que una partida de seis a
   10 Hz sale por unas 540 peticiones de las 100.000 diarias gratuitas.
+- **Las posiciones y el tráfico salen por temporizador, no por fotograma.**
+  Si a alguien se le atasca el render un momento, los demás le siguen viendo
+  moverse.
+- Si el invitado pasa 8 segundos sin recibir tráfico, simula el suyo para no
+  quedarse atravesando un mundo congelado — pero se avisa en pantalla
+  (*reconectando…*) y **se vuelve a sincronizar en cuanto el anfitrión
+  reaparece**. Antes era irreversible: un microcorte y cada uno seguía en una
+  partida distinta sin enterarse.
+- **La sala comprueba la versión del juego.** Compartir sala no basta: si dos
+  clientes llevan código distinto (uno con la versión vieja en caché, por
+  ejemplo) simulan mundos distintos. Quien no coincida no entra y se le
+  recarga la página.
 
 ---
 

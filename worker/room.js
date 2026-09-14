@@ -17,7 +17,8 @@ export class Room {
     this.meta = null;
     ctx.blockConcurrencyWhile(async () => {
       this.meta = (await ctx.storage.get('meta')) || {
-        phase: 'lobby', hostId: null, mode: 'oneway', time: 'day', startedAt: 0, results: [],
+        phase: 'lobby', hostId: null, mode: 'oneway', time: 'day', startedAt: 0,
+        results: [], build: null,
       };
     });
   }
@@ -65,7 +66,20 @@ export class Room {
     const taken = this.players().some((p) => p.id === id);
     if (taken) return send(ws, { t: 'err', msg: 'Ya estás dentro en otra pestaña' });
 
+    // Misma sala no basta: hace falta la misma versión del juego. Si no,
+    // cada uno simula su mundo y parecen dos partidas distintas.
+    const build = String(msg.v || '');
     const first = this.ctx.getWebSockets().filter((s) => s.deserializeAttachment()).length === 0;
+    if (first) {
+      this.meta.build = build;
+      await this.save();
+    } else if (this.meta.build && build !== this.meta.build) {
+      return send(ws, {
+        t: 'err',
+        reload: true,
+        msg: 'Tu versión del juego no coincide con la de la sala. Recargando…',
+      });
+    }
     const me = {
       id,
       name: String(msg.name || 'Piloto').slice(0, 16),
@@ -107,7 +121,10 @@ export class Room {
       await this.save();
     }
     if (this.players().length === 0) {
-      this.meta = { phase: 'lobby', hostId: null, mode: 'oneway', time: 'day', startedAt: 0, results: [] };
+      this.meta = {
+        phase: 'lobby', hostId: null, mode: 'oneway', time: 'day', startedAt: 0,
+        results: [], build: null,
+      };
       await this.ctx.storage.deleteAll();
       return;
     }

@@ -40,7 +40,7 @@ export class UI {
       lobby: $('lobby'), lobbyCode: $('lobby-code'), lobbyPlayers: $('lobby-players'),
       lobbyHost: $('lobby-host'), lobbyHint: $('lobby-hint'), launch: $('btn-launch'),
       countdown: $('countdown'), countdownN: $('countdown-n'),
-      versus: $('versus'), name: $('opt-name'),
+      versus: $('versus'), behind: $('behind'), name: $('opt-name'),
       overStandings: $('over-standings'), overRank: $('over-rank'),
     };
 
@@ -231,7 +231,7 @@ export class UI {
   }
 
   // Marcador de rivales durante la carrera.
-  versus(rows, left) {
+  versus(rows, left, desynced) {
     if (!rows) return show(this.el.versus, false);
     const box = this.el.versus;
     box.innerHTML = '';
@@ -241,9 +241,12 @@ export class UI {
       const hex = PAINT_OPTIONS[r.paint % PAINT_OPTIONS.length]?.hex ?? 0x999999;
       const gap = Math.round(r.gap);
       const cls = gap > 0 ? 'ahead' : 'behind';
+      if (!r.crashed && Math.abs(gap) < 30) el.classList.add('close');
+      const arrow = r.crashed ? '' : (gap > 0 ? '▲' : '▼');
       el.innerHTML = `<span class="dot" style="background:#${hex.toString(16).padStart(6, '0')}"></span>`
         + `<span class="who"></span>`
-        + `<span class="gap ${r.crashed ? '' : cls}">${r.crashed ? 'fuera' : (gap > 0 ? '+' : '') + gap + ' m'}</span>`;
+        + `<span class="arrow">${arrow}</span>`
+        + `<span class="gap ${r.crashed ? '' : cls}">${r.crashed ? 'fuera' : Math.abs(gap) + ' m'}</span>`;
       el.querySelector('.who').textContent = r.name;
       box.appendChild(el);
     }
@@ -252,6 +255,31 @@ export class UI {
       tag.className = 'vs-left';
       tag.textContent = left === 1 ? 'último en pie' : `quedan ${left}`;
       box.appendChild(tag);
+    }
+    if (desynced) {
+      const warn = document.createElement('div');
+      warn.className = 'vs-left warn';
+      warn.textContent = 'reconectando…';
+      box.appendChild(warn);
+    }
+    show(box, true);
+  }
+
+  // Rivales que te vienen por detrás. La posición horizontal de cada aviso
+  // dice por qué lado te van a pasar.
+  behind(rows) {
+    const box = this.el.behind;
+    if (!rows || !rows.length) return show(box, false);
+    box.innerHTML = '';
+    for (const r of rows) {
+      const el = document.createElement('div');
+      el.className = 'behind-tag' + (r.gap > -14 ? ' close' : '');
+      const hex = PAINT_OPTIONS[r.paint % PAINT_OPTIONS.length]?.hex ?? 0x999999;
+      el.style.left = `${r.screen}%`;
+      el.innerHTML = `<span class="dot" style="background:#${hex.toString(16).padStart(6, '0')}"></span>`
+        + `<span class="who"></span><b>${Math.round(-r.gap)} m</b><span class="arrow">▼</span>`;
+      el.querySelector('.who').textContent = r.name;
+      box.appendChild(el);
     }
     show(box, true);
   }
@@ -319,6 +347,7 @@ export class UI {
     show(this.el.pause, false);
     show(this.el.over, false);
     show(this.el.versus, false);
+    show(this.el.behind, false);
     this.closeOverlays();
     this.syncChips();
   }
@@ -326,6 +355,7 @@ export class UI {
   showGame() {
     this.closeOverlays();
     show(this.el.versus, false);
+    show(this.el.behind, false);
     show(this.el.overStandings, false);
     show(this.el.overRank, false);
     show(this.el.menu, false);
@@ -355,6 +385,7 @@ export class UI {
     show(this.el.over, true);
     show(this.el.controls, false);
     show(this.el.versus, false);
+    show(this.el.behind, false);
   }
 
   // ------------------------------------------------------------- en juego

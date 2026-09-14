@@ -193,7 +193,6 @@ export class Game {
     if (mp) {
       this.remotes.tick(dt, this.distance);
       this.traffic.update(dt, this.player.speed, this.distance, this._trafficRange());
-      this._netTick(now);
       if (now - mp.lastVersus > 200) { mp.lastVersus = now; this._versus(); }
       this._checkHostAlive(now);
     } else {
@@ -260,6 +259,13 @@ export class Game {
       shownCount: -1, hostGone: false, left: players.length,
     };
 
+    // El envío va por temporizador, no por fotograma: si el render se
+    // atasca un momento, los demás te siguen viendo moverte.
+    clearInterval(this._netTimer);
+    this._netTimer = setInterval(() => {
+      if (this.mp) this._netTick(Date.now());
+    }, 100);
+
     this.input.reset();
     this.input.recenterTilt();
     this.ui.resetHud();
@@ -271,8 +277,21 @@ export class Game {
     this.camera.updateProjectionMatrix();
   }
 
+  _stopNetTimer() {
+    clearInterval(this._netTimer);
+    this._netTimer = null;
+  }
+
   onRemoteState(msg) {
     if (this.mp) this.remotes.onState(msg);
+  }
+
+  // La lista de jugadores puede llegar después del pistoletazo: rehacemos
+  // los coches en vez de quedarnos sin rival.
+  syncRemotes(players) {
+    if (!this.mp) return;
+    this.mp.players = players;
+    this.remotes.sync(players, this.mp.youId);
   }
 
   onRemoteOut(msg) {
@@ -287,9 +306,11 @@ export class Game {
 
   onDuelEnd(results) {
     if (!this.mp) return;
+    this._stopNetTimer();
     this.state = STATE.OVER;
     this.mp.spectating = false;
     this.ui.countdown(null);
+    this.ui.behind(null);
     const mine = results.find((r) => r.id === this.mp.youId);
     this.ui.showOver({
       title: mine?.place === 1 ? '¡Has ganado!' : `Puesto ${mine?.place ?? '-'}`,
@@ -307,20 +328,24 @@ export class Game {
 
   // Vuelta al vestíbulo tras un duelo, sin soltar la conexión.
   backToLobby() {
+    this._stopNetTimer();
     this.mp = null;
     this.remotes.clear();
     this.ui.countdown(null);
     this.ui.versus(null);
+    this.ui.behind(null);
     this.player.group.visible = true;
     this.traffic.reset(this.mode, 'solo');
     this.toMenu();
   }
 
   leaveMultiplayer() {
+    this._stopNetTimer();
     this.mp = null;
     this.remotes.clear();
     this.ui.countdown(null);
     this.ui.versus(null);
+    this.ui.behind(null);
     this.player.group.visible = true;
     this.traffic.reset(this.mode, 'solo');
   }
@@ -360,27 +385,50 @@ export class Game {
     }
   }
 
-  // El tráfico lo manda el anfitrión. Si deja de llegar, el invitado se
-  // quedaría atravesando un mundo congelado: pasamos a simular en local.
+  // El tráfico lo manda el anfitrión. Si deja de llegar mucho rato, el
+  // invitado se quedaría atravesando un mundo congelado y pasamos a simular
+  // en local — pero eso significa que cada uno juega una partida distinta,
+  // así que se avisa en pantalla y se vuelve atrás en cuanto reaparece.
   _checkHostAlive(now) {
     const mp = this.mp;
-    if (mp.isHost || mp.hostGone || !mp.lastTrafficAt) return;
-    if (now - mp.lastTrafficAt < 3000) return;
-    mp.hostGone = true;
-    this.traffic.role = 'solo';
-    this.ui.toast('El anfitrión se ha ido', 'pass');
+    if (mp.isHost || !mp.lastTrafficAt) return;
+    const silence = now - mp.lastTrafficAt;
+    mp.desynced = silence > 1500;
+
+    if (!mp.hostGone && silence > 8000) {
+      mp.hostGone = true;
+      this.traffic.role = 'solo';
+      this.ui.toast('Sin señal del anfitrión', 'big');
+    } else if (mp.hostGone && silence < 1000) {
+      mp.hostGone = false;
+      this.traffic.role = 'guest';
+      this.ui.toast('Sincronizado de nuevo', 'pass');
+    }
   }
 
   _versus() {
     const rows = [];
+    const behind = [];
     for (const p of this.mp.players) {
       if (p.id === this.mp.youId) continue;
       const car = this.remotes.cars.get(p.id);
       if (!car) continue;
-      rows.push({ name: p.name, paint: p.paint, gap: car.d - this.distance, crashed: car.crashed });
+      const gap = car.d - this.distance;
+      rows.push({ name: p.name, paint: p.paint, gap, crashed: car.crashed });
+
+      // Detrás de la cámara no se ve nada: lo avisamos abajo, colocado
+      // según por qué lado viene. En pantalla la derecha es -X.
+      if (!car.crashed && car.started && gap < -6 && gap > -110) {
+        const lateral = -(car.x - this.player.x);
+        behind.push({
+          name: p.name, paint: p.paint, gap,
+          screen: THREE.MathUtils.clamp(50 + lateral * 4.2, 12, 88),
+        });
+      }
     }
     rows.sort((a, b) => b.gap - a.gap);
-    this.ui.versus(rows, this.mp.left);
+    this.ui.versus(rows, this.mp.left, this.mp.desynced && !this.mp.isHost);
+    this.ui.behind(behind);
   }
 
   _startSpectating() {

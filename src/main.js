@@ -10,7 +10,7 @@ import { Game, STATE } from './game.js';
 import { PostFX } from './postfx.js';
 import { Account, defaultName } from './account.js';
 import { Net, makeRoomCode } from './net.js';
-import { DRAW_DISTANCE } from './config.js';
+import { DRAW_DISTANCE, BUILD } from './config.js';
 
 // --------------------------------------------------------------- Renderer
 const canvas = document.getElementById('game');
@@ -115,6 +115,7 @@ async function openRoom(code, creating) {
     id: account.id || 'local-' + Math.random().toString(36).slice(2),
     name: account.name,
     paint: ui.settings.paint,
+    v: BUILD,
   });
 }
 
@@ -149,7 +150,7 @@ net.on('players', (msg) => {
   if (!room) return;
   room.players = msg.players;
   room.hostId = msg.host;
-  if (game.mp) game.mp.players = msg.players;
+  if (game.mp) game.syncRemotes(msg.players);
   renderLobby();
 });
 
@@ -185,6 +186,13 @@ net.on('lobby', () => {
   renderLobby();
 });
 net.on('err', (msg) => {
+  if (msg.reload) {                 // versiones distintas: hay que recargar
+    net.close();
+    room = null;
+    ui.roomsError(msg.msg);
+    setTimeout(() => location.reload(), 2500);
+    return;
+  }
   if (game.mp) ui.toast(msg.msg, 'pass');
   else ui.roomsError(msg.msg);
 });

@@ -1,5 +1,10 @@
 // Parámetros globales del juego. Tocar aquí para ajustar la dificultad.
 
+// Versión del juego. Se manda al entrar en una sala: si dos jugadores no
+// llevan la misma, no pueden estar en la misma partida por mucho que
+// compartan sala, así que es mejor no dejarles empezar.
+export const BUILD = '2026-09-14.1';
+
 export const LANE_W = 3.6;      // ancho de carril (m)
 export const SHOULDER = 1.2;    // arcén (m)
 

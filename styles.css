@@ -554,6 +554,42 @@ h2 { margin: 0; font-size: 28px; font-weight: 900; letter-spacing: .03em; }
 .vs-row .gap.ahead { color: #ff8d7a; }
 .vs-row .gap.behind { color: #7ee08a; }
 .vs-row.dead { opacity: .4; }
+/* Avisos de quien te pisa los talones: el rival que va detrás queda fuera
+   de cámara, así que hay que decirlo en pantalla. */
+#behind {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(104px + var(--safe-b));
+  height: 30px;
+  z-index: 5;
+  pointer-events: none;
+}
+.behind-tag {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: rgba(4, 7, 14, .72);
+  border: 1px solid var(--stroke);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  white-space: nowrap;
+  transition: left .12s linear;
+}
+.behind-tag .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.behind-tag b { font-variant-numeric: tabular-nums; }
+.behind-tag.close { border-color: var(--accent); box-shadow: 0 0 14px rgba(255, 176, 32, .5); }
+
+body:not(.is-touch) #behind { bottom: 24px; }
+
+.vs-row .arrow { font-size: 9px; opacity: .8; }
+.vs-row.close { border-color: var(--accent); }
+
+.vs-left.warn { color: #ff8d7a; }
 .vs-left {
   margin-top: 5px;
   padding: 2px 8px;

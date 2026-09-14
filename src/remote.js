@@ -24,6 +24,8 @@ export class Remotes {
     this.bodyGeo = proto.body;
     this.trimGeo = proto.trim;
     this.shadowGeo = new THREE.PlaneGeometry(2.6, 5.2).rotateX(-Math.PI / 2);
+    this.haloGeo = new THREE.PlaneGeometry(5.4, 7.2).rotateX(-Math.PI / 2);
+    this.haloTex = makeHaloTexture();
   }
 
   sync(players, meId) {
@@ -55,6 +57,17 @@ export class Remotes {
     shadow.renderOrder = -1;
     group.add(shadow);
 
+    // Anillo de color en el asfalto. Sin esto un rival es indistinguible de
+    // un coche del tráfico, que usa el mismo modelo.
+    const haloMat = new THREE.MeshBasicMaterial({
+      map: this.haloTex, color: hex, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const halo = new THREE.Mesh(this.haloGeo, haloMat);
+    halo.position.y = 0.04;
+    halo.renderOrder = 1;
+    group.add(halo);
+
     const label = makeLabel(player.name);
     label.position.y = 2.6;
     group.add(label);
@@ -63,7 +76,7 @@ export class Remotes {
     this.group.add(group);
 
     return {
-      id: player.id, group, materials: [paint, trim, shadowMat], label,
+      id: player.id, group, materials: [paint, trim, shadowMat, haloMat], label, halo,
       d: 0, x: 0, yaw: 0, vel: 0, nitro: 0,
       targetD: 0, targetX: 0, targetYaw: 0,
       crashed: false, crashSpin: 0, crashAge: 0, started: false,
@@ -107,7 +120,7 @@ export class Remotes {
         crashed: false, crashSpin: 0, crashAge: 0, started: false,
       });
       car.group.visible = false;
-      for (const m of car.materials) m.opacity = m === car.materials[2] ? 0.8 : 1;
+      setFade(car, 1);
     }
   }
 
@@ -128,9 +141,7 @@ export class Remotes {
         car.yaw += car.crashSpin * dt;
         car.crashSpin *= 1 - Math.min(1, dt * 1.2);
         const fade = 1 - Math.max(0, Math.min(1, (car.crashAge - 3) / 2));
-        car.materials[0].opacity = fade;
-        car.materials[1].opacity = fade;
-        car.materials[2].opacity = 0.8 * fade;
+        setFade(car, fade);
         if (fade <= 0) { car.group.visible = false; continue; }
       } else {
         // Entre paquete y paquete avanzamos por estima con su velocidad.
@@ -149,10 +160,13 @@ export class Remotes {
 
       car.group.position.set(car.x, 0, z);
       car.group.rotation.y = car.yaw;
-      // De cerca el cartel tapa medio coche y no hace falta: ya lo ves.
+      // El cartel se ve desde casi encima hasta el fondo de la niebla.
       const far = Math.abs(z);
       car.label.material.opacity = Math.max(0, Math.min(1,
-        Math.min((far - 9) / 8, 1 - (far - 140) / 120)));
+        Math.min((far - 3) / 5, 1 - (far - 230) / 90)));
+      if (!car.crashed) {
+        car.halo.material.opacity = 0.62 + 0.22 * Math.sin(performance.now() * 0.005);
+      }
     }
   }
 
@@ -160,6 +174,29 @@ export class Remotes {
   standings() {
     return [...this.cars.values()].map((c) => ({ id: c.id, d: c.d, crashed: c.crashed }));
   }
+}
+
+// Opacidad de golpe para chapa, cristales, sombra y halo.
+function setFade(car, fade) {
+  const [paint, trim, shadow, halo] = car.materials;
+  paint.opacity = fade;
+  trim.opacity = fade;
+  shadow.opacity = 0.8 * fade;
+  halo.opacity = 0.85 * fade;
+}
+
+function makeHaloTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 30, 64, 64, 62);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.28)');
+  g.addColorStop(0.78, 'rgba(255,255,255,0.95)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(cv);
 }
 
 function makeLabel(name) {
