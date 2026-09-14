@@ -109,6 +109,20 @@ por detrás** y por qué lado. **Cuando alguien choca, los demás siguen**: se a
 caído y cuántos quedan, y tú, si te has estrellado, pasas a ver la carrera
 desde el que va líder. Gana el que llegue más lejos.
 
+### Adelantar a una persona
+
+Si el de delante frena o tarda en esquivar, le pasas — y se ve en las dos
+pantallas: a uno le sale *¡Has adelantado a Fulano!* y al otro *Fulano te ha
+adelantado*. Pasar a una persona vale **140 puntos**, casi diez veces más que
+un coche del tráfico, y carga nitro.
+
+Y no os atravesáis: si os tocáis, hay **empujón**. No es un choque —con 100 ms
+de latencia un choque entre coches sería injusto para alguien—, sino un
+apartón lateral con pérdida de velocidad que cada cliente aplica **sólo a su
+propio coche**. Como los dos hacen lo mismo en sentidos opuestos, sale
+simétrico sin que nadie tenga que arbitrar y la latencia no puede hacer
+trampas.
+
 Los duelos no puntúan para el ranking mundial: las condiciones no son las
 mismas que en una partida en solitario.
 
@@ -250,6 +264,7 @@ tools/          Script de optimización del modelo
 ## Ideas para seguir
 
 - Coches desbloqueables con cifras propias (la Supra está a medio camino).
+- Rebufo: ir pegado al de delante debería dar unos km/h extra.
 - Revalidar la repetición en el servidor para blindar el ranking.
 - Choques entre jugadores en el duelo (hoy os atravesáis: con 100 ms de
   latencia, un choque injusto arruina una partida).

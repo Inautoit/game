@@ -79,7 +79,7 @@ export class Remotes {
       id: player.id, group, materials: [paint, trim, shadowMat, haloMat], label, halo,
       d: 0, x: 0, yaw: 0, vel: 0, nitro: 0,
       targetD: 0, targetX: 0, targetYaw: 0,
-      crashed: false, crashSpin: 0, crashAge: 0, started: false,
+      crashed: false, crashSpin: 0, crashAge: 0, started: false, side: 0,
     };
   }
 
@@ -117,7 +117,7 @@ export class Remotes {
     for (const car of this.cars.values()) {
       Object.assign(car, {
         d: 0, x: 0, yaw: 0, vel: 0, targetD: 0, targetX: 0, targetYaw: 0,
-        crashed: false, crashSpin: 0, crashAge: 0, started: false,
+        crashed: false, crashSpin: 0, crashAge: 0, started: false, side: 0,
       });
       car.group.visible = false;
       setFade(car, 1);
@@ -169,6 +169,8 @@ export class Remotes {
       }
     }
   }
+
+  get(id) { return this.cars.get(id) || null; }
 
   // Distancia de cada rival, para el marcador de posiciones.
   standings() {

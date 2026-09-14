@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODES, TIMES, SCORE, PLAYER, FX, DRAW_DISTANCE, roadHalfWidth } from './config.js';
+import { MODES, TIMES, SCORE, PLAYER, FX, CONTACT, DRAW_DISTANCE, roadHalfWidth } from './config.js';
 import { Road } from './road.js';
 import { Traffic } from './traffic.js';
 import { makeEnvironment } from './sky.js';
@@ -192,6 +192,7 @@ export class Game {
 
     if (mp) {
       this.remotes.tick(dt, this.distance);
+      if (driving && this.state === STATE.PLAYING) this._rivalContact(dt);
       this.traffic.update(dt, this.player.speed, this.distance, this._trafficRange());
       if (now - mp.lastVersus > 200) { mp.lastVersus = now; this._versus(); }
       this._checkHostAlive(now);
@@ -404,6 +405,76 @@ export class Game {
       this.traffic.role = 'guest';
       this.ui.toast('Sincronizado de nuevo', 'pass');
     }
+  }
+
+  // Roce y adelantamientos entre personas. Todo local: cada cliente sólo
+  // mueve su propio coche, así que la latencia no puede hacer trampas.
+  _rivalContact(dt) {
+    const mp = this.mp;
+    if (mp.locked || mp.out) return;
+    const p = this.player;
+    this._contactTimer = Math.max(0, (this._contactTimer || 0) - dt);
+
+    for (const car of this.remotes.cars.values()) {
+      if (!car.started) continue;
+      const gap = car.d - this.distance;
+
+      // --- Cruce: quién adelanta a quién. Zona muerta de 4 m para que dos
+      // coches emparejados no disparen avisos sin parar.
+      if (!car.crashed) {
+        const prev = car.side || (gap > 0 ? 1 : -1);
+        let side = prev;
+        if (gap > 4) side = 1;
+        else if (gap < -4) side = -1;
+        if (side !== prev && Math.abs(car.x - p.x) < 14) {
+          if (side === -1) this._onPassedRival(car);
+          else this._onPassedByRival(car);
+        }
+        car.side = side;
+      }
+
+      if (car.crashed) continue;
+
+      // --- Contacto: empujón, no choque.
+      const overlapZ = (p.halfLength + 2.2) - Math.abs(gap);
+      const dx = p.x - car.x;
+      const overlapX = (p.halfWidth + 0.95) - Math.abs(dx);
+      if (overlapZ <= 0 || overlapX <= 0) continue;
+
+      // Si estáis exactamente alineados, desempatamos por identificador
+      // para que cada uno se aparte hacia un lado distinto.
+      let dir = Math.sign(dx);
+      if (dir === 0) dir = (mp.youId < car.id) ? 1 : -1;
+
+      p.lateral += dir * CONTACT.shove * dt;
+      p.x += dir * Math.min(overlapX, CONTACT.separate * dt);
+      p.speed = Math.max(0, p.speed - CONTACT.drag * dt);
+
+      if (this._contactTimer <= 0) {
+        this._contactTimer = CONTACT.cooldown;
+        this.shake = Math.max(this.shake, 0.45);
+        this.sound.blip(300, 0.09, 'square', 0.16);
+        if (navigator.vibrate) navigator.vibrate(22);
+      }
+    }
+  }
+
+  _onPassedRival(car) {
+    const name = this._nameOf(car.id);
+    this.score += SCORE.playerOvertake * this.mode.scoreMult;
+    this.player.addNitro(SCORE.nitroPerPlayerPass);
+    this.ui.toast(`¡Has adelantado a ${name}!`, 'big');
+    this.sound.blip(980, 0.14, 'triangle', 0.22);
+    if (navigator.vibrate) navigator.vibrate(30);
+  }
+
+  _onPassedByRival(car) {
+    this.ui.toast(`${this._nameOf(car.id)} te ha adelantado`, 'near');
+    this.sound.blip(300, 0.16, 'sine', 0.16);
+  }
+
+  _nameOf(id) {
+    return this.mp.players.find((p) => p.id === id)?.name || 'Rival';
   }
 
   _versus() {

@@ -3,7 +3,7 @@
 // Versión del juego. Se manda al entrar en una sala: si dos jugadores no
 // llevan la misma, no pueden estar en la misma partida por mucho que
 // compartan sala, así que es mejor no dejarles empezar.
-export const BUILD = '2026-09-14.1';
+export const BUILD = '2026-09-14.2';
 
 export const LANE_W = 3.6;      // ancho de carril (m)
 export const SHOULDER = 1.2;    // arcén (m)
@@ -99,6 +99,20 @@ export const SCORE = {
   nearMissDist: 2.1,      // separación lateral para "casi rozas"
   nitroPerNearMiss: 22,
   nitroPerOvertake: 5,
+  playerOvertake: 140,    // adelantar a una persona vale mucho más
+  nitroPerPlayerPass: 18,
+};
+
+// Contacto entre jugadores. No es un choque: con 100 ms de latencia un
+// choque entre coches sería injusto para alguien. Es un empujón que cada
+// cliente aplica SÓLO a su propio coche, apartándolo del rival. Como los
+// dos hacen lo mismo en sentidos opuestos, sale simétrico sin que nadie
+// tenga que arbitrar.
+export const CONTACT = {
+  shove: 11,              // empuje lateral (m/s²)
+  separate: 2.6,          // cuánto se resuelve el solapamiento por segundo
+  drag: 7,                // velocidad que se pierde mientras rozáis
+  cooldown: 0.45,         // entre avisos de roce
 };
 
 // Efectos de velocidad. Todo lo que hace que 250 km/h se noten.
