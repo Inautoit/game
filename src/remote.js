@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import { VEHICLE_TYPES } from './vehicles.js';
 import { PAINT_OPTIONS } from './ui.js';
 import { blobShadowTexture } from './player.js';
+import { PLAYER } from './config.js';
 
-// Los rivales del duelo. No se dibujan con el Urus de 187k triángulos —
-// cinco copias serían casi un millón— sino con el coche low-poly del
-// tráfico, pintado del color que cada uno haya elegido, y con su nombre
-// encima.
+// Los rivales del duelo llevan el mismo Urus que tú, pero en su versión
+// ligera (assets/urus-rival.glb): el modelo bueno son 171 llamadas de
+// dibujado y cinco rivales serían 855, que no las aguanta ningún móvil. La
+// ligera cuesta cinco. Si por lo que sea no carga, se cae al coche low-poly
+// del tráfico y el duelo sigue funcionando.
 //
 // Como tu coche nunca se mueve en Z, colocar a un rival es trivial:
 //   z = suDistancia - miDistancia
@@ -19,6 +21,8 @@ export class Remotes {
     this.group = new THREE.Group();
     scene.add(this.group);
     this.cars = new Map();
+    this.template = null;
+    this.night = false;
 
     const proto = VEHICLE_TYPES[0].make();
     this.bodyGeo = proto.body;
@@ -26,6 +30,49 @@ export class Remotes {
     this.shadowGeo = new THREE.PlaneGeometry(2.6, 5.2).rotateX(-Math.PI / 2);
     this.haloGeo = new THREE.PlaneGeometry(5.4, 7.2).rotateX(-Math.PI / 2);
     this.haloTex = makeHaloTexture();
+  }
+
+  // Coloca el Urus ligero como plantilla: se gira, se escala a los 5 m
+  // reales y se apoya en el suelo una sola vez, y los rivales son clones.
+  setModel(scene) {
+    const holder = new THREE.Group();
+    holder.rotation.y = Math.PI / 2;
+    holder.add(scene);
+
+    const box = new THREE.Box3().setFromObject(holder);
+    const size = box.getSize(new THREE.Vector3());
+    const scale = PLAYER.length / size.z;
+    holder.scale.setScalar(scale);
+    holder.position.y = -box.min.y * scale;
+    this.template = holder;
+
+    // Los que ya estuvieran creados se rehacen con el modelo bueno.
+    for (const [id, car] of [...this.cars]) {
+      const player = { id, name: car.name, paint: car.paint };
+      const state = { d: car.d, x: car.x, yaw: car.yaw, vel: car.vel, started: car.started };
+      this._dispose(car);
+      const fresh = this._make(player);
+      Object.assign(fresh, state);
+      this.cars.set(id, fresh);
+    }
+  }
+
+  setNight(on) {
+    this.night = on;
+    for (const car of this.cars.values()) this._applyNight(car);
+  }
+
+  _applyNight(car) {
+    for (const m of car.bodyMats) {
+      if (!/^light/.test(m.name || '')) continue;
+      if (this.night) {
+        m.emissive.copy(m.color);
+        m.emissiveIntensity = /Rear/.test(m.name) ? 1.5 : 2;
+      } else {
+        m.emissive.setHex(0x000000);
+      }
+      m.needsUpdate = true;
+    }
   }
 
   sync(players, meId) {
@@ -43,11 +90,31 @@ export class Remotes {
   _make(player) {
     const hex = PAINT_OPTIONS[player.paint % PAINT_OPTIONS.length]?.hex ?? 0xd8dee6;
     const group = new THREE.Group();
+    const bodyMats = [];
 
-    const paint = new THREE.MeshLambertMaterial({ color: hex, transparent: true });
-    const trim = new THREE.MeshLambertMaterial({ color: 0x14161a, transparent: true });
-    group.add(new THREE.Mesh(this.bodyGeo, paint));
-    group.add(new THREE.Mesh(this.trimGeo, trim));
+    if (this.template) {
+      // La geometría se comparte entre clones; los materiales no, porque
+      // cada uno lleva su color y su desvanecido al chocar.
+      const model = this.template.clone(true);
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        const mat = o.material.clone();
+        if (mat.name === 'paint') mat.color.setHex(hex);
+        markBlend(mat);
+        o.material = mat;
+        o.frustumCulled = false;
+        bodyMats.push(mat);
+      });
+      group.add(model);
+    } else {
+      const paint = new THREE.MeshLambertMaterial({ color: hex });
+      const trim = new THREE.MeshLambertMaterial({ color: 0x14161a });
+      group.add(new THREE.Mesh(this.bodyGeo, paint));
+      group.add(new THREE.Mesh(this.trimGeo, trim));
+      markBlend(paint);
+      markBlend(trim);
+      bodyMats.push(paint, trim);
+    }
 
     const shadowMat = new THREE.MeshBasicMaterial({
       map: blobShadowTexture(), transparent: true, depthWrite: false, opacity: 0.8,
@@ -75,17 +142,22 @@ export class Remotes {
     group.visible = false;
     this.group.add(group);
 
-    return {
-      id: player.id, group, materials: [paint, trim, shadowMat, haloMat], label, halo,
+    const car = {
+      id: player.id, name: player.name, paint: player.paint,
+      group, bodyMats, shadowMat, haloMat, label, halo,
       d: 0, x: 0, yaw: 0, vel: 0, nitro: 0,
       targetD: 0, targetX: 0, targetYaw: 0,
       crashed: false, crashSpin: 0, crashAge: 0, started: false, side: 0,
     };
+    this._applyNight(car);
+    return car;
   }
 
   _dispose(car) {
     this.group.remove(car.group);
-    for (const m of car.materials) m.dispose();
+    for (const m of car.bodyMats) m.dispose();
+    car.shadowMat.dispose();
+    car.haloMat.dispose();
     car.label.material.map?.dispose();
     car.label.material.dispose();
   }
@@ -178,13 +250,28 @@ export class Remotes {
   }
 }
 
-// Opacidad de golpe para chapa, cristales, sombra y halo.
+// Los cristales ya venían en modo mezcla: hay que respetarlos al desvanecer
+// en vez de tratarlos como chapa opaca.
+function markBlend(mat) {
+  mat.userData.alwaysBlend = mat.transparent === true;
+  mat.userData.baseOpacity = mat.opacity;
+}
+
+// Opacidad de golpe para chapa, sombra y halo. Los materiales del coche
+// sólo se marcan como transparentes cuando hace falta: dejarlos así
+// siempre ensucia el orden de dibujado.
 function setFade(car, fade) {
-  const [paint, trim, shadow, halo] = car.materials;
-  paint.opacity = fade;
-  trim.opacity = fade;
-  shadow.opacity = 0.8 * fade;
-  halo.opacity = 0.85 * fade;
+  for (const m of car.bodyMats) {
+    const needsAlpha = fade < 1;
+    if (m.userData.alwaysBlend) { m.opacity = m.userData.baseOpacity * fade; continue; }
+    if (m.transparent !== needsAlpha) {
+      m.transparent = needsAlpha;
+      m.needsUpdate = true;
+    }
+    m.opacity = fade;
+  }
+  car.shadowMat.opacity = 0.8 * fade;
+  car.haloMat.opacity = 0.85 * fade;
 }
 
 function makeHaloTexture() {

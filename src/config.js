@@ -3,7 +3,7 @@
 // Versión del juego. Se manda al entrar en una sala: si dos jugadores no
 // llevan la misma, no pueden estar en la misma partida por mucho que
 // compartan sala, así que es mejor no dejarles empezar.
-export const BUILD = '2026-09-14.2';
+export const BUILD = '2026-09-14.3';
 
 export const LANE_W = 3.6;      // ancho de carril (m)
 export const SHOULDER = 1.2;    // arcén (m)

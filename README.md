@@ -100,9 +100,9 @@ Son números y no letras a propósito: se dictan por teléfono sin deletrear, no
 hay mayúsculas ni caracteres que se confundan, y en el móvil sale el teclado
 numérico en vez del alfabético.
 
-Corréis todos por la misma carretera, cada uno con su coche y viendo el mismo
-tráfico. Cada rival lleva **un anillo de color en el asfalto y su nombre
-encima**, para no confundirlo con un coche del tráfico: usan el mismo modelo.
+Corréis todos por la misma carretera, **todos con el Urus**, cada uno del
+color que haya elegido y viendo el mismo tráfico. Cada rival lleva además un
+anillo de color en el asfalto y su nombre encima.
 Arriba a la derecha tienes a cada uno con los metros que te saca o que le
 sacas, y como el juego no tiene retrovisor, **abajo aparece quién te viene
 por detrás** y por qué lado. **Cuando alguien choca, los demás siguen**: se avisa de quién ha
@@ -142,6 +142,13 @@ mismas que en una partida en solitario.
   simular su propio tráfico en vez de quedarse en un mundo congelado.
 - Los mensajes entrantes se facturan 20:1, así que una partida de seis a
   10 Hz sale por unas 540 peticiones de las 100.000 diarias gratuitas.
+- **Los rivales llevan una versión ligera del Urus** (`assets/urus-rival.glb`,
+  264 KB). El modelo bueno son 171 llamadas de dibujado: cinco rivales serían
+  855 y no las aguanta ningún móvil. La ligera tira el interior entero (a un
+  rival no se le ve por dentro), reduce los 46 materiales a cinco y funde todo
+  lo que comparte material, así que cada rival cuesta **cinco llamadas**. La
+  pintura se deja blanca en el modelo y el color lo pone cada jugador. Si el
+  fichero no llega, se usa el coche low-poly del tráfico y el duelo sigue.
 - **Las posiciones y el tráfico salen por temporizador, no por fotograma.**
   Si a alguien se le atasca el render un momento, los demás le siguen viendo
   moverse.
@@ -232,9 +239,10 @@ src/
   ui.js         DOM: menú, HUD, pausa y fin de partida
   config.js     Todos los números del juego en un solo sitio
 assets/urus.glb El coche (3,1 MB) — ver assets/README.md
+assets/urus-rival.glb  El mismo coche, ligero, para los rivales (264 KB)
 vendor/         Three.js r160 + GLTFLoader + decoder de meshopt
 worker/         API de cuentas y ranking (D1) + salas (Durable Object)
-tools/          Script de optimización del modelo
+tools/          Optimización del modelo y generación del Urus ligero
 ```
 
 ### Decisiones pensando en el móvil

@@ -237,6 +237,15 @@ loader.load(
     ui.hideLoading();
     game.toMenu();
     start();
+
+    // El Urus ligero de los rivales va después y sin bloquear: sólo hace
+    // falta en los duelos, y si no llega se usa el coche de reserva.
+    loader.load(
+      './assets/urus-rival.glb',
+      (rival) => { game.remotes.setModel(rival.scene); game.applyTime(game.time); },
+      undefined,
+      () => console.warn('Sin modelo ligero para los rivales; se usa el de reserva.'),
+    );
   },
   (e) => {
     if (e.lengthComputable) {

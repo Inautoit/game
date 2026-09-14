@@ -88,6 +88,7 @@ export class Game {
     this.sun.intensity = t.sunInt;
     this.player.setNight(t.headlights);
     this.traffic.setNight(t.headlights);
+    this.remotes.setNight(t.headlights);
     this.road.setTime?.(t);
   }
 
