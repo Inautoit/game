@@ -7,7 +7,8 @@
   "scripts": {
     "preview": "python3 -m http.server 8000",
     "deploy": "wrangler deploy",
-    "optimize-model": "node tools/optimize-model.mjs"
+    "optimize-model": "node tools/optimize-model.mjs",
+    "deploy:redirect": "wrangler deploy --config wrangler.redirect.toml"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",
@@ -17,5 +18,5 @@
     "sharp": "^0.34.0",
     "wrangler": "^4.0.0"
   },
-  "homepage": "https://urus-traffic.inautoit.workers.dev"
+  "homepage": "https://urustraffic.inautoit.workers.dev"
 }

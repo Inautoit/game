@@ -1,0 +1,21 @@
+# Worker que ocupa el nombre antiguo y redirige al nuevo enlace.
+#   npm run deploy:redirect
+#
+# No lleva [assets] a propósito: si los llevara, la plataforma serviría los
+# ficheros estáticos antes de llegar al Worker y nunca se redirigiría.
+name = "urus-traffic"
+main = "worker/redirect.js"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "urus-traffic-db"
+database_id = "fd062035-e781-47f0-b675-2f1c6ebddc15"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

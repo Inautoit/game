@@ -4,7 +4,7 @@
 #   npm run preview  -> servidor local en http://localhost:8000
 #
 # Qué NO se sube está en .assetsignore.
-name = "urus-traffic"
+name = "urustraffic"
 main = "worker/index.js"
 compatibility_date = "2026-09-01"
 

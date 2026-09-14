@@ -1,6 +1,8 @@
 # Urus Traffic 🏁
 
-**▶ Jugar: <https://urus-traffic.inautoit.workers.dev>**
+**▶ Jugar: <https://urustraffic.inautoit.workers.dev>**
+
+El enlace antiguo (`urus-traffic…`, con guion) redirige aquí.
 
 Juego **3D de tráfico para móvil** que se abre directamente en el navegador.
 Conduces un **Lamborghini Urus Mansory** esquivando el tráfico: cuanto más
@@ -166,8 +168,19 @@ mismas que en una partida en solitario.
 
 ## Despliegue
 
-Ya está publicado en Cloudflare (proyecto `urus-traffic`, cuenta
-`inautoit@outlook.es`) en <https://urus-traffic.inautoit.workers.dev>.
+Ya está publicado en Cloudflare (proyecto `urustraffic`, cuenta
+`inautoit@outlook.es`) en <https://urustraffic.inautoit.workers.dev>.
+
+El nombre antiguo llevaba guion. Sigue existiendo como Worker aparte
+(`wrangler.redirect.toml`) que redirige todo al nuevo con un 301 — y redirige
+en vez de servir el juego a propósito: las salas viven dentro de cada Worker,
+así que dos personas entrando por enlaces distintos no se verían aunque
+usaran el mismo código.
+
+```bash
+npm run deploy            # el juego
+npm run deploy:redirect   # el enlace antiguo (rara vez hace falta)
+```
 
 El repo **es** el sitio: no hay paso de compilación. `wrangler.toml` declara
 la raíz como directorio de assets y `.assetsignore` deja fuera lo que no
@@ -192,8 +205,10 @@ Actions*:
 
 ### Dominio propio
 
-En el panel de Cloudflare, dentro del proyecto `urus-traffic` →
-*Settings → Domains & Routes*, se puede enganchar un dominio propio.
+El enlace gratuito es `<proyecto>.<cuenta>.workers.dev` y la parte de la
+cuenta no se puede quitar. Para algo más corto hace falta un dominio: en el
+panel de Cloudflare, dentro del proyecto `urustraffic` →
+*Settings → Domains & Routes*, se engancha en un minuto.
 
 ### Detalles
 
