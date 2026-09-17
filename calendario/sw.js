@@ -10,7 +10,7 @@
 //
 // Las llamadas a /api nunca pasan por aquí.
 
-var VERSION = 'cal-v8';
+var VERSION = 'cal-v9';
 var SHELL = [
   './',
   './index.html',

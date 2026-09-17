@@ -1089,3 +1089,42 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
   font-size: .8rem;
   color: var(--texto-suave);
 }
+
+/* ---------- copiar y pegar días ---------- */
+
+.copia-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem .7rem;
+  margin: .8rem 0 0;
+  padding: .6rem .75rem;
+  border: 1px solid var(--acento);
+  border-radius: var(--radio);
+  background: var(--relleno);
+}
+
+.copia-texto { flex: 1 1 9rem; min-width: 0; }
+.copia-texto strong { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .6px; color: var(--acento-texto); }
+.copia-texto small { display: block; font-size: .85rem; color: var(--texto); }
+
+/* Rejilla para elegir en qué días se pega. */
+.celda-elegible { min-height: 3rem; cursor: pointer; }
+.celda-elegible .celda-num { text-align: center; width: 100%; }
+
+.celda-elegible.elegida {
+  border-color: var(--acento);
+  background: var(--acento);
+  color: #fff;
+  box-shadow: none;
+}
+
+.celda-elegible.elegida .celda-num { color: #fff; }
+.celda-elegible.elegida .celda-ocupado { color: #fff; }
+
+.celda-ocupado {
+  font-size: .9rem;
+  line-height: .6;
+  text-align: center;
+  color: var(--acento);
+}

@@ -331,9 +331,11 @@
   function cabeceraSeccion(texto, fechaParaAnadir) {
     var h = el('div', 'seccion-titulo', texto);
     if (fechaParaAnadir && Auth.isUnlocked()) {
-      var b = el('button', 'btn btn-small', '+ Añadir');
+      // Abre la ficha del día entera, no solo el alta: desde ahí se puede
+      // además copiar el día, pegar otro o vaciarlo.
+      var b = el('button', 'btn btn-small', 'Editar el día');
       b.type = 'button';
-      b.onclick = function () { abrirDia(fechaParaAnadir, true); };
+      b.onclick = function () { abrirDia(fechaParaAnadir, false); };
       h.appendChild(b);
     }
     return h;
@@ -909,6 +911,187 @@
     };
   }
 
+  // ---------- copiar y pegar días ----------
+  //
+  // Muchas semanas repiten el mismo entreno, así que se copia un día
+  // entero y se pega en los que hagan falta, de uno en uno o en varios
+  // de golpe desde la rejilla del mes.
+
+  var COPIA_KEY = window.CAL_CONFIG.storageKey + ':copia-dia';
+  var copiado = null;   // { fecha, entradas }
+
+  function leerCopia() {
+    if (copiado) return copiado;
+    try {
+      var crudo = localStorage.getItem(COPIA_KEY);
+      if (crudo) copiado = JSON.parse(crudo);
+    } catch (err) { copiado = null; }
+    return copiado;
+  }
+
+  function guardarCopia(valor) {
+    copiado = valor;
+    try {
+      if (valor) localStorage.setItem(COPIA_KEY, JSON.stringify(valor));
+      else localStorage.removeItem(COPIA_KEY);
+    } catch (err) { /* se queda solo en memoria */ }
+  }
+
+  function copiarDia(fecha) {
+    var entradas = Store.day(fecha).map(function (e) {
+      // El resultado y el aplazamiento son de ese partido concreto: no se
+      // arrastran a otro día.
+      return {
+        tipo: e.tipo, horario: e.horario, titulo: e.titulo,
+        lugar: e.lugar, notas: e.notas,
+      };
+    });
+    if (!entradas.length) { aviso('Ese día no tiene nada que copiar', true); return; }
+    guardarCopia({ fecha: fecha, entradas: entradas });
+    aviso('Copiado: ' + entradas.length + (entradas.length === 1 ? ' actividad' : ' actividades'));
+  }
+
+  function pegarEn(fechas, sustituir) {
+    var copia = leerCopia();
+    if (!copia) return 0;
+
+    fechas.forEach(function (f) {
+      if (sustituir) Store.clearDay(f);
+      copia.entradas.forEach(function (e) { Store.addEntry(f, e); });
+    });
+    Auth.keepAlive();
+    return fechas.length;
+  }
+
+  function resumenCopia(copia) {
+    var d = fromIso(copia.fecha);
+    return DOW_CORTO[dowLunes(d)] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()].slice(0, 3) +
+      ' · ' + copia.entradas.length + (copia.entradas.length === 1 ? ' actividad' : ' actividades');
+  }
+
+  // Barra que sale en la ficha del día mientras haya algo copiado.
+  function barraCopia(fechaActual) {
+    var copia = leerCopia();
+    if (!copia) return null;
+
+    var barra = el('div', 'copia-barra');
+    var texto = el('div', 'copia-texto');
+    texto.appendChild(el('strong', '', 'Copiado'));
+    texto.appendChild(el('small', '', resumenCopia(copia)));
+    barra.appendChild(texto);
+
+    var varios = el('button', 'btn btn-small', 'Pegar en varios días');
+    varios.type = 'button';
+    varios.onclick = function () { dialogoPegarEnVarios(); };
+    barra.appendChild(varios);
+
+    var soltar = el('button', 'btn btn-small btn-plano', 'Descartar');
+    soltar.type = 'button';
+    soltar.onclick = function () { guardarCopia(null); pintarPanel(); };
+    barra.appendChild(soltar);
+
+    return barra;
+  }
+
+  // Rejilla de un mes para marcar en qué días se pega.
+  function dialogoPegarEnVarios() {
+    var copia = leerCopia();
+    if (!copia) return;
+
+    var elegidas = {};
+    var mes = anclaMes || new Date(fromIso(copia.fecha).getFullYear(),
+                                   fromIso(copia.fecha).getMonth(), 1);
+
+    abrirModal('Pegar en varios días', function (cerrar) {
+      var caja = el('div');
+      caja.appendChild(el('p', 'nota', 'Copiado de ' + resumenCopia(copia) +
+        '. Toca los días donde quieres pegarlo.'));
+
+      var zona = el('div');
+      caja.appendChild(zona);
+
+      var sustituir = document.createElement('input');
+      sustituir.type = 'checkbox';
+      var lbl = el('label', 'casilla');
+      lbl.appendChild(sustituir);
+      var t = el('span');
+      t.appendChild(el('strong', '', 'Sustituir lo que haya'));
+      t.appendChild(el('small', '', 'Si no, lo copiado se añade a lo que ya tenga cada día.'));
+      lbl.appendChild(t);
+      caja.appendChild(lbl);
+
+      var acciones = el('div', 'form-acciones');
+      var pegar = el('button', 'btn', 'Pegar');
+      pegar.type = 'button';
+      pegar.disabled = true;
+      acciones.appendChild(pegar);
+      var cancelar = el('button', 'btn btn-plano', 'Cancelar');
+      cancelar.type = 'button';
+      cancelar.onclick = cerrar;
+      acciones.appendChild(cancelar);
+      caja.appendChild(acciones);
+
+      function cuantas() { return Object.keys(elegidas).length; }
+
+      function refrescarBoton() {
+        var n = cuantas();
+        pegar.disabled = !n;
+        pegar.textContent = n ? 'Pegar en ' + n + (n === 1 ? ' día' : ' días') : 'Pegar';
+      }
+
+      function pintarMes() {
+        zona.textContent = '';
+        zona.appendChild(navPeriodo(MESES[mes.getMonth()] + ' ' + mes.getFullYear(), function (paso) {
+          mes = new Date(mes.getFullYear(), mes.getMonth() + paso, 1);
+          pintarMes();
+        }, function () {
+          var n = new Date();
+          mes = new Date(n.getFullYear(), n.getMonth(), 1);
+          pintarMes();
+        }));
+
+        var cab = el('div', 'mes-cabecera');
+        DOW_CORTO.forEach(function (d) { cab.appendChild(el('div', '', d)); });
+        zona.appendChild(cab);
+
+        var rejilla = el('div', 'mes-rejilla');
+        var inicio = lunesDe(mes);
+        for (var i = 0; i < 42; i++) {
+          (function (d) {
+            var f = iso(d);
+            var fuera = d.getMonth() !== mes.getMonth();
+            var celda = el('button', 'celda celda-elegible' + (fuera ? ' fuera' : '') +
+              (elegidas[f] ? ' elegida' : ''));
+            celda.type = 'button';
+            celda.setAttribute('aria-pressed', elegidas[f] ? 'true' : 'false');
+            celda.setAttribute('aria-label', fechaLarga(d));
+            celda.appendChild(el('div', 'celda-num', String(d.getDate())));
+            if (Store.has(f)) celda.appendChild(el('div', 'celda-ocupado', '•'));
+            celda.onclick = function () {
+              if (elegidas[f]) delete elegidas[f]; else elegidas[f] = true;
+              pintarMes();
+              refrescarBoton();
+            };
+            rejilla.appendChild(celda);
+          })(sumarDias(inicio, i));
+        }
+        zona.appendChild(rejilla);
+      }
+
+      pegar.onclick = function () {
+        var fechas = Object.keys(elegidas).sort();
+        var n = pegarEn(fechas, sustituir.checked);
+        cerrar();
+        aviso('Pegado en ' + n + (n === 1 ? ' día' : ' días'));
+        pintarPanel();
+      };
+
+      pintarMes();
+      refrescarBoton();
+      return caja;
+    });
+  }
+
   // ---------- panel de un día ----------
 
   function abrirDia(fecha, nueva) {
@@ -956,12 +1139,41 @@
       return;
     }
 
+    var barra = barraCopia(fecha);
+    if (barra) cuerpo.appendChild(barra);
+
     var acciones = el('div', 'form-acciones');
 
     var add = el('button', 'btn', '+ Añadir actividad');
     add.type = 'button';
     add.onclick = function () { editandoId = 'nueva'; pintarPanel(); };
     acciones.appendChild(add);
+
+    if (entradas.length) {
+      var copiar = el('button', 'btn btn-plano', 'Copiar día');
+      copiar.type = 'button';
+      copiar.onclick = function () { copiarDia(fecha); pintarPanel(); };
+      acciones.appendChild(copiar);
+    }
+
+    if (leerCopia()) {
+      var pegarAqui = el('button', 'btn btn-plano', 'Pegar aquí');
+      pegarAqui.type = 'button';
+      pegarAqui.onclick = function () {
+        var copia = leerCopia();
+        var sustituir = false;
+        if (entradas.length) {
+          sustituir = confirm('Este día ya tiene ' + entradas.length +
+            (entradas.length === 1 ? ' actividad' : ' actividades') +
+            '.\n\nAceptar: sustituirlas por lo copiado.\nCancelar: añadir lo copiado a lo que ya hay.');
+        }
+        pegarEn([fecha], sustituir);
+        aviso('Pegadas ' + copia.entradas.length +
+              (copia.entradas.length === 1 ? ' actividad' : ' actividades'));
+        pintarPanel();
+      };
+      acciones.appendChild(pegarAqui);
+    }
 
     if (entradas.length) {
       var vaciar = el('button', 'btn btn-danger', 'Vaciar el día');

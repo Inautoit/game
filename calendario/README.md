@@ -271,6 +271,26 @@ Los tipos (entreno, partido, descanso, aviso) solo cambian el color.
 
 En la barra amarilla:
 
+### Copiar un día y pegarlo en otros
+
+Muchas semanas repiten el mismo entreno, así que no hace falta rellenar
+día a día:
+
+1. Abre el día que quieras repetir (en **Hoy**, botón «Editar el día»; en
+   **Mes**, tocando la casilla) y pulsa **Copiar día**.
+2. Aparece una barra con lo copiado. Desde ahí:
+   - **Pegar aquí**, al abrir otro día. Si ese día ya tiene algo, pregunta
+     si sustituirlo o añadir lo copiado a lo que haya.
+   - **Pegar en varios días**, que abre la rejilla del mes para ir tocando
+     todos los días de golpe. Los que ya tienen algo llevan un punto.
+
+Lo copiado aguanta hasta que pulses **Descartar**, incluso cerrando la
+web: se guarda en el navegador.
+
+**El resultado y el aplazamiento no se copian.** Son de ese partido
+concreto y arrastrarlos a otro día sería un error, así que lo pegado sale
+siempre sin marcador y sin aplazar.
+
 En modo edición también aparece el botón de **Borrar** al abrir una foto.
 Se sale con **Cerrar edición**, y se bloquea solo a los 30 minutos.
 
