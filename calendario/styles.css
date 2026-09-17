@@ -992,3 +992,66 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
 .casilla input { flex: none; width: 1.15rem; height: 1.15rem; margin: .1rem 0 0; accent-color: var(--avisoc); }
 .casilla strong { display: block; font-size: .92rem; }
 .casilla small { display: block; margin-top: .1rem; font-size: .78rem; color: var(--texto-suave); }
+
+/* ---------- lista de Hoy sin tope ---------- */
+
+.mas-dias { display: flex; justify-content: center; padding: 1rem 0 .3rem; }
+.mas-dias .btn { min-width: 12rem; }
+.mas-fin { margin: 0; font-size: .82rem; color: var(--texto-suave); text-align: center; }
+
+/* ---------- resultados ---------- */
+
+.marcador {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  padding: .1rem .45rem;
+  border-radius: 8px;
+  background: var(--relleno);
+  color: var(--texto);
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.marcador .guion { opacity: .5; font-weight: 600; }
+
+.marcador .letra {
+  margin-left: .2rem;
+  padding: 0 .3rem;
+  border-radius: 999px;
+  font-family: var(--texto-fuente);
+  font-size: .62rem;
+  letter-spacing: .5px;
+}
+
+.marcador.ganado    { background: var(--descanso-bg); color: var(--descanso-fg); }
+.marcador.empatado  { background: var(--avisoc-bg);   color: var(--avisoc-fg); }
+.marcador.perdido   { background: var(--partido-bg);  color: var(--partido-fg); }
+
+.marcador.ganado .letra   { background: var(--descanso); color: #fff; }
+.marcador.empatado .letra { background: var(--avisoc);   color: #fff; }
+.marcador.perdido .letra  { background: var(--partido);  color: #fff; }
+
+/* En la ficha del día el marcador va en su propia línea. */
+.tarjeta-cuerpo > .marcador { margin: .1rem 0 .3rem; }
+
+/* La tarjeta de partido colorea su franja según cómo acabó. */
+.partido.con-resultado.ganado   { border-left-color: var(--descanso); }
+.partido.con-resultado.empatado { border-left-color: var(--avisoc); }
+.partido.con-resultado.perdido  { border-left-color: var(--partido); }
+
+.partido > .marcador {
+  position: absolute;
+  top: .5rem;
+  right: .6rem;
+}
+
+/* Deja sitio al marcador para que no pise el nombre del rival. */
+.partido.con-resultado .partido-cuerpo { padding-right: 4.8rem; }
+
+.resultado-campos[hidden] { display: none; }
+.resultado-campos .seccion-titulo { margin: .3rem 0 .4rem; }

@@ -10,6 +10,11 @@ const MAX_BYTES = 512 * 1024;
 function normalizar(raw) {
   const tipos = ['entreno', 'partido', 'descanso', 'aviso'];
   const texto = (v) => (typeof v === 'string' ? v.slice(0, 500) : '');
+  const marcador = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) && n >= 0 && n <= 999 ? n : null;
+  };
   const dias = {};
 
   const origen = raw?.dias && typeof raw.dias === 'object' ? raw.dias : {};
@@ -23,6 +28,8 @@ function normalizar(raw) {
       lugar: texto(e.lugar),
       notas: texto(e.notas),
       aplazado: e.aplazado === true,
+      golesFavor: marcador(e.golesFavor),
+      golesContra: marcador(e.golesContra),
     }));
     if (limpio.length) dias[fecha] = limpio;
   }

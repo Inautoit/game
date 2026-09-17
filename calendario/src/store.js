@@ -29,7 +29,17 @@
       notas: typeof e.notas === 'string' ? e.notas : '',
       // Un partido aplazado no se ha jugado aunque su fecha ya pasara.
       aplazado: e.aplazado === true,
+      // Resultado del partido. null mientras no se sepa.
+      golesFavor: marcador(e.golesFavor),
+      golesContra: marcador(e.golesContra),
     };
+  }
+
+  // Un marcador es un entero entre 0 y 999; cualquier otra cosa es "sin dato".
+  function marcador(v) {
+    if (v === null || v === undefined || v === '') return null;
+    var n = Math.round(Number(v));
+    return isFinite(n) && n >= 0 && n <= 999 ? n : null;
   }
 
   // Acepta cualquier objeto con forma de calendario y devuelve una copia

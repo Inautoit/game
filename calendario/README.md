@@ -4,7 +4,7 @@ Web del calendario de entrenamientos y partidos.
 
 - **La ve cualquiera** con el enlace: no hace falta cuenta ni registro.
 - **La edita una sola persona**, pulsando **Editar** y metiendo la contraseña.
-- **Cinco vistas**: Hoy, Semana, Mes, Partidos y Fotos.
+- **Cuatro vistas**: Hoy, Mes, Partidos y Fotos.
 - **Instalable** en el móvil como una app (PWA) y consultable sin cobertura.
 - **Gratis**: se publica en Cloudflare Pages sin pagar nada.
 
@@ -145,13 +145,18 @@ consultar sin cobertura (los cambios necesitan conexión).
 
 ### Consultar
 
-- **Hoy** — lo del día y las siguientes citas.
-- **Semana** — los siete días, con las flechas `‹` `›` para moverte.
+- **Hoy** — lo del día y, debajo, todo lo que viene por delante: la lista
+  no tiene tope y va cargando más días conforme se baja.
 - **Mes** — la rejilla del mes. En el móvil cada actividad es un punto de
   color; toca un día para ver el detalle.
 - **Partidos** — todos los partidos de la temporada, por meses, con
   cuántos van jugados y cuántos quedan. Los ya jugados salen atenuados.
   Tocando uno se abre su día.
+
+  A un partido se le puede meter el **resultado** (goles a favor y en
+  contra) al editarlo. Sale en la tarjeta con su marcador y la franja en
+  verde, ámbar o rojo según fuera victoria, empate o derrota. Un partido
+  con resultado cuenta como jugado aunque su fecha no haya llegado.
 
   Si un partido no llegó a jugarse, se marca **Aplazado** al editarlo y
   deja de contar: ni jugado ni por jugar, aunque su fecha ya haya pasado.

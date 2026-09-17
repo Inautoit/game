@@ -19,7 +19,6 @@
 
   var vistaActual = 'hoy';
   var anclaMes = null;     // primer día del mes mostrado
-  var anclaSemana = null;  // lunes de la semana mostrada
   var diaAbierto = null;
   var editandoId = null;   // id de la entrada con el formulario abierto, o 'nueva'
 
@@ -74,6 +73,34 @@
     avisoTimer = setTimeout(function () { caja.hidden = true; }, esError ? 6000 : 3000);
   }
 
+  // ---------- resultados de los partidos ----------
+
+  function tieneResultado(e) {
+    return e && e.golesFavor !== null && e.golesFavor !== undefined &&
+           e.golesContra !== null && e.golesContra !== undefined;
+  }
+
+  // 'ganado' | 'empatado' | 'perdido'
+  function signoResultado(e) {
+    if (e.golesFavor > e.golesContra) return 'ganado';
+    if (e.golesFavor < e.golesContra) return 'perdido';
+    return 'empatado';
+  }
+
+  var LETRA = { ganado: 'V', empatado: 'E', perdido: 'D' };
+  var PALABRA = { ganado: 'Victoria', empatado: 'Empate', perdido: 'Derrota' };
+
+  function marcadorNodo(e, conLetra) {
+    var signo = signoResultado(e);
+    var caja = el('span', 'marcador ' + signo);
+    caja.appendChild(el('strong', '', String(e.golesFavor)));
+    caja.appendChild(el('span', 'guion', '–'));
+    caja.appendChild(el('strong', '', String(e.golesContra)));
+    if (conLetra) caja.appendChild(el('span', 'letra', LETRA[signo]));
+    caja.title = PALABRA[signo] + ' ' + e.golesFavor + '-' + e.golesContra;
+    return caja;
+  }
+
   // ---------- piezas reutilizables ----------
 
   // Enlace a la ficha del equipo en la federación. Abre en otra pestaña,
@@ -103,6 +130,7 @@
 
     if (entrada.horario) cuerpo.appendChild(el('div', 'tarjeta-hora', entrada.horario));
     cuerpo.appendChild(el('h3', 'tarjeta-titulo', entrada.titulo || TIPOS[entrada.tipo]));
+    if (tieneResultado(entrada)) cuerpo.appendChild(marcadorNodo(entrada, true));
 
     var meta = el('div', 'tarjeta-meta');
     meta.appendChild(etiquetaTipo(entrada.tipo));
@@ -139,7 +167,24 @@
 
   // ---------- vista: HOY ----------
 
+  // La lista de "lo que viene" no tiene tope: empieza por hoy y sigue
+  // hacia delante, cargando más conforme se baja.
+  var POR_TANDA = 10;
+  var hoyPintados = 0;
+  var hoyObservador = null;
+
+  // Todos los días con algo apuntado de mañana en adelante.
+  function diasPorVenir() {
+    var datos = Store.get();
+    var manana = iso(sumarDias(new Date(), 1));
+    return Object.keys(datos.dias).filter(function (f) {
+      return f >= manana;
+    }).sort();
+  }
+
   function vistaHoy() {
+    if (hoyObservador) { hoyObservador.disconnect(); hoyObservador = null; }
+
     var raiz = el('div');
     var hoy = new Date();
     var claveHoy = iso(hoy);
@@ -161,20 +206,59 @@
       raiz.appendChild(el('div', 'vacio', 'Hoy no hay nada en el calendario.'));
     }
 
-    // Los próximos 14 días con algo apuntado.
-    var proximos = [];
-    for (var i = 1; i <= 14 && proximos.length < 5; i++) {
-      var f = iso(sumarDias(hoy, i));
-      if (Store.has(f)) proximos.push(f);
+    var fechas = diasPorVenir();
+    raiz.appendChild(el('div', 'seccion-titulo', 'Lo que viene'));
+
+    if (!fechas.length) {
+      raiz.appendChild(el('div', 'vacio', 'No queda nada apuntado más adelante.'));
+      return raiz;
     }
 
-    raiz.appendChild(el('div', 'seccion-titulo', 'Lo que viene'));
-    if (proximos.length) {
-      var sig = el('div', 'semana');
-      proximos.forEach(function (f) { sig.appendChild(filaDia(f)); });
-      raiz.appendChild(sig);
-    } else {
-      raiz.appendChild(el('div', 'vacio', 'Nada apuntado en los próximos 14 días.'));
+    var sig = el('div', 'semana');
+    raiz.appendChild(sig);
+
+    var pie = el('div', 'mas-dias');
+    var boton = el('button', 'btn btn-plano', 'Ver más días');
+    boton.type = 'button';
+    pie.appendChild(boton);
+    raiz.appendChild(pie);
+
+    // Al volver a pintar (un cambio del calendario, entrar en edición) se
+    // mantiene lo que ya se había desplegado, para no saltar hacia arriba.
+    if (!hoyPintados) hoyPintados = POR_TANDA;
+
+    function pintar() {
+      sig.textContent = '';
+      var cuantos = Math.min(hoyPintados, fechas.length);
+      for (var i = 0; i < cuantos; i++) sig.appendChild(filaDia(fechas[i]));
+
+      if (cuantos >= fechas.length) {
+        pie.textContent = '';
+        pie.appendChild(el('p', 'mas-fin', 'Eso es todo lo que hay apuntado.'));
+        if (hoyObservador) { hoyObservador.disconnect(); hoyObservador = null; }
+      }
+    }
+
+    boton.onclick = function () {
+      hoyPintados += POR_TANDA;
+      pintar();
+    };
+
+    pintar();
+
+    // Con IntersectionObserver la carga es automática al llegar al final;
+    // sin él queda el botón, que hace lo mismo a mano.
+    if (typeof IntersectionObserver === 'function') {
+      hoyObservador = new IntersectionObserver(function (entradas) {
+        if (!entradas[0].isIntersecting) return;
+        if (hoyPintados >= fechas.length) return;
+        hoyPintados += POR_TANDA;
+        pintar();
+      }, { rootMargin: '400px' });
+      // Observar en cuanto el nodo esté en la página.
+      setTimeout(function () {
+        if (hoyObservador && pie.isConnected) hoyObservador.observe(pie);
+      }, 0);
     }
 
     return raiz;
@@ -190,8 +274,6 @@
     }
     return h;
   }
-
-  // ---------- vista: SEMANA ----------
 
   function filaDia(fecha) {
     var d = fromIso(fecha);
@@ -213,6 +295,7 @@
         var it = el('div', 'semana-item' + (e.aplazado ? ' aplazado' : ''));
         if (e.horario) it.appendChild(el('span', 'h', e.horario));
         it.appendChild(el('span', 't', e.titulo || TIPOS[e.tipo]));
+        if (tieneResultado(e)) it.appendChild(marcadorNodo(e, false));
         if (e.aplazado) it.appendChild(el('span', 'marca-aplazado', 'Aplazado'));
         if (e.lugar) it.appendChild(el('span', 'l', '· ' + e.lugar));
         der.appendChild(it);
@@ -223,29 +306,6 @@
     fila.appendChild(der);
 
     return fila;
-  }
-
-  function vistaSemana() {
-    if (!anclaSemana) anclaSemana = lunesDe(new Date());
-    var raiz = el('div');
-    var fin = sumarDias(anclaSemana, 6);
-
-    var titulo = anclaSemana.getDate() + ' ' + MESES[anclaSemana.getMonth()].slice(0, 3) +
-      ' – ' + fin.getDate() + ' ' + MESES[fin.getMonth()].slice(0, 3) + ' ' + fin.getFullYear();
-
-    raiz.appendChild(navPeriodo(titulo, function (paso) {
-      anclaSemana = sumarDias(anclaSemana, paso * 7);
-      render();
-    }, function () {
-      anclaSemana = lunesDe(new Date());
-      render();
-    }));
-
-    var lista = el('div', 'semana');
-    for (var i = 0; i < 7; i++) lista.appendChild(filaDia(iso(sumarDias(anclaSemana, i))));
-    raiz.appendChild(lista);
-
-    return raiz;
   }
 
   function navPeriodo(titulo, mover, alHoy) {
@@ -371,7 +431,7 @@
     // no se jugó, aunque su fecha ya pasara, y todavía no tiene fecha nueva.
     var aplazados = partidos.filter(function (p) { return p.entrada.aplazado; }).length;
     var jugados = partidos.filter(function (p) {
-      return !p.entrada.aplazado && p.fecha < claveHoy;
+      return !p.entrada.aplazado && (p.fecha < claveHoy || tieneResultado(p.entrada));
     }).length;
     var quedan = partidos.length - jugados - aplazados;
 
@@ -419,7 +479,7 @@
   function tarjetaPartido(fecha, entrada, claveHoy) {
     var d = fromIso(fecha);
     var aplazado = !!entrada.aplazado;
-    var pasado = !aplazado && fecha < claveHoy;
+    var pasado = !aplazado && (fecha < claveHoy || tieneResultado(entrada));
 
     var card = el('button', 'partido' + (pasado ? ' jugado' : '') +
       (aplazado ? ' es-aplazado' : '') + (!aplazado && fecha === claveHoy ? ' es-hoy' : ''));
@@ -445,8 +505,14 @@
     if (entrada.notas) cuerpo.appendChild(el('p', 'partido-notas', entrada.notas));
     card.appendChild(cuerpo);
 
-    if (aplazado) card.appendChild(el('span', 'partido-sello sello-aplazado', 'Aplazado'));
-    else if (pasado) card.appendChild(el('span', 'partido-sello', 'Jugado'));
+    if (aplazado) {
+      card.appendChild(el('span', 'partido-sello sello-aplazado', 'Aplazado'));
+    } else if (tieneResultado(entrada)) {
+      card.classList.add('con-resultado', signoResultado(entrada));
+      card.appendChild(marcadorNodo(entrada, true));
+    } else if (pasado) {
+      card.appendChild(el('span', 'partido-sello', 'Jugado'));
+    }
 
     return card;
   }
@@ -891,6 +957,21 @@
     chAplazado.type = 'checkbox';
     chAplazado.checked = !!(existente && existente.aplazado);
 
+    function campoGoles(valor) {
+      var i = document.createElement('input');
+      i.type = 'number';
+      i.min = '0';
+      i.max = '999';
+      i.step = '1';
+      i.inputMode = 'numeric';
+      i.placeholder = '—';
+      i.value = (valor === null || valor === undefined) ? '' : String(valor);
+      return i;
+    }
+
+    var inFavor = campoGoles(existente && existente.golesFavor);
+    var inContra = campoGoles(existente && existente.golesContra);
+
     form.appendChild(campo('Actividad', inTitulo));
 
     var fila = el('div', 'campos-2');
@@ -904,6 +985,22 @@
     form.appendChild(fila2);
 
     form.appendChild(campo('Notas', txNotas));
+
+    // El resultado solo tiene sentido en un partido: el bloque aparece y
+    // desaparece según el tipo elegido.
+    var bloqueResultado = el('div', 'resultado-campos');
+    var filaGoles = el('div', 'campos-2');
+    filaGoles.appendChild(campo('Goles a favor', inFavor));
+    filaGoles.appendChild(campo('Goles en contra', inContra));
+    bloqueResultado.appendChild(el('div', 'seccion-titulo', 'Resultado'));
+    bloqueResultado.appendChild(filaGoles);
+    form.appendChild(bloqueResultado);
+
+    function refrescarResultado() {
+      bloqueResultado.hidden = selTipo.value !== 'partido';
+    }
+    selTipo.addEventListener('change', refrescarResultado);
+    refrescarResultado();
 
     // Marcar un partido como aplazado lo saca de los contadores: ni jugado
     // ni pendiente, aunque su fecha ya haya pasado.
@@ -935,7 +1032,15 @@
         lugar: inLugar.value.trim(),
         notas: txNotas.value.trim(),
         aplazado: chAplazado.checked,
+        // Solo los partidos llevan marcador, y solo si están los dos.
+        golesFavor: null,
+        golesContra: null,
       };
+
+      if (selTipo.value === 'partido' && inFavor.value !== '' && inContra.value !== '') {
+        datos.golesFavor = inFavor.value;
+        datos.golesContra = inContra.value;
+      }
       if (!datos.titulo && datos.tipo !== 'descanso') {
         aviso('Ponle un nombre a la actividad', true);
         inTitulo.focus();
@@ -1050,7 +1155,6 @@
     var contenedor = $('#vista');
     contenedor.textContent = '';
     if (vistaActual === 'hoy') contenedor.appendChild(vistaHoy());
-    else if (vistaActual === 'semana') contenedor.appendChild(vistaSemana());
     else if (vistaActual === 'mes') contenedor.appendChild(vistaMes());
     else if (vistaActual === 'partidos') contenedor.appendChild(vistaPartidos());
     else contenedor.appendChild(vistaFotos());
@@ -1071,6 +1175,7 @@
     document.querySelectorAll('.tab').forEach(function (tab) {
       tab.onclick = function () {
         vistaActual = tab.dataset.view;
+        hoyPintados = 0;
         document.querySelectorAll('.tab').forEach(function (t) {
           var activo = t === tab;
           t.classList.toggle('is-active', activo);
@@ -1129,7 +1234,7 @@
   // Los accesos directos de la PWA abren la web con ?vista=hoy|semana|mes.
   function vistaInicial() {
     var pedida = new URLSearchParams(location.search).get('vista');
-    if (['hoy', 'semana', 'mes', 'partidos', 'fotos'].indexOf(pedida) < 0) return;
+    if (['hoy', 'mes', 'partidos', 'fotos'].indexOf(pedida) < 0) return;
     vistaActual = pedida;
     document.querySelectorAll('.tab').forEach(function (t) {
       var activo = t.dataset.view === pedida;
