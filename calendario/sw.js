@@ -10,7 +10,7 @@
 //
 // Las llamadas a /api nunca pasan por aquí.
 
-var VERSION = 'cal-v7';
+var VERSION = 'cal-v8';
 var SHELL = [
   './',
   './index.html',
@@ -23,6 +23,7 @@ var SHELL = [
   './src/store.js',
   './src/auth.js',
   './src/fotos.js',
+  './src/avisos.js',
   './src/app.js',
   './assets/escudo.png',
   './assets/icon-192.png',
@@ -79,6 +80,49 @@ self.addEventListener('fetch', function (ev) {
         }
         return Response.error();
       });
+    })
+  );
+});
+
+// ---------- avisos ----------
+
+self.addEventListener('push', function (ev) {
+  var datos = { titulo: 'Calendario del equipo', cuerpo: 'Hay novedades.', url: './' };
+  if (ev.data) {
+    try {
+      var recibido = ev.data.json();
+      if (recibido && recibido.titulo) datos = recibido;
+    } catch (err) {
+      datos.cuerpo = ev.data.text() || datos.cuerpo;
+    }
+  }
+
+  ev.waitUntil(self.registration.showNotification(datos.titulo, {
+    body: datos.cuerpo,
+    icon: './assets/icon-192.png',
+    badge: './assets/icon-192.png',
+    // Misma etiqueta: un aviso nuevo sustituye al anterior en vez de
+    // acumular una pila de notificaciones en la pantalla.
+    tag: 'calendario',
+    renotify: true,
+    data: { url: datos.url || './' },
+  }));
+});
+
+self.addEventListener('notificationclick', function (ev) {
+  ev.notification.close();
+  var destino = new URL((ev.notification.data && ev.notification.data.url) || './',
+                        self.location.href).href;
+
+  ev.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (abiertas) {
+      // Si la app ya está abierta, se trae al frente en vez de abrir otra.
+      for (var i = 0; i < abiertas.length; i++) {
+        if (abiertas[i].url.indexOf(self.registration.scope) === 0 && 'focus' in abiertas[i]) {
+          return abiertas[i].focus();
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(destino);
     })
   );
 });

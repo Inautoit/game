@@ -4,6 +4,7 @@
 // Se guarda en un KV de Cloudflare (plan gratuito). Si el KV no está
 // enlazado, GET responde 503 y la web sigue funcionando en modo local.
 import { json, error, exigirEditor, KEY } from './_shared.js';
+import { apuntarCambio, avisarSiToca } from './_avisos.js';
 
 const MAX_BYTES = 512 * 1024;
 
@@ -43,13 +44,18 @@ function normalizar(raw) {
   };
 }
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env, waitUntil }) {
   if (!env.CALENDARIO) return error('KV CALENDARIO no enlazado', 503);
+
+  // De paso, si hay avisos pendientes y ya pasó la ventana, se mandan.
+  // Sale gratis: cualquiera que abra la web hace de disparador.
+  if (waitUntil) waitUntil(avisarSiToca(env, request).catch(() => {}));
+
   const guardado = await env.CALENDARIO.get(KEY, { type: 'json' });
   return json({ calendario: guardado || null });
 }
 
-export async function onRequestPut({ request, env }) {
+export async function onRequestPut({ request, env, waitUntil }) {
   if (!env.CALENDARIO) return error('KV CALENDARIO no enlazado', 503);
 
   const noAutorizado = await exigirEditor(request, env);
@@ -68,5 +74,10 @@ export async function onRequestPut({ request, env }) {
 
   const limpio = normalizar(datos);
   await env.CALENDARIO.put(KEY, JSON.stringify(limpio));
+
+  // No se avisa aquí: se apunta y se agrupa, para no soltar una
+  // notificación por cada toque mientras se edita.
+  if (waitUntil) waitUntil(apuntarCambio(env).catch(() => {}));
+
   return json({ ok: true, actualizado: limpio.actualizado });
 }

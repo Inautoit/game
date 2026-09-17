@@ -1055,3 +1055,37 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
 
 .resultado-campos[hidden] { display: none; }
 .resultado-campos .seccion-titulo { margin: .3rem 0 .4rem; }
+
+/* ---------- interruptor de avisos ---------- */
+
+.avisos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .8rem;
+  margin: .9rem 0 .2rem;
+  padding: .75rem .9rem;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  background: var(--tarjeta);
+  box-shadow: var(--sombra);
+}
+
+.avisos[hidden] { display: none; }
+.avisos.encendidos { border-color: var(--descanso); background: var(--descanso-bg); }
+
+.avisos-texto { flex: 1 1 12rem; min-width: 0; }
+.avisos-texto strong { display: block; font-size: .95rem; }
+.avisos-texto small { display: block; margin-top: .1rem; font-size: .8rem; color: var(--texto-suave); }
+.avisos.encendidos .avisos-texto strong { color: var(--descanso-fg); }
+.avisos.encendidos .avisos-texto small { color: var(--descanso-fg); opacity: .85; }
+.avisos.encendidos .btn-plano { border-color: var(--descanso); color: var(--descanso-fg); }
+
+.avisos-nota {
+  flex-basis: 100%;
+  margin: .2rem 0 0;
+  padding-top: .5rem;
+  border-top: 1px dashed var(--borde);
+  font-size: .8rem;
+  color: var(--texto-suave);
+}

@@ -195,6 +195,9 @@
     cab.appendChild(el('div', 'anio', String(hoy.getFullYear())));
     raiz.appendChild(cab);
 
+    var avisos = tarjetaAvisos();
+    if (avisos) raiz.appendChild(avisos);
+
     raiz.appendChild(cabeceraSeccion('Lo de hoy', claveHoy));
 
     var deHoy = Store.day(claveHoy);
@@ -262,6 +265,67 @@
     }
 
     return raiz;
+  }
+
+  // Interruptor de los avisos. Se pinta vacío y se rellena cuando el
+  // navegador y el servidor contestan: ninguna de las dos cosas se sabe
+  // en el momento de montar la vista.
+  var avisosActivos = null;   // null = todavía no se sabe
+
+  function tarjetaAvisos() {
+    if (!window.CalAvisos || !CalAvisos.soportado()) return null;
+
+    var caja = el('div', 'avisos');
+    caja.hidden = true;
+
+    CalAvisos.consultar().then(function (hay) {
+      if (!hay) return null;
+      return CalAvisos.estado();
+    }).then(function (suscrito) {
+      if (suscrito === null || suscrito === undefined) return;
+      avisosActivos = suscrito;
+      pintarAvisos(caja);
+      caja.hidden = false;
+    }).catch(function () { /* sin avisos, la web va igual */ });
+
+    return caja;
+  }
+
+  function pintarAvisos(caja) {
+    caja.textContent = '';
+    caja.className = 'avisos' + (avisosActivos ? ' encendidos' : '');
+
+    var texto = el('div', 'avisos-texto');
+    texto.appendChild(el('strong', '', avisosActivos
+      ? 'Avisos encendidos'
+      : 'Avisarme de los cambios'));
+    texto.appendChild(el('small', '', avisosActivos
+      ? 'Te llega un aviso al móvil cuando se actualiza el calendario.'
+      : 'Un aviso al móvil cuando el entrenador cambia algo. Se agrupan: nunca más de uno seguido.'));
+    caja.appendChild(texto);
+
+    var boton = el('button', 'btn btn-small' + (avisosActivos ? ' btn-plano' : ''),
+                   avisosActivos ? 'Quitar' : 'Activar');
+    boton.type = 'button';
+    boton.onclick = function () {
+      boton.disabled = true;
+      var accion = avisosActivos ? CalAvisos.desactivar() : CalAvisos.activar();
+      accion.then(function () {
+        avisosActivos = !avisosActivos;
+        aviso(avisosActivos ? 'Avisos encendidos' : 'Avisos quitados');
+        pintarAvisos(caja);
+      }).catch(function (err) {
+        boton.disabled = false;
+        aviso(err.message || 'No se pudieron activar los avisos', true);
+      });
+    };
+    caja.appendChild(boton);
+
+    // En iPhone hay que instalar la web antes; si no, el botón no hace nada.
+    if (!avisosActivos && CalAvisos.esIOS() && !CalAvisos.instalada()) {
+      caja.appendChild(el('p', 'avisos-nota',
+        'En iPhone hay que añadir antes la web a la pantalla de inicio: botón compartir → «Añadir a pantalla de inicio».'));
+    }
   }
 
   function cabeceraSeccion(texto, fechaParaAnadir) {
@@ -1207,10 +1271,23 @@
       else if (!$('#panel').hidden) cerrarPanel();
     });
 
+    // Cuando quien edita termina, se empuja el aviso agrupado en vez de
+    // esperar a que alguien abra la web. El temporizador se reinicia con
+    // cada guardado, así que solo salta cuando de verdad ha parado.
+    var empujarTimer = null;
+    var MINUTOS_VENTANA = 3;
+
     Store.onSave(function (estado, err) {
       if (estado === 'guardando') aviso('Guardando…');
-      else if (estado === 'guardado') aviso('Guardado para todo el equipo');
       else if (estado === 'error') aviso('No se pudo guardar en el servidor: ' + err.message, true);
+      else if (estado === 'guardado') {
+        aviso('Guardado para todo el equipo');
+        if (!window.CalAvisos) return;
+        clearTimeout(empujarTimer);
+        empujarTimer = setTimeout(function () {
+          CalAvisos.empujar();
+        }, (MINUTOS_VENTANA * 60 + 10) * 1000);
+      }
     });
 
     // Al volver a la pestaña, refrescar por si otro dispositivo cambió algo.

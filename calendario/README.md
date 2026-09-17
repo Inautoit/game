@@ -6,6 +6,7 @@ Web del calendario de entrenamientos y partidos.
 - **La edita una sola persona**, pulsando **Editar** y metiendo la contraseña.
 - **Cuatro vistas**: Hoy, Mes, Partidos y Fotos.
 - **Instalable** en el móvil como una app (PWA) y consultable sin cobertura.
+- **Avisa al móvil** cuando el calendario cambia, agrupando los cambios.
 - **Gratis**: se publica en Cloudflare Pages sin pagar nada.
 
 Viene rellena con el calendario de pretemporada de la Segunda Infantil
@@ -127,6 +128,52 @@ La web funciona igual **para consultar**. La diferencia está en editar:
   ```
 
 ---
+
+## Avisos en el móvil
+
+Quien quiera puede encenderlos desde la tarjeta de la pestaña **Hoy**. Van
+por Web Push: el navegador se suscribe a su propio servicio de
+notificaciones y el servidor le escribe ahí, aunque la app esté cerrada.
+
+**En iPhone hace falta instalar antes la web** en la pantalla de inicio
+(iOS 16.4 o superior); abierta en Safari no llegan. En Android funciona de
+las dos formas. La propia tarjeta lo advierte cuando toca.
+
+**Los cambios se agrupan.** Al guardar no se avisa: se apunta que hay algo
+pendiente y, pasados tres minutos, sale un único aviso con el total
+(«Hay 4 cambios en el calendario del equipo»). Así editar diez cosas
+seguidas no son diez notificaciones.
+
+El envío lo dispara el navegador de quien edita al terminar, y como red de
+seguridad cualquiera que abra la web después. Con la contraseña se puede
+forzar el envío al momento:
+
+```bash
+curl -X PUT "https://calendario-bmleganes.pages.dev/api/push?forzar=1" \
+  -H "Authorization: Bearer <token de /api/auth>"
+```
+
+### Configuración
+
+Hacen falta dos secretos en Cloudflare, las claves VAPID:
+
+| Secreto | Qué es |
+|---|---|
+| `VAPID_PUBLICA` | Clave pública; la web la pide a `/api/push` para suscribirse. |
+| `VAPID_PRIVADA` | Clave privada; firma cada envío. No sale del servidor. |
+
+Se generan con un par ECDSA P-256; la pública en base64url sin relleno y
+la privada es el escalar `d` del JWK. Sin ellas, `/api/push` responde
+`activo: false` y la web sencillamente no ofrece los avisos.
+
+Las suscripciones se guardan en el mismo KV, con el prefijo `push:sub:`.
+Una que devuelva 404 o 410 (app desinstalada, permiso retirado) se borra
+sola en el siguiente envío.
+
+El cifrado del cuerpo (RFC 8291) y la firma VAPID (RFC 8292) están
+escritos a mano en `functions/api/_webpush.js`, sin dependencias. El
+cifrado se comprobó contra el vector de prueba del apéndice A del RFC
+8291: reproduce el resultado publicado byte a byte.
 
 ## Instalarla en el móvil
 
@@ -276,6 +323,7 @@ calendario/
     store.js              Datos: leer, editar, guardar, sincronizar
     auth.js               Modo edición
     fotos.js              Galería: subir, listar, borrar
+    avisos.js             Alta y baja de los avisos del móvil
     app.js                Vistas y edición
   build-artifact.js       Genera la versión de un solo archivo
   artifact-db.js          Adaptador de datos para esa versión
@@ -285,6 +333,9 @@ calendario/
     calendario.js         GET/PUT /api/calendario
     fotos.js              GET/POST /api/fotos
     fotos/[id].js         GET/DELETE /api/fotos/<id>
+    push.js               Alta, baja y empuje de los avisos
+    _webpush.js           Cifrado RFC 8291 y firma VAPID
+    _avisos.js            Suscripciones y agrupación de los cambios
   assets/                 Escudo e iconos
 ```
 
