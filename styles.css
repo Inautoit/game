@@ -117,6 +117,22 @@ html, body {
 .nitro-bar.full i { animation: pulse .7s ease-in-out infinite; }
 @keyframes pulse { 50% { filter: brightness(1.7); } }
 
+.draft { display: flex; align-items: center; gap: 8px; }
+.draft .label { font-size: 10px; letter-spacing: .14em; color: #7ee08a; text-transform: uppercase; }
+.draft-bar {
+  width: 122px; height: 7px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, .12);
+  border: 1px solid var(--stroke);
+  overflow: hidden;
+}
+.draft-bar i {
+  display: block; height: 100%; width: 0%;
+  background: linear-gradient(90deg, #2f9e44, #7ee08a, #d6ffd9);
+  transition: width .1s linear;
+}
+.draft-bar.full i { animation: pulse .5s ease-in-out infinite; }
+
 #toasts {
   position: absolute;
   top: 33%;

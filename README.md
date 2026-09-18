@@ -26,6 +26,21 @@ esquivar. Se puntúa por:
 | Adelantar **rozando** (< 2,1 m) | +60, y ×2 si viene de frente |
 | Combo de roces seguidos | +15 % por cada uno |
 
+### Rebufo
+
+Ponte pegado detrás de otro —tráfico o persona— y el hueco que abre en el aire
+te empuja: menos resistencia, más empuje y la punta sube de 299 a **331 km/h**
+(341 detrás de un camión, que abre mucho más). La barra verde del HUD te dice
+cuánto estás cogiendo, y el viento se apaga mientras vas en el hueco.
+
+El número que lo explica todo: acelerar de 250 a 299 km/h **en solitario lleva
+10,3 segundos; a rebufo, 1,65**. Los 300 casi no se alcanzan solo — hay que
+ir a buscarlos detrás de alguien.
+
+Y por eso adelantar es una decisión y no una carrera de potencia: para pasar
+tienes que salirte, y en cuanto te sales lo pierdes. Salir demasiado pronto y
+quedarte a medias es el error clásico.
+
 Los roces llenan el **nitro**: a partir del 35 % puedes soltarlo y subir a
 346 km/h durante 3 segundos. Un solo choque termina la partida.
 
@@ -259,7 +274,8 @@ src/
   input.js      Teclado, botones, deslizar e inclinación
   audio.js      Motor, choque y avisos sintetizados con WebAudio
   ui.js         DOM: menú, HUD, pausa y fin de partida
-  config.js     Todos los números del juego en un solo sitio
+  config.js     Todos los números del juego en un solo sitio (PLAYER, FX,
+                CONTACT, DRAFT…), para poder afinar el tacto sin bucear
 assets/urus.glb El coche (3,1 MB) — ver assets/README.md
 assets/urus-rival.glb  El mismo coche, ligero, para los rivales (264 KB)
 vendor/         Three.js r160 + GLTFLoader + decoder de meshopt
@@ -294,7 +310,6 @@ tools/          Optimización del modelo y generación del Urus ligero
 ## Ideas para seguir
 
 - Coches desbloqueables con cifras propias (la Supra está a medio camino).
-- Rebufo: ir pegado al de delante debería dar unos km/h extra.
 - Revalidar la repetición en el servidor para blindar el ranking.
 - Choques entre jugadores en el duelo (hoy os atravesáis: con 100 ms de
   latencia, un choque injusto arruina una partida).

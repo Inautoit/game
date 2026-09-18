@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PLAYER } from './config.js';
+import { PLAYER, DRAFT } from './config.js';
 
 // El Lamborghini Urus del jugador.
 // El modelo viene mirando hacia -X, así que lo giramos 90° para que el morro
@@ -23,6 +23,7 @@ export class Player {
     this.roll = 0;
     this.nitro = 0;
     this.nitroActive = 0;               // segundos restantes
+    this.draft = 0;                     // 0..1.3, lo calcula game.js
     this.crashed = false;
     this.crashSpin = 0;
 
@@ -184,6 +185,7 @@ export class Player {
     this.roll = 0;
     this.nitro = 0;
     this.nitroActive = 0;
+    this.draft = 0;
     this.crashed = false;
     this.crashSpin = 0;
     this.group.position.set(x, 0, 0);
@@ -212,15 +214,19 @@ export class Player {
     // El último tramo hasta la punta cuesta de verdad: los 300 hay que
     // ganárselos en recta limpia, y cuestan mucho más que los 200.
     const t = input.throttle;
-    const max = this.maxSpeed;
+    const draft = this.draft;
+    const max = this.maxSpeed + DRAFT.speedBonus * draft;
     if (t > 0) {
-      const power = this.nitroActive > 0 ? PLAYER.powerNitro : PLAYER.power;
+      const power = (this.nitroActive > 0 ? PLAYER.powerNitro : PLAYER.power)
+        + DRAFT.push * draft;
       const ratio = Math.min(1, this.speed / max);
       this.speed += power * (1 - ratio * ratio * 0.82) * dt;
     } else if (t < 0) {
       this.speed -= PLAYER.brake * dt;
     }
-    this.speed -= (PLAYER.drag * this.speed * this.speed + PLAYER.rollResist * (t > 0 ? 0.25 : 1)) * dt;
+    // A rebufo el aire ya lo ha apartado el de delante: menos resistencia.
+    const drag = PLAYER.drag * (1 - DRAFT.dragCut * Math.min(1, draft));
+    this.speed -= (drag * this.speed * this.speed + PLAYER.rollResist * (t > 0 ? 0.25 : 1)) * dt;
     this.speed = Math.max(0, Math.min(max, this.speed));
 
     // --- Movimiento lateral ---

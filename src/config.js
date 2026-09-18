@@ -3,7 +3,7 @@
 // Versión del juego. Se manda al entrar en una sala: si dos jugadores no
 // llevan la misma, no pueden estar en la misma partida por mucho que
 // compartan sala, así que es mejor no dejarles empezar.
-export const BUILD = '2026-09-18.1';
+export const BUILD = '2026-09-18.2';
 
 export const LANE_W = 3.6;      // ancho de carril (m)
 export const SHOULDER = 1.2;    // arcén (m)
@@ -142,6 +142,21 @@ export const FX = {
   rumble: 0.020,           // vibración de la cámara por el asfalto
   kickBack: 2.4,           // cuánto se retrasa la cámara al meter nitro
   kickFov: 8,
+};
+
+// Rebufo. Ir pegado al de delante te abre hueco en el aire: el coche pierde
+// resistencia, empuja más y sube de punta. Lo que lo convierte en decisión y
+// no en regalo es que para adelantar hay que salirse — y ahí lo pierdes.
+export const DRAFT = {
+  near: 4,            // hueco morro-culo desde el que pega a tope (m)
+  far: 34,            // hasta dónde llega
+  width: 1.0,         // margen lateral extra sobre el ancho del de delante
+  speedBonus: 9,      // m/s de punta extra a rebufo pleno (~32 km/h)
+  push: 7,            // empuje extra (m/s²)
+  dragCut: 0.55,      // resistencia que te ahorras
+  bigVehicle: 1.3,    // camiones y autobuses abren mucho más hueco
+  rampUp: 3.2,        // lo que tarda en cargar
+  rampDown: 4.5,      // y en perderse al salirte
 };
 
 export const DRAW_DISTANCE = 900;

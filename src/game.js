@@ -1,11 +1,16 @@
 import * as THREE from 'three';
-import { MODES, TIMES, SCORE, PLAYER, FX, CONTACT, DRAW_DISTANCE, roadHalfWidth } from './config.js';
+import { MODES, TIMES, SCORE, PLAYER, FX, CONTACT, DRAFT, DRAW_DISTANCE, roadHalfWidth } from './config.js';
 import { Road } from './road.js';
 import { Traffic } from './traffic.js';
 import { makeEnvironment } from './sky.js';
 import { Remotes } from './remote.js';
 
 const STATE = { MENU: 'menu', PLAYING: 'playing', PAUSED: 'paused', OVER: 'over' };
+
+// Fuerza del rebufo según el hueco: pleno pegado, se apaga al alejarte.
+const pull = (gap) => (gap <= DRAFT.near
+  ? 1
+  : Math.pow(1 - (gap - DRAFT.near) / (DRAFT.far - DRAFT.near), 0.8));
 
 // Hasta dónde puede abrirse la niebla: el decorado llega a unos 420 m.
 const FOG_MAX = 400;
@@ -189,6 +194,7 @@ export class Game {
     if (mp && mp.spectating) {
       this._spectate(dt);
     } else {
+      this._updateDraft(dt, driving);
       this.player.update(dt, mp && mp.locked ? NEUTRAL : this.input, this.roadHalf);
       if (!mp || !mp.locked) this.distance += this.player.speed * dt;
     }
@@ -410,6 +416,38 @@ export class Game {
       this.traffic.role = 'guest';
       this.ui.toast('Sincronizado de nuevo', 'pass');
     }
+  }
+
+  // Rebufo: cuánto hueco te está abriendo el de delante, sea tráfico o
+  // persona. Sube deprisa al meterte y se va aún más deprisa al salirte,
+  // que es lo que hace que adelantar cueste algo.
+  _updateDraft(dt, driving) {
+    const p = this.player;
+    let target = 0;
+
+    if (driving && this.state === STATE.PLAYING && !p.crashed) {
+      for (const car of this.traffic.cars) {
+        if (car.dir !== 1) continue;                  // de frente no hay rebufo
+        const gap = car.z - p.halfLength - car.halfL;
+        if (gap < 0 || gap > DRAFT.far) continue;
+        if (Math.abs(car.x - p.x) > car.halfW + DRAFT.width) continue;
+        const big = car.height > 2.6 ? DRAFT.bigVehicle : 1;
+        target = Math.max(target, pull(gap) * big);
+      }
+      if (this.mp) {
+        for (const car of this.remotes.cars.values()) {
+          if (!car.started || car.crashed) continue;
+          const gap = (car.d - this.distance) - p.halfLength - 2.5;
+          if (gap < 0 || gap > DRAFT.far) continue;
+          if (Math.abs(car.x - p.x) > p.halfWidth + DRAFT.width) continue;
+          target = Math.max(target, pull(gap));
+        }
+      }
+    }
+
+    const rate = target > p.draft ? DRAFT.rampUp : DRAFT.rampDown;
+    p.draft += (target - p.draft) * Math.min(1, dt * rate);
+    if (p.draft < 0.002) p.draft = 0;
   }
 
   // Roce y adelantamientos entre personas. Todo local: cada cliente sólo
@@ -730,13 +768,15 @@ export class Game {
     this.ui.setScore(this.score);
     this.ui.setDistance(this.distance);
     this.ui.setSpeed(this.player.speedKmh, this.player.nitroActive > 0);
+    this.ui.setDraft(this.player.draft);
     const pct = (this.player.nitro / PLAYER.nitroMax) * 100;
     this.ui.setNitro(pct, this.player.nitro >= PLAYER.nitroMax * 0.35 && this.player.nitroActive <= 0);
   }
 
   _updateSound() {
     const ratio = Math.min(1, this.player.speed / PLAYER.maxSpeed);
-    this.sound.engine(ratio, this.input.throttle > 0 ? 1 : 0, this.player.nitroActive > 0);
+    this.sound.engine(ratio, this.input.throttle > 0 ? 1 : 0,
+      this.player.nitroActive > 0, this.player.draft);
   }
 }
 

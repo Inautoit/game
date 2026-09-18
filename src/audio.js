@@ -76,8 +76,8 @@ export class Sound {
     this.master.gain.linearRampToValueAtTime(on && this.enabled ? 0.5 : 0, t + 0.25);
   }
 
-  // ratio 0..1 de revoluciones, throttle 0..1
-  engine(ratio, throttle, nitro) {
+  // ratio 0..1 de revoluciones, throttle 0..1, draft 0..1.3
+  engine(ratio, throttle, nitro, draft = 0) {
     if (!this.ctx || !this.enabled) return;
     const rpm = 55 + ratio * 420 + (nitro ? 90 : 0);
     const t = this.ctx.currentTime;
@@ -86,8 +86,11 @@ export class Sound {
     }
     this.engineFilter.frequency.setTargetAtTime(500 + ratio * 2600 + throttle * 500, t, 0.08);
     this.engineGain.gain.setTargetAtTime(0.16 + throttle * 0.12 + ratio * 0.1, t, 0.1);
-    this.noiseFilter.frequency.setTargetAtTime(400 + ratio * 2200, t, 0.1);
-    this.noiseGain.gain.setTargetAtTime(0.015 + ratio * 0.07, t, 0.1);
+    // A rebufo el viento se apaga: vas en el hueco del de delante. Al
+    // salirte vuelve de golpe, que es medio efecto por sí solo.
+    const tuck = Math.min(1, draft);
+    this.noiseFilter.frequency.setTargetAtTime((400 + ratio * 2200) * (1 - 0.45 * tuck), t, 0.12);
+    this.noiseGain.gain.setTargetAtTime((0.015 + ratio * 0.07) * (1 - 0.5 * tuck), t, 0.12);
   }
 
   blip(freq = 880, dur = 0.09, type = 'triangle', vol = 0.22) {

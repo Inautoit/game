@@ -32,6 +32,8 @@ export class UI {
       score: $('score'), distance: $('distance'), speed: $('speed'),
       nitroFill: $('nitro-fill'), nitroBar: document.querySelector('.nitro-bar'),
       speedo: document.querySelector('.speedo'),
+      draft: $('draft'), draftFill: $('draft-fill'),
+      draftBar: document.querySelector('.draft-bar'),
       nitroBtn: document.querySelector('.nitro-btn'),
       toasts: $('toasts'), flash: $('flash'),
       menuBest: $('menu-best'), menuModeName: $('menu-mode-name'),
@@ -47,7 +49,7 @@ export class UI {
     this._buildChips();
     this._bindButtons();
     this._bindOnline();
-    this._last = { score: -1, distance: -1, speed: -1, nitro: -1, speedState: -1 };
+    this._last = { score: -1, distance: -1, speed: -1, nitro: -1, speedState: -1, draft: -1 };
   }
 
   _buildChips() {
@@ -353,6 +355,7 @@ export class UI {
   }
 
   showGame() {
+    show(this.el.draft, false);
     this.closeOverlays();
     show(this.el.versus, false);
     show(this.el.behind, false);
@@ -423,6 +426,16 @@ export class UI {
     this.el.nitroBtn?.classList.toggle('ready', ready);
   }
 
+  // Rebufo: 0..1.3. Sólo se enseña cuando de verdad estás pegado a alguien.
+  setDraft(v) {
+    const n = Math.round(Math.min(1, v) * 100);
+    if (n === this._last.draft) return;
+    this._last.draft = n;
+    show(this.el.draft, n > 12);
+    this.el.draftFill.style.width = n + '%';
+    this.el.draftBar.classList.toggle('full', n > 88);
+  }
+
   toast(text, kind = 'pass') {
     const el = document.createElement('div');
     el.className = 'toast ' + kind;
@@ -441,7 +454,7 @@ export class UI {
   }
 
   resetHud() {
-    this._last = { score: -1, distance: -1, speed: -1, nitro: -1, speedState: -1 };
+    this._last = { score: -1, distance: -1, speed: -1, nitro: -1, speedState: -1, draft: -1 };
     this.el.toasts.innerHTML = '';
   }
 }
