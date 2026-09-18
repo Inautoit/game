@@ -1,6 +1,6 @@
 // Service worker mínimo: el juego funciona sin conexión una vez cargado.
 // Cambia CACHE al desplegar una versión nueva para invalidar lo antiguo.
-const CACHE = 'urus-traffic-v9';
+const CACHE = 'urus-traffic-v10';
 
 const PRECACHE = [
   './',

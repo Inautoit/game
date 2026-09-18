@@ -3,7 +3,7 @@
 // Versión del juego. Se manda al entrar en una sala: si dos jugadores no
 // llevan la misma, no pueden estar en la misma partida por mucho que
 // compartan sala, así que es mejor no dejarles empezar.
-export const BUILD = '2026-09-14.4';
+export const BUILD = '2026-09-18.1';
 
 export const LANE_W = 3.6;      // ancho de carril (m)
 export const SHOULDER = 1.2;    // arcén (m)
@@ -75,10 +75,20 @@ export const PLAYER = {
   power: 16,              // empuje del motor en seco
   powerNitro: 22,
   lateralMax: 12.5,       // m/s de desplazamiento lateral estando suelto
-  // Cuánta agilidad pierdes al ir a tope. Con 0.55, a 300 por hora el coche
-  // se mueve de lado a menos de la mitad que a 100: para esquivar hay que
-  // levantar el pie, no basta con girar.
-  agilityLoss: 0.55,
+
+  // Cuánta agilidad pierdes al ir a tope. Limita CUÁNTO te desplazas, no lo
+  // que tarda el coche en hacerte caso: eso último, si se toca, el coche
+  // parece que ignora al jugador, que es el peor pecado de un arcade.
+  agilityLoss: 0.34,
+
+  // Constante de respuesta del volante (más bajo = más inmediato). Apenas
+  // crece con la velocidad a propósito.
+  steerLag: 0.0008,
+  steerLagSpeed: 0.0035,
+
+  // Cambiar de lado es la maniobra que salva un esquive, así que va más
+  // rápida que arrancar a girar desde recto.
+  counterSteer: 0.22,
   nitroMax: 100,
 };
 

@@ -7,6 +7,9 @@ import { Remotes } from './remote.js';
 
 const STATE = { MENU: 'menu', PLAYING: 'playing', PAUSED: 'paused', OVER: 'over' };
 
+// Hasta dónde puede abrirse la niebla: el decorado llega a unos 420 m.
+const FOG_MAX = 400;
+
 // Entrada muerta: durante la cuenta atrás el coche no obedece.
 const NEUTRAL = { steer: 0, throttle: 0, brake: false };
 
@@ -103,6 +106,7 @@ export class Game {
   // ------------------------------------------------------------------ flujo
   toMenu() {
     this.state = STATE.MENU;
+    if (this.scene.fog) this.scene.fog.far = Math.min(this.time.fogFar, DRAW_DISTANCE);
     this.player.reset(0);
     this.traffic.reset(this.mode);
     this.road.update(0);
@@ -559,6 +563,15 @@ export class Game {
     } else {
       fx.tint.setHex(FX.nitroTint);
       fx.tintAmount = this._fxNitro * 0.45;
+    }
+
+    // A 300 por hora la niebla sólo te da unos cuatro segundos de aviso.
+    // La abrimos con la velocidad para que dé tiempo a leer el tráfico. El
+    // tope de 400 m no es arbitrario: más allá se acaba el decorado y se
+    // vería el borde del mundo.
+    if (this.scene.fog) {
+      const wantFar = Math.min(this.time.fogFar * (1 + 0.45 * t), FOG_MAX);
+      this.scene.fog.far += (wantFar - this.scene.fog.far) * Math.min(1, dt * 1.2);
     }
   }
 

@@ -30,11 +30,18 @@ Los roces llenan el **nitro**: a partir del 35 % puedes soltarlo y subir a
 346 km/h durante 3 segundos. Un solo choque termina la partida.
 
 El coche llega a **299 km/h**, pero el último tramo cuesta: de 0 a 200 vas en
-cuatro segundos y de 250 a 295 tardas otros seis. Y cuanto más rápido vas,
-menos se mueve de lado: a 300 por hora cambiar de carril lleva casi el triple
-que a 100. Eso significa que **no se esquiva sólo girando**: hay que levantar
-el pie y frenar para recuperar agilidad, sabiendo que al frenar pierdes el
-multiplicador de puntos. Ese es el juego.
+cuatro segundos y de 250 a 295 tardas otros seis.
+
+Cuanto más rápido vas, menos te puedes desplazar de lado — pero **el volante
+responde igual de rápido siempre**. Esa distinción importa: limitar cuánto te
+mueves obliga a frenar para trazar, mientras que retrasar la respuesta hace
+que el coche parezca que te ignora, que es el peor pecado de un arcade.
+Cambiar de carril lleva 0,47 s a 100 km/h y 0,62 s a 299. Y cambiar de lado
+cuando ya girabas hacia el otro va aún más rápido, porque ése es el
+movimiento que salva un esquive.
+
+Además la niebla se abre con la velocidad: a tope ves unos 100 metros más de
+carretera, para que dé tiempo a leer el tráfico.
 
 ### Sensación de velocidad
 

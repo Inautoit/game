@@ -224,14 +224,18 @@ export class Player {
     this.speed = Math.max(0, Math.min(max, this.speed));
 
     // --- Movimiento lateral ---
-    // Dos cosas se estrechan con la velocidad: cuánto te puedes mover de
-    // lado y lo que tardas en conseguirlo. A tope el coche pesa.
+    // Lo que se estrecha con la velocidad es CUÁNTO te puedes mover de lado,
+    // no lo que tarda el coche en obedecerte. Frenar sigue comprando
+    // agilidad, pero el volante contesta al momento vayas como vayas.
     const fast = Math.min(1, this.speed / PLAYER.maxSpeed);
     const agility = 1 - PLAYER.agilityLoss * Math.pow(fast, 1.2);
     const rolling = Math.min(1, this.speed / 10);     // parado no se desliza
     const target = input.steer * PLAYER.lateralMax * agility * rolling;
-    const k = 1 - Math.pow(0.0008 + 0.055 * fast, dt);
-    this.lateral += (target - this.lateral) * k;
+
+    const reversing = target * this.lateral < 0;
+    const lag = (PLAYER.steerLag + PLAYER.steerLagSpeed * fast)
+      * (reversing ? PLAYER.counterSteer : 1);
+    this.lateral += (target - this.lateral) * (1 - Math.pow(lag, dt));
     this.x += this.lateral * dt;
 
     // Límite de calzada: rozar el borde frena.
