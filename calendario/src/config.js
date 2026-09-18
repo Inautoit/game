@@ -24,6 +24,29 @@ window.CAL_CONFIG = {
   // Minutos de inactividad tras los que se bloquea solo el modo edición.
   autoLockMinutes: 30,
 
+  // Plantilla del equipo, para la convocatoria de los partidos. Cambiar
+  // esta lista es lo único que hace falta para dar de alta o de baja a
+  // alguien; las convocatorias ya guardadas no se tocan.
+  plantilla: [
+    'Lia',
+    'Janire',
+    'Isabel',
+    'Nieves',
+    'Iris',
+    'Ana',
+    'Carmen Lopez',
+    'Jimena',
+    'Lucía Rodríguez',
+    'Lucía Rebollo',
+    'Ainoha Paisa',
+    'Olivia',
+    'Martina',
+    'Malena',
+    'Ainhoa Aparicio',
+    'Irene',
+    'Rosa',
+  ],
+
   // Ficha del equipo en la Federación Madrileña. Para quitarla, pon url: ''.
   federacion: {
     url: 'https://www.fmbalonmano.com/equipos/200',

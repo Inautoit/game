@@ -32,7 +32,25 @@
       // Resultado del partido. null mientras no se sepa.
       golesFavor: marcador(e.golesFavor),
       golesContra: marcador(e.golesContra),
+      // Jugadoras convocadas, por nombre.
+      convocadas: listaNombres(e.convocadas),
     };
+  }
+
+  // Nombres saneados y sin repetir. No se exige que estén en la plantilla:
+  // si alguien se da de baja, su convocatoria de aquel día sigue contando.
+  function listaNombres(v) {
+    if (!Array.isArray(v)) return [];
+    var vistos = {};
+    var out = [];
+    v.forEach(function (n) {
+      if (typeof n !== 'string') return;
+      var limpio = n.trim().slice(0, 60);
+      if (!limpio || vistos[limpio]) return;
+      vistos[limpio] = true;
+      out.push(limpio);
+    });
+    return out.slice(0, 60);
   }
 
   // Un marcador es un entero entre 0 y 999; cualquier otra cosa es "sin dato".

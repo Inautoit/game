@@ -1128,3 +1128,149 @@ h1, h2, h3 { margin: 0; line-height: 1.2; text-wrap: balance; }
   text-align: center;
   color: var(--acento);
 }
+
+/* ---------- convocatoria ---------- */
+
+.convocatoria {
+  margin-top: .45rem;
+  border-top: 1px dashed var(--borde);
+  padding-top: .4rem;
+}
+
+.convocatoria > summary {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  list-style: none;
+  cursor: pointer;
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--texto-suave);
+}
+
+.convocatoria > summary::-webkit-details-marker { display: none; }
+
+.convocatoria > summary::after {
+  content: '▾';
+  margin-left: auto;
+  font-size: .8rem;
+  transition: transform .15s;
+}
+
+.convocatoria[open] > summary::after { transform: rotate(180deg); }
+
+.convocatoria-cuenta {
+  padding: .05rem .45rem;
+  border-radius: 999px;
+  background: var(--acento);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  font-size: .75rem;
+}
+
+.convocatoria-cuenta.vacia { background: var(--borde); color: var(--texto-suave); }
+
+.convocatoria-nombres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  margin-top: .45rem;
+}
+
+.jugadora {
+  padding: .12rem .5rem;
+  border-radius: 999px;
+  background: var(--relleno);
+  color: var(--texto);
+  font-size: .8rem;
+}
+
+.convocatoria-pastilla {
+  padding: .05rem .45rem;
+  border-radius: 999px;
+  background: var(--entreno-bg);
+  color: var(--entreno-fg);
+  font-size: .72rem;
+  font-weight: 600;
+}
+
+/* ---------- selector de convocatoria (edición) ---------- */
+
+.convocatoria-editor {
+  margin-bottom: .7rem;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  background: var(--tarjeta);
+}
+
+.convocatoria-editor > summary {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem .7rem;
+  list-style: none;
+  cursor: pointer;
+  font-size: .78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--texto-suave);
+}
+
+.convocatoria-editor > summary::-webkit-details-marker { display: none; }
+.convocatoria-editor > summary::after { content: '▾'; margin-left: auto; }
+.convocatoria-editor[open] > summary::after { content: '▴'; }
+
+.convocatoria-atajos { display: flex; gap: .4rem; padding: 0 .7rem .5rem; }
+
+.convocatoria-rejilla {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .1rem;
+  padding: 0 .5rem .6rem;
+  max-height: 17rem;
+  overflow-y: auto;
+}
+
+@media (min-width: 480px) {
+  .convocatoria-rejilla { grid-template-columns: 1fr 1fr; }
+}
+
+.jugadora-casilla {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .4rem .45rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: .92rem;
+}
+
+.jugadora-casilla:hover { background: var(--relleno); }
+.jugadora-casilla input { width: 1.1rem; height: 1.1rem; flex: none; accent-color: var(--acento); }
+.jugadora-casilla.fuera-plantilla span { font-style: italic; color: var(--texto-suave); }
+
+/* Cabecera de mes dentro de la lista de Hoy, que puede ser muy larga. */
+.salto-mes {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin: .9rem 0 .2rem;
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--acento-texto);
+}
+
+.salto-mes::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--borde);
+}
+
+.salto-mes:first-child { margin-top: 0; }

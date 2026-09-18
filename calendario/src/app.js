@@ -101,6 +101,37 @@
     return caja;
   }
 
+  // ---------- convocatoria ----------
+
+  function plantilla() {
+    var p = window.CAL_CONFIG.plantilla;
+    return Array.isArray(p) ? p : [];
+  }
+
+  function convocadasDe(e) {
+    return Array.isArray(e && e.convocadas) ? e.convocadas : [];
+  }
+
+  // Desplegable de solo lectura con quién va convocada.
+  function bloqueConvocatoria(entrada) {
+    var lista = convocadasDe(entrada);
+    if (!lista.length) return null;
+
+    var det = document.createElement('details');
+    det.className = 'convocatoria';
+
+    var sum = document.createElement('summary');
+    sum.appendChild(el('span', 'convocatoria-titulo', 'Convocatoria'));
+    sum.appendChild(el('span', 'convocatoria-cuenta', String(lista.length)));
+    det.appendChild(sum);
+
+    var nombres = el('div', 'convocatoria-nombres');
+    lista.forEach(function (n) { nombres.appendChild(el('span', 'jugadora', n)); });
+    det.appendChild(nombres);
+
+    return det;
+  }
+
   // ---------- piezas reutilizables ----------
 
   // Enlace a la ficha del equipo en la federación. Abre en otra pestaña,
@@ -139,6 +170,10 @@
     cuerpo.appendChild(meta);
 
     if (entrada.notas) cuerpo.appendChild(el('p', 'tarjeta-notas', entrada.notas));
+
+    var conv = bloqueConvocatoria(entrada);
+    if (conv) cuerpo.appendChild(conv);
+
     card.appendChild(cuerpo);
 
     if (conAcciones && Auth.isUnlocked()) {
@@ -233,7 +268,19 @@
     function pintar() {
       sig.textContent = '';
       var cuantos = Math.min(hoyPintados, fechas.length);
-      for (var i = 0; i < cuantos; i++) sig.appendChild(filaDia(fechas[i]));
+
+      // Cabecera al cambiar de mes: bajando una lista larga es fácil
+      // perder de vista en qué mes se está.
+      var mesPintado = claveHoy.slice(0, 7);
+      for (var i = 0; i < cuantos; i++) {
+        var mesDeEste = fechas[i].slice(0, 7);
+        if (mesDeEste !== mesPintado) {
+          mesPintado = mesDeEste;
+          var d = fromIso(fechas[i]);
+          sig.appendChild(el('div', 'salto-mes', MESES[d.getMonth()] + ' ' + d.getFullYear()));
+        }
+        sig.appendChild(filaDia(fechas[i]));
+      }
 
       if (cuantos >= fechas.length) {
         pie.textContent = '';
@@ -569,6 +616,13 @@
     cuerpo.appendChild(meta);
 
     if (entrada.notas) cuerpo.appendChild(el('p', 'partido-notas', entrada.notas));
+
+    var nConv = convocadasDe(entrada).length;
+    if (nConv) {
+      meta.appendChild(el('span', 'convocatoria-pastilla',
+        nConv + (nConv === 1 ? ' convocada' : ' convocadas')));
+    }
+
     card.appendChild(cuerpo);
 
     if (aplazado) {
@@ -1248,6 +1302,85 @@
     var inFavor = campoGoles(existente && existente.golesFavor);
     var inContra = campoGoles(existente && existente.golesContra);
 
+    // Convocatoria: un desplegable con una casilla por jugadora. Va
+    // plegado para no alargar el formulario, y el resumen dice cuántas
+    // llevas sin tener que abrirlo.
+    var casillas = [];
+    var yaConvocadas = {};
+    convocadasDe(existente).forEach(function (n) { yaConvocadas[n] = true; });
+
+    var detConv = document.createElement('details');
+    detConv.className = 'convocatoria-editor';
+    var sumConv = document.createElement('summary');
+    var etiquetaConv = el('span', '', 'Convocatoria');
+    var cuentaConv = el('span', 'convocatoria-cuenta', '0');
+    sumConv.appendChild(etiquetaConv);
+    sumConv.appendChild(cuentaConv);
+    detConv.appendChild(sumConv);
+
+    var atajos = el('div', 'convocatoria-atajos');
+    var todas = el('button', 'btn btn-small btn-plano', 'Todas');
+    todas.type = 'button';
+    var ninguna = el('button', 'btn btn-small btn-plano', 'Ninguna');
+    ninguna.type = 'button';
+    atajos.appendChild(todas);
+    atajos.appendChild(ninguna);
+    detConv.appendChild(atajos);
+
+    var rejillaConv = el('div', 'convocatoria-rejilla');
+    plantilla().forEach(function (nombre) {
+      var lbl = el('label', 'jugadora-casilla');
+      var ch = document.createElement('input');
+      ch.type = 'checkbox';
+      ch.value = nombre;
+      ch.checked = !!yaConvocadas[nombre];
+      ch.onchange = function () { refrescarCuenta(); };
+      lbl.appendChild(ch);
+      lbl.appendChild(el('span', '', nombre));
+      rejillaConv.appendChild(lbl);
+      casillas.push(ch);
+    });
+    detConv.appendChild(rejillaConv);
+
+    // Alguien convocada que ya no está en la plantilla (se dio de baja):
+    // se conserva para no borrarle la convocatoria por la espalda.
+    var sueltas = convocadasDe(existente).filter(function (n) {
+      return plantilla().indexOf(n) < 0;
+    });
+    sueltas.forEach(function (nombre) {
+      var lbl = el('label', 'jugadora-casilla fuera-plantilla');
+      var ch = document.createElement('input');
+      ch.type = 'checkbox';
+      ch.value = nombre;
+      ch.checked = true;
+      ch.onchange = function () { refrescarCuenta(); };
+      lbl.appendChild(ch);
+      lbl.appendChild(el('span', '', nombre));
+      lbl.title = 'Ya no está en la plantilla';
+      rejillaConv.appendChild(lbl);
+      casillas.push(ch);
+    });
+
+    function marcadas() {
+      return casillas.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+    }
+
+    function refrescarCuenta() {
+      var n = marcadas().length;
+      cuentaConv.textContent = n ? String(n) : '—';
+      cuentaConv.classList.toggle('vacia', !n);
+    }
+
+    todas.onclick = function () {
+      casillas.forEach(function (c) { c.checked = true; });
+      refrescarCuenta();
+    };
+    ninguna.onclick = function () {
+      casillas.forEach(function (c) { c.checked = false; });
+      refrescarCuenta();
+    };
+    refrescarCuenta();
+
     form.appendChild(campo('Actividad', inTitulo));
 
     var fila = el('div', 'campos-2');
@@ -1265,6 +1398,7 @@
     // El resultado solo tiene sentido en un partido: el bloque aparece y
     // desaparece según el tipo elegido.
     var bloqueResultado = el('div', 'resultado-campos');
+    bloqueResultado.appendChild(detConv);
     var filaGoles = el('div', 'campos-2');
     filaGoles.appendChild(campo('Goles a favor', inFavor));
     filaGoles.appendChild(campo('Goles en contra', inContra));
@@ -1308,14 +1442,18 @@
         lugar: inLugar.value.trim(),
         notas: txNotas.value.trim(),
         aplazado: chAplazado.checked,
-        // Solo los partidos llevan marcador, y solo si están los dos.
+        // Solo los partidos llevan marcador y convocatoria.
         golesFavor: null,
         golesContra: null,
+        convocadas: [],
       };
 
-      if (selTipo.value === 'partido' && inFavor.value !== '' && inContra.value !== '') {
-        datos.golesFavor = inFavor.value;
-        datos.golesContra = inContra.value;
+      if (selTipo.value === 'partido') {
+        datos.convocadas = marcadas();
+        if (inFavor.value !== '' && inContra.value !== '') {
+          datos.golesFavor = inFavor.value;
+          datos.golesContra = inContra.value;
+        }
       }
       if (!datos.titulo && datos.tipo !== 'descanso') {
         aviso('Ponle un nombre a la actividad', true);

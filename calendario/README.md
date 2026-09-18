@@ -193,7 +193,8 @@ consultar sin cobertura (los cambios necesitan conexión).
 ### Consultar
 
 - **Hoy** — lo del día y, debajo, todo lo que viene por delante: la lista
-  no tiene tope y va cargando más días conforme se baja.
+  no tiene tope, va cargando más días conforme se baja y marca dónde
+  empieza cada mes.
 - **Mes** — la rejilla del mes. En el móvil cada actividad es un punto de
   color; toca un día para ver el detalle.
 - **Partidos** — todos los partidos de la temporada, por meses, con
@@ -201,7 +202,7 @@ consultar sin cobertura (los cambios necesitan conexión).
   Tocando uno se abre su día.
 
   A un partido se le puede meter el **resultado** (goles a favor y en
-  contra) al editarlo. Sale en la tarjeta con su marcador y la franja en
+  contra) y la **convocatoria** al editarlo. Sale en la tarjeta con su marcador y la franja en
   verde, ámbar o rojo según fuera victoria, empate o derrota. Un partido
   con resultado cuenta como jugado aunque su fecha no haya llegado.
 
@@ -271,6 +272,22 @@ Los tipos (entreno, partido, descanso, aviso) solo cambian el color.
 
 En la barra amarilla:
 
+### Convocatoria
+
+Al editar un partido hay un desplegable con una casilla por jugadora, más
+los atajos **Todas** y **Ninguna**. El resumen del desplegable dice
+cuántas van sin tener que abrirlo.
+
+La convocatoria se ve sin contraseña: en la ficha del día, desplegando
+**Convocatoria**, y en la pestaña Partidos como «5 convocadas». Es el
+único sitio donde las jugadoras miran si les toca.
+
+La plantilla está en `src/config.js`, en `plantilla`. Dar de alta o de
+baja a alguien es tocar esa lista y volver a desplegar; **las
+convocatorias ya guardadas no se tocan**. A quien se dé de baja le
+seguirá apareciendo su casilla, en cursiva, en los partidos donde ya
+estaba convocada.
+
 ### Copiar un día y pegarlo en otros
 
 Muchas semanas repiten el mismo entreno, así que no hace falta rellenar
@@ -287,9 +304,9 @@ día a día:
 Lo copiado aguanta hasta que pulses **Descartar**, incluso cerrando la
 web: se guarda en el navegador.
 
-**El resultado y el aplazamiento no se copian.** Son de ese partido
-concreto y arrastrarlos a otro día sería un error, así que lo pegado sale
-siempre sin marcador y sin aplazar.
+**El resultado, la convocatoria y el aplazamiento no se copian.** Son de
+ese partido concreto y arrastrarlos a otro día sería un error, así que lo
+pegado sale siempre sin marcador, sin convocatoria y sin aplazar.
 
 En modo edición también aparece el botón de **Borrar** al abrir una foto.
 Se sale con **Cerrar edición**, y se bloquea solo a los 30 minutos.

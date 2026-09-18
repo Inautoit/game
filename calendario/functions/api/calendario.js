@@ -11,6 +11,20 @@ const MAX_BYTES = 512 * 1024;
 function normalizar(raw) {
   const tipos = ['entreno', 'partido', 'descanso', 'aviso'];
   const texto = (v) => (typeof v === 'string' ? v.slice(0, 500) : '');
+  const nombres = (v) => {
+    if (!Array.isArray(v)) return [];
+    const vistos = new Set();
+    const out = [];
+    for (const n of v) {
+      if (typeof n !== 'string') continue;
+      const limpio = n.trim().slice(0, 60);
+      if (!limpio || vistos.has(limpio)) continue;
+      vistos.add(limpio);
+      out.push(limpio);
+      if (out.length >= 60) break;
+    }
+    return out;
+  };
   const marcador = (v) => {
     if (v === null || v === undefined || v === '') return null;
     const n = Math.round(Number(v));
@@ -31,6 +45,7 @@ function normalizar(raw) {
       aplazado: e.aplazado === true,
       golesFavor: marcador(e.golesFavor),
       golesContra: marcador(e.golesContra),
+      convocadas: nombres(e.convocadas),
     }));
     if (limpio.length) dias[fecha] = limpio;
   }
