@@ -502,7 +502,7 @@ function Convertir-Y-Subir {
         } catch { Log "ERROR convirtiendo $($x.Name): $(Corto $_.Exception.Message)" }
     }
 
-    # 2. Subir TODOS los informes (los recien convertidos y, para los que hoy hayan fallado, la ultima version buena)
+    # 2. Subir los informes descargados en esta ejecucion
     if (-not $WebUrl) { Log "Subida a la web desactivada (falta WebUrl)"; return }
     $partes = @(Get-ChildItem $CarpetaJson -Filter "*.json" | ForEach-Object { [IO.File]::ReadAllText($_.FullName) })
     if ($partes.Count -eq 0) { Log "Nada que subir"; return }
@@ -560,9 +560,11 @@ if (Test-Path $IdsFile) {
     }
 }
 
-# Limpieza: borrar resultados de mas de 7 dias
-Get-ChildItem $Carpeta -Filter "resultado_*.txt" -ErrorAction SilentlyContinue |
-    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | Remove-Item -ErrorAction SilentlyContinue
+# Limpieza: se borra TODO lo de ejecuciones anteriores (Excel, datos convertidos, temporales y
+# resultados). Asi solo se sube lo que se descarga ahora y en la carpeta queda solo lo ultimo.
+Get-ChildItem $Carpeta -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -ne $Log -and $_.Extension -in ".xlsx", ".tmp", ".txt" } | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem (Join-Path $Carpeta "json") -Filter "*.json" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 $inicio = Get-Date
 $trabajos = @()
