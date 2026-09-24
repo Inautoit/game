@@ -4,18 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dashboard Gestores</title>
-  <meta name="description" content="Llamadas entrantes, salientes, automarcador y estados por gestor, en tiempo real.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 22V13M14 22V9M20 22v-6M26 22V11' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <meta name="description" content="Llamadas entrantes, salientes, automarcador y estados por gestor y por skill, en tiempo real. Uso interno.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ed002f'/%3E%3Cpath d='M8 22V13M14 22V9M20 22v-6M26 22V11' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <script src="chart.umd.min.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
-  <!-- ======== LOGIN ======== -->
+  <!-- ======== LOGIN (neutro: sin marca) ======== -->
   <section id="login" class="login" hidden>
     <form id="form-login" class="login-caja">
       <h1>Dashboard Gestores</h1>
-      <p class="muted">Introduce la clave de acceso.</p>
+      <p class="muted">Acceso interno. Introduce la clave.</p>
       <label for="clave">Clave</label>
       <input id="clave" name="clave" type="password" autocomplete="current-password" required autofocus>
       <button type="submit">Entrar</button>
@@ -25,67 +26,101 @@
 
   <!-- ======== DASHBOARD ======== -->
   <div id="app" hidden>
-    <header class="cabecera">
-      <div>
-        <h1>Dashboard Gestores</h1>
-        <p class="muted" id="subtitulo">Cargando…</p>
-      </div>
-      <div class="cabecera-acciones">
-        <span id="refresco" class="muted pequeno"></span>
-        <button id="tema" class="boton-sec" type="button" title="Cambiar tema claro/oscuro">◐</button>
-        <button id="salir" class="boton-sec" type="button">Salir</button>
+    <header class="barra">
+      <div class="barra-in">
+        <div class="marca">
+          <img src="verisure-logo-blanco.png" alt="Verisure" class="logo">
+          <span class="separador" aria-hidden="true"></span>
+          <div>
+            <div class="barra-titulo">Dashboard Gestores</div>
+            <div class="barra-sub" id="subtitulo">Cargando…</div>
+          </div>
+        </div>
+        <div class="barra-acciones">
+          <span id="refresco" class="barra-sub"></span>
+          <button id="tema" class="boton-barra" type="button" title="Cambiar tema claro/oscuro" aria-label="Cambiar tema">◐</button>
+          <button id="salir" class="boton-barra" type="button">Salir</button>
+        </div>
       </div>
     </header>
 
-    <div id="frescura" class="frescura" aria-label="Última actualización de cada informe"></div>
-    <div id="aviso" class="aviso" hidden></div>
+    <main class="contenido">
+      <section class="controles">
+        <label class="selector">
+          <span>Skill</span>
+          <select id="skill" aria-label="Filtrar por skill"><option value="">Todos los skills</option></select>
+        </label>
+        <div id="frescura" class="frescura" aria-label="Última actualización de cada informe"></div>
+      </section>
+      <div id="aviso" class="aviso" hidden></div>
 
-    <section class="kpis" id="kpis" aria-label="Resumen del día"></section>
+      <section class="kpis" id="kpis" aria-label="Resumen"></section>
 
-    <section class="graficos">
-      <figure class="tarjeta">
-        <figcaption>
-          <h2>Entrantes por franja</h2>
-          <p class="muted pequeno">Llamadas de cola (00.Servicio OP.Comerciales)</p>
-        </figcaption>
-        <div class="lienzo"><canvas id="g-entrantes" role="img" aria-label="Gráfico de llamadas entrantes por franja de 30 minutos"></canvas></div>
-      </figure>
-      <figure class="tarjeta">
-        <figcaption>
-          <h2>Salientes por franja</h2>
-          <p class="muted pequeno">Salientes de gestor (Agent Group + Skill) y registros del automarcador</p>
-        </figcaption>
-        <div class="lienzo"><canvas id="g-salientes" role="img" aria-label="Gráfico de llamadas salientes por franja de 30 minutos"></canvas></div>
-      </figure>
-    </section>
+      <section class="graficos">
+        <figure class="tarjeta">
+          <figcaption>
+            <h2>Entrantes por franja</h2>
+            <p class="muted pequeno" id="g-entrantes-sub">Llamadas de cola de los skills del servicio</p>
+          </figcaption>
+          <div class="lienzo"><canvas id="g-entrantes" role="img" aria-label="Llamadas entrantes por franja de 30 minutos"></canvas></div>
+        </figure>
+        <figure class="tarjeta">
+          <figcaption>
+            <h2>Salientes por franja</h2>
+            <p class="muted pequeno" id="g-salientes-sub">Salientes de gestores y registros del automarcador</p>
+          </figcaption>
+          <div class="lienzo"><canvas id="g-salientes" role="img" aria-label="Llamadas salientes por franja de 30 minutos"></canvas></div>
+        </figure>
+      </section>
 
-    <section class="tarjeta">
-      <div class="pestanas" role="tablist">
-        <button role="tab" aria-selected="true" data-pestana="gestores">Gestores</button>
-        <button role="tab" aria-selected="false" data-pestana="colas">Colas entrantes</button>
-        <button role="tab" aria-selected="false" data-pestana="campanas">Automarcador</button>
-      </div>
-
-      <div data-panel="gestores">
-        <div class="filtros">
-          <input id="buscar" type="search" placeholder="Buscar gestor o ID…" aria-label="Buscar gestor">
-          <label class="check" title="Los que aparecen en Agent Group + Skill o en el Automarcador. Desmárcalo para ver a toda la plataforma (Agent State / AUX)."><input id="solo-activos" type="checkbox" checked> Solo gestores del servicio</label>
-          <span class="muted pequeno" id="cuenta-gestores"></span>
-          <button id="csv" class="boton-sec" type="button">Descargar CSV</button>
+      <section class="tarjeta">
+        <div class="pestanas" role="tablist">
+          <button role="tab" aria-selected="true" data-pestana="gestores">Gestores</button>
+          <button role="tab" aria-selected="false" data-pestana="matriz">Gestor × Skill</button>
+          <button role="tab" aria-selected="false" data-pestana="skills">Skills</button>
+          <button role="tab" aria-selected="false" data-pestana="colas">Colas</button>
+          <button role="tab" aria-selected="false" data-pestana="campanas">Automarcador</button>
         </div>
-        <div class="tabla-scroll"><table id="t-gestores" class="tabla"></table></div>
-      </div>
-      <div data-panel="colas" hidden>
-        <div class="tabla-scroll"><table id="t-colas" class="tabla"></table></div>
-      </div>
-      <div data-panel="campanas" hidden>
-        <div class="tabla-scroll"><table id="t-campanas" class="tabla"></table></div>
-      </div>
-    </section>
 
-    <footer class="muted pequeno pie">
-      Los datos se actualizan cada 15 minutos desde BusinessObjects. Tiempos en h:mm:ss.
-    </footer>
+        <div data-panel="gestores">
+          <div class="filtros">
+            <input id="buscar" type="search" placeholder="Buscar gestor o ID…" aria-label="Buscar gestor">
+            <label class="check"><input id="solo-conectados" type="checkbox"> Solo conectados</label>
+            <span class="muted pequeno" id="cuenta-gestores"></span>
+            <button id="csv" class="boton-sec" type="button">Descargar CSV</button>
+          </div>
+          <div class="tabla-scroll"><table id="t-gestores" class="tabla"></table></div>
+        </div>
+
+        <div data-panel="matriz" hidden>
+          <div class="filtros">
+            <input id="buscar-m" type="search" placeholder="Buscar gestor o ID…" aria-label="Buscar gestor en la matriz">
+            <div class="segmentado" role="radiogroup" aria-label="Qué contar">
+              <label><input type="radio" name="metrica" value="ent" checked> Entrantes</label>
+              <label><input type="radio" name="metrica" value="sal"> Salientes</label>
+              <label><input type="radio" name="metrica" value="tot"> Total</label>
+            </div>
+            <span class="muted pequeno">Llamadas atendidas por cada gestor en cada skill. Pulsa un gestor para ver su detalle.</span>
+          </div>
+          <div class="tabla-scroll"><table id="t-matriz" class="tabla matriz"></table></div>
+        </div>
+
+        <div data-panel="skills" hidden>
+          <p class="muted pequeno ayuda">Pulsa un skill para filtrar todo el dashboard por él.</p>
+          <div class="tabla-scroll"><table id="t-skills" class="tabla"></table></div>
+        </div>
+        <div data-panel="colas" hidden>
+          <div class="tabla-scroll"><table id="t-colas" class="tabla"></table></div>
+        </div>
+        <div data-panel="campanas" hidden>
+          <div class="tabla-scroll"><table id="t-campanas" class="tabla"></table></div>
+        </div>
+      </section>
+
+      <footer class="muted pequeno pie">
+        Datos de BusinessObjects (Genesys), actualizados cada 15 minutos. Tiempos en h:mm:ss. Uso interno.
+      </footer>
+    </main>
   </div>
 
   <!-- ======== DETALLE DE UN GESTOR ======== -->
@@ -98,8 +133,11 @@
       <button class="boton-sec" type="button" id="d-cerrar" aria-label="Cerrar">✕</button>
     </div>
     <div class="kpis kpis-detalle" id="d-kpis"></div>
+    <h3>Por skill</h3>
+    <div class="tabla-scroll bajo"><table id="t-detalle-skill" class="tabla"></table></div>
+    <h3>Por franja</h3>
     <div class="lienzo lienzo-bajo"><canvas id="g-detalle" role="img" aria-label="Llamadas del gestor por franja"></canvas></div>
-    <div class="tabla-scroll"><table id="t-detalle" class="tabla"></table></div>
+    <div class="tabla-scroll bajo"><table id="t-detalle" class="tabla"></table></div>
   </dialog>
 </body>
 </html>
