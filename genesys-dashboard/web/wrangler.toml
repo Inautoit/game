@@ -1,0 +1,22 @@
+name = "genesys-dashboard"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# Web del dashboard (index.html, app.js, estilos). /api/* lo atiende el Worker.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# Donde se guarda el ultimo paquete de informes que sube el PC
+[[kv_namespaces]]
+binding = "DATA"
+id = "18a556669c564863a23af9826c53ea1c"
+
+[observability]
+enabled = true
+
+# Secretos (no van en este fichero; se configuran con `wrangler secret put`):
+#   UPLOAD_TOKEN        clave que usa el script del PC para subir
+#   DASHBOARD_PASSWORD  clave para entrar en el dashboard
+#   SESSION_SECRET      clave interna para firmar las sesiones
