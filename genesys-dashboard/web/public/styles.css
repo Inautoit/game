@@ -142,7 +142,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .kpis-detalle .kpi .valor { font-size: 20px; }
 
 /* ---- gráficos ---- */
-.graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+.graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); gap: 16px; }
 .graficos figcaption { margin-bottom: 8px; }
 .lienzo { position: relative; height: 260px; }
 .lienzo-bajo { height: 200px; margin: 8px 0 12px; }
@@ -220,3 +220,17 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   .logo { height: 30px; }
   .barra-titulo { font-size: 16px; }
 }
+
+/* ---- KPIs agrupados por tema ---- */
+.bloques { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.bloque { background: var(--surface-1); border: 1px solid var(--border); border-top: 3px solid var(--marca); border-radius: 12px; padding: 10px 12px 12px; min-width: 0; }
+.bloque h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-secondary); margin: 0 0 8px; }
+.bloque .kpis { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.bloque .kpi { border: 0; background: var(--surface-2); padding: 8px 10px; }
+.bloque .kpi .valor { font-size: 21px; }
+.dos-columnas { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.4fr); gap: 16px; align-items: start; }
+.sub-tarjeta { margin: 0; }
+.lienzo-alto { height: 300px; }
+.segmentado { flex-wrap: wrap; }
+.valor-malo { color: var(--critical-text); }
+@media (max-width: 800px) { .dos-columnas { grid-template-columns: 1fr; } }

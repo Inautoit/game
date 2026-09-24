@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dashboard Gestores</title>
-  <meta name="description" content="Llamadas entrantes, salientes, automarcador y estados por gestor y por skill, en tiempo real. Uso interno.">
+  <meta name="description" content="Entrantes, salientes, automarcador, estados y pausas por gestor y por queue, en tiempo real. Uso interno.">
   <meta name="robots" content="noindex, nofollow">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ed002f'/%3E%3Cpath d='M8 22V13M14 22V9M20 22v-6M26 22V11' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
@@ -54,22 +54,26 @@
       </section>
       <div id="aviso" class="aviso" hidden></div>
 
-      <section class="kpis" id="kpis" aria-label="Resumen"></section>
+      <!-- KPIs agrupados -->
+      <section class="bloques" id="kpis" aria-label="Resumen"></section>
 
+      <!-- Gráficos -->
       <section class="graficos">
         <figure class="tarjeta">
-          <figcaption>
-            <h2>Entrantes por franja</h2>
-            <p class="muted pequeno" id="g-entrantes-sub">Llamadas de las queues del servicio</p>
-          </figcaption>
+          <figcaption><h2>Entrantes por franja</h2><p class="muted pequeno" id="g-entrantes-sub"></p></figcaption>
           <div class="lienzo"><canvas id="g-entrantes" role="img" aria-label="Llamadas entrantes por franja de 30 minutos"></canvas></div>
         </figure>
         <figure class="tarjeta">
-          <figcaption>
-            <h2>Salientes por franja</h2>
-            <p class="muted pequeno" id="g-salientes-sub">Salientes de gestores y registros del automarcador</p>
-          </figcaption>
+          <figcaption><h2>Nivel de servicio por franja</h2><p class="muted pequeno">% de llamadas atendidas en menos de 20 s sobre las recibidas netas</p></figcaption>
+          <div class="lienzo"><canvas id="g-ns" role="img" aria-label="Nivel de servicio por franja"></canvas></div>
+        </figure>
+        <figure class="tarjeta">
+          <figcaption><h2>Salientes por franja</h2><p class="muted pequeno" id="g-salientes-sub"></p></figcaption>
           <div class="lienzo"><canvas id="g-salientes" role="img" aria-label="Llamadas salientes por franja de 30 minutos"></canvas></div>
+        </figure>
+        <figure class="tarjeta">
+          <figcaption><h2>Estado de los gestores por franja</h2><p class="muted pequeno" id="g-estados-sub">Gestores medios en cada estado (Agent State)</p></figcaption>
+          <div class="lienzo"><canvas id="g-estados" role="img" aria-label="Gestores en llamada, disponibles y no disponibles por franja"></canvas></div>
         </figure>
       </section>
 
@@ -79,10 +83,18 @@
           <button role="tab" aria-selected="false" data-pestana="matriz">Gestor × Queue</button>
           <button role="tab" aria-selected="false" data-pestana="skills">Queues</button>
           <button role="tab" aria-selected="false" data-pestana="campanas">Automarcador</button>
+          <button role="tab" aria-selected="false" data-pestana="pausas">Pausas</button>
         </div>
 
         <div data-panel="gestores">
           <div class="filtros">
+            <div class="segmentado" role="radiogroup" aria-label="Vista de la tabla de gestores">
+              <label><input type="radio" name="vista" value="resumen" checked> Resumen</label>
+              <label><input type="radio" name="vista" value="entrantes"> Entrantes</label>
+              <label><input type="radio" name="vista" value="salientes"> Salientes</label>
+              <label><input type="radio" name="vista" value="auto"> Automarcador</label>
+              <label><input type="radio" name="vista" value="tiempos"> Tiempos</label>
+            </div>
             <input id="buscar" type="search" placeholder="Buscar gestor o ID…" aria-label="Buscar gestor">
             <label class="check"><input id="solo-conectados" type="checkbox"> Solo conectados</label>
             <span class="muted pequeno" id="cuenta-gestores"></span>
@@ -99,17 +111,41 @@
               <label><input type="radio" name="metrica" value="sal"> Salientes</label>
               <label><input type="radio" name="metrica" value="tot"> Total</label>
             </div>
-            <span class="muted pequeno">Llamadas atendidas por cada gestor en cada queue. Pulsa un gestor para ver su detalle.</span>
+            <span class="muted pequeno">Llamadas de cada gestor en cada queue. Pulsa un gestor para ver su detalle.</span>
           </div>
           <div class="tabla-scroll"><table id="t-matriz" class="tabla matriz"></table></div>
         </div>
 
         <div data-panel="skills" hidden>
-          <p class="muted pequeno ayuda">Pulsa una queue para filtrar todo el dashboard por ella (vuelve a pulsarla para quitar el filtro).</p>
+          <div class="filtros">
+            <div class="segmentado" role="radiogroup" aria-label="Vista de queues">
+              <label><input type="radio" name="vista-q" value="entrantes" checked> Entrantes</label>
+              <label><input type="radio" name="vista-q" value="tiempos"> Tiempos de atención</label>
+              <label><input type="radio" name="vista-q" value="salientes"> Salientes</label>
+            </div>
+            <span class="muted pequeno">Pulsa una queue para filtrar todo el dashboard por ella (vuelve a pulsarla para quitar el filtro).</span>
+          </div>
           <div class="tabla-scroll"><table id="t-skills" class="tabla"></table></div>
         </div>
+
         <div data-panel="campanas" hidden>
-          <div class="tabla-scroll"><table id="t-campanas" class="tabla"></table></div>
+          <div class="dos-columnas">
+            <figure class="sub-tarjeta">
+              <figcaption><h2>Codificaciones</h2><p class="muted pequeno">Resultado de negocio que ha codificado el gestor (SD_BusinessCallResult)</p></figcaption>
+              <div class="lienzo lienzo-alto"><canvas id="g-codif" role="img" aria-label="Registros por codificación"></canvas></div>
+            </figure>
+            <div>
+              <h3>Por campaña</h3>
+              <div class="tabla-scroll bajo"><table id="t-campanas" class="tabla"></table></div>
+            </div>
+          </div>
+          <h3>Codificaciones por gestor</h3>
+          <div class="tabla-scroll"><table id="t-codif-gestor" class="tabla matriz"></table></div>
+        </div>
+
+        <div data-panel="pausas" hidden>
+          <p class="muted pequeno ayuda">Tiempo en cada motivo de pausa (10.Agent_AUX) y % sobre el tiempo logado. Las celdas más oscuras son las pausas más largas.</p>
+          <div class="tabla-scroll"><table id="t-pausas" class="tabla matriz"></table></div>
         </div>
       </section>
 
@@ -128,9 +164,10 @@
       </div>
       <button class="boton-sec" type="button" id="d-cerrar" aria-label="Cerrar">✕</button>
     </div>
-    <div class="kpis kpis-detalle" id="d-kpis"></div>
+    <div class="bloques" id="d-kpis"></div>
     <h3>Por queue</h3>
     <div class="tabla-scroll bajo"><table id="t-detalle-skill" class="tabla"></table></div>
+    <div id="d-auto"></div>
     <h3>Por franja</h3>
     <div class="lienzo lienzo-bajo"><canvas id="g-detalle" role="img" aria-label="Llamadas del gestor por franja"></canvas></div>
     <div class="tabla-scroll bajo"><table id="t-detalle" class="tabla"></table></div>
