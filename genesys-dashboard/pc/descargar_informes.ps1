@@ -196,15 +196,33 @@ function Procesar($id, $nombre) {
             Log "   ERROR: el informe sigue pidiendo filtros y NO se ha actualizado (los datos serian antiguos): $(Corto ($pendientes | ConvertTo-Json -Depth 6 -Compress))"
             return
         }
-        # Si BO no confirma la actualizacion ("success"), se fuerza: primero volviendo a enviar los
-        # filtros vacios y, si tampoco, pidiendo el estado "Refreshed" del documento.
+        # Si BO no confirma la actualizacion ("success") -tipico de informes cuyo unico filtro es un
+        # contexto-, se prueban otras formas de contestar el contexto hasta que BO actualice.
         $ok = { param($r) $r -and ($r.PSObject.Properties.Name -contains "success") }
         if (-not (& $ok $resp)) {
-            Log "   BO no ha confirmado la actualizacion; se fuerza..."
-            try { $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body '{"parameters":{"parameter":[]}}' -TimeoutSec 1800 } catch {}
-            if (-not (& $ok $resp)) {
-                try { $resp = Invoke-RestMethod -Method Put -Uri $base -Headers $h -Body '{"document":{"state":"Refreshed"}}' -TimeoutSec 1800 }
-                catch { Log "   AVISO: no se pudo forzar la actualizacion: $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)")" }
+            Log "   BO no ha confirmado la actualizacion; se prueban otras formas de enviar el contexto..."
+            $ctxParams = @((Invoke-RestMethod -Uri "$base/parameters" -Headers $h).parameters.parameter | Where-Object { $_.'@type' -eq 'context' })
+            $variantes = [ordered]@{
+                "eco completo" = { param($p, $c) $q = $p | ConvertTo-Json -Depth 20 | ConvertFrom-Json; $q.answer | Add-Member -Force values @{ value = @(@{ '@id' = $c.id; '$' = $c.nombre }) }; $q }
+                "objeto @id"   = { param($p, $c) @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $c.id }) } } } }
+                "objeto @id+$" = { param($p, $c) @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $c.id; '$' = $c.nombre }) } } } }
+                "nombre"       = { param($p, $c) @{ id = $p.id; answer = @{ values = @{ value = @($c.nombre) } } } }
+                "tipo context" = { param($p, $c) @{ id = $p.id; '@type' = 'context'; answer = @{ '@type' = 'Text'; values = @{ value = @($c.id) } } } }
+            }
+            foreach ($nombreVar in $variantes.Keys) {
+                if (-not $ctxParams.Count) { break }
+                $lista = @(foreach ($p in $ctxParams) { $c = RespuestaContexto $p $conf; & $variantes[$nombreVar] $p $c })
+                $cuerpo = @{ parameters = @{ parameter = $lista } } | ConvertTo-Json -Depth 20
+                try {
+                    $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body $cuerpo -TimeoutSec 1800
+                    Log "   Variante '$nombreVar': $(Corto ($resp | ConvertTo-Json -Depth 3 -Compress))"
+                    if (& $ok $resp) { break }
+                    # si no pide nada mas, se lanza la actualizacion con los filtros vacios
+                    if (@($resp.parameters.parameter | Where-Object { $_ }).Count -eq 0) {
+                        $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body '{"parameters":{"parameter":[]}}' -TimeoutSec 1800
+                        if (& $ok $resp) { Log "   Variante '$nombreVar' + actualizar: OK"; break }
+                    }
+                } catch { Log "   Variante '$nombreVar': $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)")" }
             }
         }
         Log "   Actualizado en $([int]((Get-Date) - $t0).TotalSeconds) s. Respuesta: $(Corto ($resp | ConvertTo-Json -Depth 4 -Compress))"
