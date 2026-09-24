@@ -312,18 +312,36 @@ function kpi(etiqueta, valor, nota = "") {
   return `<div class="kpi"><div class="etiqueta">${esc(etiqueta)}</div><div class="valor">${valor}</div>${nota ? `<div class="nota">${nota}</div>` : ""}</div>`;
 }
 
+// Fecha de los datos de un informe: la fecha (aaaa-mm-dd) que más se repite en sus filas
+function fechaDatos(inf) {
+  const n = new Map();
+  for (const h of inf.hojas)
+    for (const fila of h.filas.slice(0, 400))
+      for (const v of fila) { const m = /^(20\d\d-\d\d-\d\d)/.exec(v ?? ""); if (m) sumar(n, m[1], 1); }
+  return [...n].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+const fmtFecha = (f) => (f ? f.slice(8, 10) + "/" + f.slice(5, 7) : "");
+
 function pintarFrescura(paquete) {
+  const hoy = hoyLocal();
+  const deOtroDia = [];
   $("#frescura").innerHTML = paquete.informes.map((i) => {
     const min = (Date.now() - new Date(i.generado)) / 60000;   // "generado" es hora local del PC
-    const clase = !String(i.generado).startsWith(hoyLocal()) ? "malo" : min <= 35 ? "ok" : min <= 90 ? "viejo" : "malo";
-    const txt = clase === "ok" ? "al día" : clase === "viejo" ? "con retraso" : "desactualizado";
-    return `<span class="chip ${clase}" title="${esc(txt)}"><i aria-hidden="true"></i>${esc(i.informe)} · ${fmtHora(i.generado)} <span class="sr">(${txt})</span></span>`;
+    const fd = fechaDatos(i);
+    const otroDia = fd && fd !== hoy;
+    if (otroDia) deOtroDia.push(`${i.informe} (datos del ${fmtFecha(fd)})`);
+    const clase = otroDia || !String(i.generado).startsWith(hoy) ? "malo" : min <= 35 ? "ok" : min <= 90 ? "viejo" : "malo";
+    const txt = otroDia ? `trae datos del ${fmtFecha(fd)}, no de hoy` : clase === "ok" ? "al día" : clase === "viejo" ? "con retraso" : "desactualizado";
+    return `<span class="chip ${clase}" title="${esc(txt)}"><i aria-hidden="true"></i>${esc(i.informe)} · ${fmtHora(i.generado)}${otroDia ? ` · <b>datos del ${fmtFecha(fd)}</b>` : ""} <span class="sr">(${esc(txt)})</span></span>`;
   }).join("");
   const faltan = [["Automarcador", /automarcador/i], ["Agent AUX", /agent_aux/i], ["Agent State", /agent state/i],
                   ["Agent Group + Skill", /agent group|skill/i], ["OP.Comerciales", /servicio op|op\.?comercial/i]]
     .filter(([, re]) => !paquete.informes.some((i) => re.test(i.informe))).map(([n]) => n);
-  $("#aviso").hidden = !faltan.length;
-  $("#aviso").textContent = faltan.length ? `Faltan informes en la última subida: ${faltan.join(", ")}.` : "";
+  const avisos = [];
+  if (faltan.length) avisos.push(`Faltan informes en la última subida: ${faltan.join(", ")}.`);
+  if (deOtroDia.length) avisos.push(`Estos informes no traen datos de hoy: ${deOtroDia.join(", ")}. Revisa sus filtros de fecha.`);
+  $("#aviso").hidden = !avisos.length;
+  $("#aviso").textContent = avisos.join(" ");
 }
 
 function pintarSelector() {
