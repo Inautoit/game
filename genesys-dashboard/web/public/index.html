@@ -47,8 +47,8 @@
     <main class="contenido">
       <section class="controles">
         <label class="selector">
-          <span>Skill</span>
-          <select id="skill" aria-label="Filtrar por skill"><option value="">Todos los skills</option></select>
+          <span>Queue</span>
+          <select id="skill" aria-label="Filtrar por queue"><option value="">Todas las queues</option></select>
         </label>
         <div id="frescura" class="frescura" aria-label="Última actualización de cada informe"></div>
       </section>
@@ -60,7 +60,7 @@
         <figure class="tarjeta">
           <figcaption>
             <h2>Entrantes por franja</h2>
-            <p class="muted pequeno" id="g-entrantes-sub">Llamadas de cola de los skills del servicio</p>
+            <p class="muted pequeno" id="g-entrantes-sub">Llamadas de las queues del servicio</p>
           </figcaption>
           <div class="lienzo"><canvas id="g-entrantes" role="img" aria-label="Llamadas entrantes por franja de 30 minutos"></canvas></div>
         </figure>
@@ -76,9 +76,8 @@
       <section class="tarjeta">
         <div class="pestanas" role="tablist">
           <button role="tab" aria-selected="true" data-pestana="gestores">Gestores</button>
-          <button role="tab" aria-selected="false" data-pestana="matriz">Gestor × Skill</button>
-          <button role="tab" aria-selected="false" data-pestana="skills">Skills</button>
-          <button role="tab" aria-selected="false" data-pestana="colas">Colas</button>
+          <button role="tab" aria-selected="false" data-pestana="matriz">Gestor × Queue</button>
+          <button role="tab" aria-selected="false" data-pestana="skills">Queues</button>
           <button role="tab" aria-selected="false" data-pestana="campanas">Automarcador</button>
         </div>
 
@@ -100,17 +99,14 @@
               <label><input type="radio" name="metrica" value="sal"> Salientes</label>
               <label><input type="radio" name="metrica" value="tot"> Total</label>
             </div>
-            <span class="muted pequeno">Llamadas atendidas por cada gestor en cada skill. Pulsa un gestor para ver su detalle.</span>
+            <span class="muted pequeno">Llamadas atendidas por cada gestor en cada queue. Pulsa un gestor para ver su detalle.</span>
           </div>
           <div class="tabla-scroll"><table id="t-matriz" class="tabla matriz"></table></div>
         </div>
 
         <div data-panel="skills" hidden>
-          <p class="muted pequeno ayuda">Pulsa un skill para filtrar todo el dashboard por él.</p>
+          <p class="muted pequeno ayuda">Pulsa una queue para filtrar todo el dashboard por ella (vuelve a pulsarla para quitar el filtro).</p>
           <div class="tabla-scroll"><table id="t-skills" class="tabla"></table></div>
-        </div>
-        <div data-panel="colas" hidden>
-          <div class="tabla-scroll"><table id="t-colas" class="tabla"></table></div>
         </div>
         <div data-panel="campanas" hidden>
           <div class="tabla-scroll"><table id="t-campanas" class="tabla"></table></div>
@@ -133,7 +129,7 @@
       <button class="boton-sec" type="button" id="d-cerrar" aria-label="Cerrar">✕</button>
     </div>
     <div class="kpis kpis-detalle" id="d-kpis"></div>
-    <h3>Por skill</h3>
+    <h3>Por queue</h3>
     <div class="tabla-scroll bajo"><table id="t-detalle-skill" class="tabla"></table></div>
     <h3>Por franja</h3>
     <div class="lienzo lienzo-bajo"><canvas id="g-detalle" role="img" aria-label="Llamadas del gestor por franja"></canvas></div>

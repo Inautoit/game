@@ -98,6 +98,7 @@ function procesar(paquete) {
       const q = colas.get(cola) ?? { nombre: cola, skill: skillDeCola(cola), recibidas: 0, atendidas: 0, abandonadas: 0, at20: 0 };
       q.recibidas += rec; q.atendidas += at; q.abandonadas += ab; q.at20 += a20; colas.set(cola, q);
       const s = sk(skillDeCola(cola)); if (!s) continue;
+      s.cola = cola;
       s.recibidas += rec; s.atendidas += at; s.abandonadas += ab; s.at20 += a20;
       const f = franja(val(r, c.fr));
       if (f) { const e = s.entFr.get(f) ?? { rec: 0, at: 0, ab: 0 }; e.rec += rec; e.at += at; e.ab += ab; s.entFr.set(f, e); }
@@ -281,6 +282,10 @@ let estado = {
 const graficos = {};
 try { estado.skill = localStorage.getItem("skill") || ""; } catch {}
 
+// Nombre que se muestra: la Queue de la llamada (p. ej. "Upsell_NBA_Target_VQ");
+// si el skill no tiene cola entrante (solo salientes), su propio nombre.
+const etiqueta = (nombre) => estado.datos?.skills.get(nombre)?.cola || nombre;
+
 // skills visibles con el filtro actual
 function skillsSel() {
   const todos = [...estado.datos.skills.values()];
@@ -327,8 +332,8 @@ function pintarSelector() {
     .filter((s) => s.recibidas + s.salientes + s.gestores.size > 0)
     .sort((a, b) => b.recibidas + b.salientes - (a.recibidas + a.salientes));
   if (estado.skill && !estado.datos.skills.has(estado.skill)) estado.skill = "";
-  sel.innerHTML = `<option value="">Todos los skills (${lista.length})</option>` +
-    lista.map((s) => `<option value="${esc(s.nombre)}">${esc(s.nombre)} · ${fmtN(s.recibidas)} ent. / ${fmtN(s.salientes)} sal.</option>`).join("");
+  sel.innerHTML = `<option value="">Todas las queues (${lista.length})</option>` +
+    lista.map((s) => `<option value="${esc(s.nombre)}">${esc(etiqueta(s.nombre))} · ${fmtN(s.recibidas)} ent. / ${fmtN(s.salientes)} sal.</option>`).join("");
   sel.value = estado.skill;
   sel.classList.toggle("activo", !!estado.skill);
 }
@@ -340,7 +345,7 @@ function pintarKpis() {
   const tmo = t.atInb ? t.tInb / t.atInb : 0;
   const d = estado.datos;
   $("#kpis").innerHTML = [
-    kpi("Entrantes recibidas", fmtN(t.recibidas), estado.skill ? esc(estado.skill) : "todos los skills"),
+    kpi("Entrantes recibidas", fmtN(t.recibidas), estado.skill ? esc(etiqueta(estado.skill)) : "todas las queues"),
     kpi("Atendidas", fmtN(t.atendidas), t.recibidas ? fmtPct(t.atendidas / t.recibidas) + " de las recibidas" : ""),
     kpi("Abandonadas", fmtN(t.abandonadas), t.recibidas ? fmtPct(t.abandonadas / t.recibidas) + " de las recibidas" : ""),
     kpi("Atendidas en < 20 s", t.atendidas ? fmtPct(t.at20 / t.atendidas) : "–", fmtN(t.at20) + " llamadas"),
@@ -368,11 +373,15 @@ function opcionesGrafico() {
     },
   };
 }
+// Colores corporativos: rojo de marca, gris oscuro y gris medio (la línea gris va discontinua
+// para distinguirse también sin color).
 function grafico(id, tipo, etiquetas, series) {
   if (!window.Chart) return;
-  const colores = ["--series-1", "--series-2", "--series-3"].map(css);
+  const porDefecto = ["--c-marca", "--c-oscuro", "--c-gris"];
   const datasets = series.map((s, i) => ({
-    label: s.label, data: s.data, borderColor: colores[i], backgroundColor: colores[i],
+    label: s.label, data: s.data,
+    borderColor: css(s.color ?? porDefecto[i]), backgroundColor: css(s.color ?? porDefecto[i]),
+    borderDash: tipo === "line" && s.discontinua ? [6, 4] : [],
     borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.25,
     borderRadius: 4, borderSkipped: "bottom", maxBarThickness: 22,
   }));
@@ -382,15 +391,15 @@ function grafico(id, tipo, etiquetas, series) {
 function pintarGraficos() {
   const t = totalSkills();
   const fe = franjasOrdenadas(t.entFr);
-  $("#g-entrantes-sub").textContent = estado.skill ? `Skill ${estado.skill} (00.Servicio OP.Comerciales)` : "Llamadas de cola de todos los skills del servicio";
+  $("#g-entrantes-sub").textContent = estado.skill ? `Queue ${etiqueta(estado.skill)}` : "Llamadas de todas las queues del servicio (00.Servicio OP.Comerciales)";
   grafico("g-entrantes", "line", fe, [
-    { label: "Recibidas", data: fe.map((f) => t.entFr.get(f).rec) },
-    { label: "Atendidas", data: fe.map((f) => t.entFr.get(f).at) },
-    { label: "Abandonadas", data: fe.map((f) => t.entFr.get(f).ab) },
+    { label: "Recibidas", data: fe.map((f) => t.entFr.get(f).rec), color: "--c-oscuro" },
+    { label: "Atendidas", data: fe.map((f) => t.entFr.get(f).at), color: "--c-marca" },
+    { label: "Abandonadas", data: fe.map((f) => t.entFr.get(f).ab), color: "--c-gris", discontinua: true },
   ]);
   const auto = estado.skill ? new Map() : estado.datos.autoPorFranja;
   const fs = franjasOrdenadas(t.salFr, auto);
-  $("#g-salientes-sub").textContent = estado.skill ? `Salientes de gestores en ${estado.skill}` : "Salientes de gestores y registros del automarcador";
+  $("#g-salientes-sub").textContent = estado.skill ? `Salientes de gestores en ${etiqueta(estado.skill)}` : "Salientes de gestores y registros del automarcador";
   const series = [{ label: "Salientes gestores", data: fs.map((f) => t.salFr.get(f) ?? 0) }];
   if (!estado.skill) series.push({ label: "Registros automarcador", data: fs.map((f) => auto.get(f) ?? 0) });
   grafico("g-salientes", "bar", fs, series);
@@ -424,8 +433,9 @@ const COLS_GESTORES = () => [
   { k: "conectado", t: "Estado", txt: true, orden: (a) => (a.conectado ? 1 : 0),
     f: (a) => `<span class="estado ${a.conectado ? "on" : "off"}"><i aria-hidden="true"></i>${a.conectado ? "Conectado" : a.logout ? "Desconectado " + fmtHora(a.logout) : "–"}</span>` },
   { k: "login", t: "1ª conexión", f: (a) => fmtHora(a.login), orden: (a) => a.login ?? "" },
-  { k: "skillsTxt", t: estado.skill ? "Skill" : "Skills", txt: true, orden: (a) => a.porSkill.size,
-    f: (a) => `<div class="skills-lista" title="${esc([...a.porSkill.keys()].join(", "))}">${esc(estado.skill || [...a.porSkill.keys()].join(", ") || "–")}</div>` },
+  { k: "skillsTxt", t: estado.skill ? "Queue" : "Queues", txt: true, orden: (a) => a.porSkill.size,
+    f: (a) => { const l = estado.skill ? etiqueta(estado.skill) : [...a.porSkill.keys()].map(etiqueta).join(", ");
+                return `<div class="skills-lista" title="${esc(l)}">${esc(l || "–")}</div>`; } },
   { k: "entAt", t: "Entrantes", f: (a) => cero(a.entAt, fmtN), ayuda: "Entrantes atendidas (N Answer)" },
   { k: "tmo", t: "TMO entrante", f: (a) => (a.entAt ? fmtT(a.tmo) : "–"), ayuda: "T Total Inbound / N Answer" },
   { k: "rona", t: "RONA", f: (a) => cero(a.rona, fmtN), ayuda: "Llamadas ofrecidas no contestadas (RouteOnNoAnswer)" },
@@ -451,7 +461,7 @@ function gestoresFiltrados() {
 }
 function pintarGestores() {
   const filas = gestoresFiltrados();
-  $("#cuenta-gestores").textContent = `${filas.length} gestores${estado.skill ? " en " + estado.skill : ""}`;
+  $("#cuenta-gestores").textContent = `${filas.length} gestores${estado.skill ? " en " + etiqueta(estado.skill) : ""}`;
   pintarTabla("t-gestores", "gestores", COLS_GESTORES(), filas, abrirDetalle);
 }
 
@@ -470,12 +480,12 @@ function pintarMatriz() {
   }).filter((f) => f.total > 0);
   const max = Math.max(1, ...filas.flatMap((f) => cols.map((s) => f["s:" + s])));
   const heat = css("--heat");
-  const estilo = (n) => (n ? `background: rgb(${heat} / ${(0.1 + 0.6 * (n / max)).toFixed(2)})` : "");
+  const estilo = (n) => (n ? `background: rgb(${heat} / ${(0.08 + 0.5 * (n / max)).toFixed(2)})` : "");
   pintarTabla("t-matriz", "matriz", [
     { k: "nombre", t: "Gestor", txt: true, f: celdaGestor },
     { k: "total", t: "Total", celda: () => "celda total", f: (f) => fmtN(f.total) },
     ...cols.map((s) => ({
-      k: "s:" + s, t: s, cls: "skill", celda: () => "celda", ayuda: s,
+      k: "s:" + s, t: etiqueta(s), cls: "skill", celda: () => "celda", ayuda: etiqueta(s),
       estilo: (f) => estilo(f["s:" + s]),
       f: (f) => (f["s:" + s] ? fmtN(f["s:" + s]) : ""),
     })),
@@ -487,7 +497,7 @@ function pintarSkills() {
     .filter((s) => s.recibidas + s.salientes + s.gestores.size > 0)
     .map((s) => ({ ...s, ng: s.gestores.size, _sel: s.nombre === estado.skill }));
   pintarTabla("t-skills", "skills", [
-    { k: "nombre", t: "Skill", txt: true, f: (s) => `<span class="nombre">${esc(s.nombre)}</span>` },
+    { k: "nombre", t: "Queue", txt: true, orden: (s) => etiqueta(s.nombre), f: (s) => `<span class="nombre">${esc(etiqueta(s.nombre))}</span>` },
     { k: "recibidas", t: "Recibidas", f: (s) => cero(s.recibidas, fmtN) },
     { k: "atendidas", t: "Atendidas", f: (s) => cero(s.atendidas, fmtN) },
     { k: "abandonadas", t: "Abandonadas", f: (s) => cero(s.abandonadas, fmtN) },
@@ -498,17 +508,6 @@ function pintarSkills() {
     { k: "marcadas", t: "Marcadas", f: (s) => cero(s.marcadas, fmtN) },
     { k: "ng", t: "Gestores", f: (s) => cero(s.ng, fmtN) },
   ], filas, (s) => elegirSkill(s.nombre === estado.skill ? "" : s.nombre));
-}
-
-function pintarColas() {
-  pintarTabla("t-colas", "colas", [
-    { k: "nombre", t: "Cola", txt: true },
-    { k: "recibidas", t: "Recibidas", f: (q) => fmtN(q.recibidas) },
-    { k: "atendidas", t: "Atendidas", f: (q) => fmtN(q.atendidas) },
-    { k: "abandonadas", t: "Abandonadas", f: (q) => fmtN(q.abandonadas) },
-    { k: "pAb", t: "% abandono", orden: (q) => (q.recibidas ? q.abandonadas / q.recibidas : NaN), f: (q) => (q.recibidas ? fmtPct(q.abandonadas / q.recibidas) : "–") },
-    { k: "pNs", t: "Atend. < 20 s", orden: (q) => (q.atendidas ? q.at20 / q.atendidas : NaN), f: (q) => (q.atendidas ? fmtPct(q.at20 / q.atendidas) : "–") },
-  ], estado.datos.colas.filter((q) => q.recibidas > 0 && (!estado.skill || q.skill === estado.skill)));
 }
 
 function pintarCampanas() {
@@ -540,16 +539,16 @@ function abrirDetalle(a) {
 
   const porSkill = [...a.porSkill].map(([s, x]) => ({ s, ...x })).sort((p, q) => q.entAt + q.sal - (p.entAt + p.sal));
   $("#t-detalle-skill").innerHTML =
-    `<thead><tr><th>Skill</th><th>Ofrecidas</th><th>Entrantes</th><th>TMO entrante</th><th>RONA</th><th>Marcadas</th><th>Salientes</th><th>T. saliente</th></tr></thead><tbody>` +
-    (porSkill.length ? porSkill.map((x) => `<tr><td>${esc(x.s)}</td><td>${fmtN(x.entOf)}</td><td>${fmtN(x.entAt)}</td><td>${x.entAt ? fmtT(x.entT / x.entAt) : "–"}</td><td>${fmtN(x.rona)}</td><td>${fmtN(x.salMarc)}</td><td>${fmtN(x.sal)}</td><td>${fmtT(x.salT)}</td></tr>`).join("")
-      : `<tr><td colspan="8" class="txt muted">Sin llamadas de skill (solo automarcador).</td></tr>`) + `</tbody>`;
+    `<thead><tr><th>Queue</th><th>Ofrecidas</th><th>Entrantes</th><th>TMO entrante</th><th>RONA</th><th>Marcadas</th><th>Salientes</th><th>T. saliente</th></tr></thead><tbody>` +
+    (porSkill.length ? porSkill.map((x) => `<tr><td>${esc(etiqueta(x.s))}</td><td>${fmtN(x.entOf)}</td><td>${fmtN(x.entAt)}</td><td>${x.entAt ? fmtT(x.entT / x.entAt) : "–"}</td><td>${fmtN(x.rona)}</td><td>${fmtN(x.salMarc)}</td><td>${fmtN(x.sal)}</td><td>${fmtT(x.salT)}</td></tr>`).join("")
+      : `<tr><td colspan="8" class="txt muted">Sin llamadas en queues (solo automarcador).</td></tr>`) + `</tbody>`;
 
   const fr = [...a.franjas.keys()].sort();
   $("#detalle").showModal();
   grafico("g-detalle", "bar", fr, [
-    { label: "Entrantes", data: fr.map((f) => a.franjas.get(f).ent) },
-    { label: "Salientes", data: fr.map((f) => a.franjas.get(f).sal) },
-    { label: "Automarcador", data: fr.map((f) => a.franjas.get(f).auto) },
+    { label: "Entrantes", data: fr.map((f) => a.franjas.get(f).ent), color: "--c-marca" },
+    { label: "Salientes", data: fr.map((f) => a.franjas.get(f).sal), color: "--c-oscuro" },
+    { label: "Automarcador", data: fr.map((f) => a.franjas.get(f).auto), color: "--c-gris" },
   ]);
   $("#t-detalle").innerHTML =
     `<thead><tr><th>Franja</th><th>Conectado</th><th>Disponible</th><th>No disponible</th><th>Entrantes</th><th>Salientes</th><th>Automarcador</th></tr></thead><tbody>` +
@@ -563,7 +562,6 @@ function pintarVista() {
   pintarGestores();
   pintarMatriz();
   pintarSkills();
-  pintarColas();
   pintarCampanas();
 }
 function pintarTodo() {
@@ -582,15 +580,15 @@ function elegirSkill(s) {
 
 function descargarCsv() {
   const filas = gestoresFiltrados();
-  const cab = ["ID", "Gestor", "Skill", "Estado", "Primera conexion", "Entrantes", "TMO entrante (s)", "RONA", "Salientes", "Automarcador", "Contactados",
+  const cab = ["ID", "Gestor", "Queue", "Estado", "Primera conexion", "Entrantes", "TMO entrante (s)", "RONA", "Salientes", "Automarcador", "Contactados",
                "T conectado (s)", "Disponible (s)", "No disponible (s)", "Pausas AUX (s)", "Ocupacion"];
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const lineas = filas.map((a) => [a.id, a.nombre, estado.skill || [...a.porSkill.keys()].join(", "), a.conectado ? "Conectado" : "Desconectado", a.login ?? "",
+  const lineas = filas.map((a) => [a.id, a.nombre, estado.skill ? etiqueta(estado.skill) : [...a.porSkill.keys()].map(etiqueta).join(", "), a.conectado ? "Conectado" : "Desconectado", a.login ?? "",
     a.entAt, Math.round(a.tmo), a.rona, a.sal, a.autoRegistros, a.autoContactados, Math.round(a.activo), Math.round(a.listo), Math.round(a.noListo),
     Math.round(a.pausas), Number.isFinite(a.occ) ? a.occ.toFixed(3) : ""].map(q).join(";"));
   const blob = new Blob(["﻿" + [cab.map(q).join(";"), ...lineas].join("\r\n")], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  Object.assign(document.createElement("a"), { href: url, download: `gestores_${estado.skill || "todos"}_${hoyLocal()}.csv` }).click();
+  Object.assign(document.createElement("a"), { href: url, download: `gestores_${estado.skill ? etiqueta(estado.skill) : "todas"}_${hoyLocal()}.csv` }).click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 

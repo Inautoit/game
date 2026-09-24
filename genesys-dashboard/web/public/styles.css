@@ -11,10 +11,10 @@
   --text-secondary: #55544f;
   --text-muted: #75746e;
   --accent: #ed002f;
-  --series-1: #2a78d6;   /* azul */
-  --series-2: #eb6834;   /* naranja */
-  --series-3: #1baf7a;   /* aqua */
-  --heat: 42 120 214;    /* azul para la matriz (rgb) */
+  --c-marca: #ed002f;    /* rojo Verisure */
+  --c-oscuro: #3c3c3b;   /* gris antracita */
+  --c-gris: #8f8e89;     /* gris medio (siempre con línea discontinua) */
+  --heat: 237 0 47;      /* rojo para la matriz (rgb) */
   --grid: #ebeae6;
   --good: #0ca30c;
   --warning: #fab219;
@@ -32,10 +32,10 @@
     --text-secondary: #c3c2b7;
     --text-muted: #9a998f;
     --accent: #ff4d6d;
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --heat: 57 135 229;
+    --c-marca: #ff3358;
+    --c-oscuro: #e3e2dd;
+    --c-gris: #8a8984;
+    --heat: 255 51 88;
     --grid: #2c2c29;
     --critical-text: #f07a7a;
   }
@@ -50,10 +50,10 @@
   --text-secondary: #c3c2b7;
   --text-muted: #9a998f;
   --accent: #ff4d6d;
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --heat: 57 135 229;
+  --c-marca: #ff3358;
+  --c-oscuro: #e3e2dd;
+  --c-gris: #8a8984;
+  --heat: 255 51 88;
   --grid: #2c2c29;
   --critical-text: #f07a7a;
 }
@@ -198,7 +198,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
   position: sticky; left: 0; background: var(--surface-1); z-index: 1; min-width: 200px;
 }
 .matriz thead th:first-child { z-index: 3; background: var(--surface-2); }
-.matriz thead th.skill { writing-mode: vertical-rl; transform: rotate(180deg); text-align: left; height: 150px; vertical-align: bottom; padding: 8px 4px; font-size: 12px; }
+.matriz thead th.skill { writing-mode: vertical-rl; transform: rotate(180deg); text-align: left; height: 200px; vertical-align: bottom; padding: 8px 4px; font-size: 11px; }
 .matriz td.celda { text-align: center; min-width: 38px; }
 .matriz td.total { font-weight: 700; }
 
