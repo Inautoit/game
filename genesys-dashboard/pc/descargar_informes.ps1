@@ -29,11 +29,12 @@ $Informes = @(
         "Pre-set Date Filter:" = @("Today")
         "Start Date:" = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z")
         "End Date:"   = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z") } },
-    @{ nombre = "10.Agent_AUX";               id = 5495261 },
-    # Sin id: se busca por nombre y, si hay varias copias, por las pestanas que tiene
-    @{ nombre = "Agent State*";               pestanas = @("Agent States", "Login Time") },
-    @{ nombre = "Agent Group + Skill - v2.3_06"; pestanas = @("INBOUND", "OUTBOUND") },   # nombre exacto
-    @{ nombre = "00.Servicio OP.Comercial*";  pestanas = @("LlamInbound", "TiemposInb", "TiemposOut", "Chat", "Email", "Callback", "Tareas") }
+    # Sin id: se busca por el NOMBRE EXACTO. Si hay varias copias con ese nombre, se queda con
+    # las que tienen esas pestanas y, de ellas, con la usada mas recientemente.
+    @{ nombre = "10.Agent_AUX";                  pestanas = @("AUX") },
+    @{ nombre = "Agent State";                   pestanas = @("Agent States", "Login Time") },
+    @{ nombre = "Agent Group + Skill - v2.3_06"; pestanas = @("INBOUND", "OUTBOUND") },
+    @{ nombre = "00.Servicio OP.Comerciales_6";  pestanas = @("LlamInbound", "TiemposInb", "TiemposOut", "Chat", "Email", "Callback", "Tareas") }
 )
 # =========================
 
@@ -44,7 +45,7 @@ if (-not $Raiz)  { $Raiz  = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Pat
 if (-not $Sello) { $Sello = Get-Date -Format "yyyyMMdd_HHmm" }
 $Carpeta  = Join-Path $Raiz "BO_export"
 $CredFile = Join-Path $Raiz "bo_credencial.xml"
-$IdsFile  = Join-Path $Raiz "bo_ids.json"
+$IdsFile  = Join-Path $Raiz "bo_ids_v2.json"   # ids ya encontrados (borralo para volver a buscar)
 $Hoy      = (Get-Date).ToString("yyyy-MM-dd")
 $HoyISO   = "$($Hoy)T00:00:00.000Z"
 New-Item -ItemType Directory -Force -Path $Carpeta | Out-Null
@@ -433,8 +434,10 @@ public static class BoXlsx
 function Convertir-Y-Subir {
     $CarpetaJson = Join-Path $Carpeta "json"
     New-Item -ItemType Directory -Force -Path $CarpetaJson | Out-Null
-    # los datos de dias anteriores no se vuelven a subir
-    Get-ChildItem $CarpetaJson -Filter "*.json" | Where-Object { $_.LastWriteTime.Date -lt (Get-Date).Date } | Remove-Item -ErrorAction SilentlyContinue
+    # los datos de dias anteriores, o de informes que ya no estan en la lista, no se suben
+    $validos = @($Informes | ForEach-Object { Limpio $_.nombre })
+    Get-ChildItem $CarpetaJson -Filter "*.json" |
+        Where-Object { $_.LastWriteTime.Date -lt (Get-Date).Date -or $validos -notcontains $_.BaseName } | Remove-Item -ErrorAction SilentlyContinue
     if (-not ("BoXlsx" -as [type])) {
         Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
         $refs = @([System.IO.Compression.ZipArchive].Assembly.Location,
@@ -445,7 +448,7 @@ function Convertir-Y-Subir {
 
     # 1. Cada Excel descargado -> json/<informe>.json (sin las columnas de $QuitarColumnas)
     $convertidos = @()
-    foreach ($x in Get-ChildItem $Carpeta -Filter "*.xlsx" -ErrorAction SilentlyContinue) {
+    foreach ($x in Get-ChildItem $Carpeta -Filter "*.xlsx" -ErrorAction SilentlyContinue | Where-Object { $validos -contains $_.BaseName }) {
         try {
             $t0 = Get-Date
             $json = [BoXlsx]::AJson($x.FullName, $x.BaseName, $x.LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ss"), [string[]]$QuitarColumnas)
@@ -507,7 +510,7 @@ if (Test-Path $IdsFile) {
     $guardados = @(Get-Content $IdsFile -Raw | ConvertFrom-Json | ForEach-Object { $_ })   # ForEach: separa la lista en elementos
     foreach ($inf in $Informes) {
         if (-not $inf.id) {
-            $g = $guardados | Where-Object { $_.id -and $_.nombre -like $inf.nombre } | Select-Object -First 1
+            $g = $guardados | Where-Object { $_.id -and $_.nombre -eq $inf.nombre } | Select-Object -First 1
             if ($g) { $inf.id = $g.id; $inf.nombre = $g.nombre }
         }
     }
@@ -534,7 +537,8 @@ try {
                 $docs += $pg; $off += 50
             } while ($pg.Count -eq 50 -and $off -lt 10000)
         }
-        $enc = @($docs | Where-Object { $_.name -like $inf.nombre })
+        $enc = if ($inf.nombre.Contains("*")) { @($docs | Where-Object { $_.name -like $inf.nombre }) }
+               else { @($docs | Where-Object { "$($_.name)".Trim() -eq $inf.nombre }) }
         if ($enc.Count -gt 1 -and $inf.pestanas) {
             # Varias copias: quedarse con las que tienen exactamente las mismas pestanas
             $buscadas = $inf.pestanas -join '|'
@@ -544,8 +548,21 @@ try {
         }
         if ($enc.Count -eq 0) { Log "NO ENCONTRADO: $($inf.nombre)"; continue }
         if ($enc.Count -gt 1) {
-            Log "AVISO: '$($inf.nombre)' tiene $($enc.Count) copias iguales; uso la primera (id=$($enc[0].id)). Candidatos:"
-            foreach ($d in $enc) { Log "   id=$($d.id)   $($d.name)" }
+            # Varias copias identicas: la usada mas recientemente es la que tiene la fecha mas
+            # reciente en sus filtros (los filtros guardan los ultimos valores que se usaron)
+            $puntuadas = foreach ($d in $enc) {
+                $fecha = ""
+                try {
+                    $txt = (Invoke-RestMethod -Uri "$Server/raylight/v1/documents/$($d.id)/parameters" -Headers $h) | ConvertTo-Json -Depth 15
+                    $txt = [regex]::Replace($txt, '"updated":\s*"[^"]*"', '')   # fecha de refresco de listas: no cuenta
+                    $fecha = [regex]::Matches($txt, '\d{4}-\d{2}-\d{2}') | ForEach-Object { $_.Value } | Sort-Object -Descending | Select-Object -First 1
+                } catch {}
+                [pscustomobject]@{ doc = $d; fecha = "$fecha"; id = [int64]$d.id }
+            }
+            $elegida = $puntuadas | Sort-Object fecha, id -Descending | Select-Object -First 1
+            Log "AVISO: '$($inf.nombre)' tiene $($enc.Count) copias; uso la usada mas recientemente (id=$($elegida.id), ultima fecha $($elegida.fecha)). Candidatos:"
+            foreach ($x in $puntuadas) { Log "   id=$($x.id)   ultima fecha en filtros: $($x.fecha)" }
+            $enc = @($elegida.doc)
         }
         $cola += @{ id = "$($enc[0].id)"; nombre = $enc[0].name }
         $inf.id = $enc[0].id; $inf.nombre = $enc[0].name
