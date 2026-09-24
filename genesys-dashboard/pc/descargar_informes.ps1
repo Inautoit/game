@@ -196,7 +196,27 @@ function Procesar($id, $nombre) {
             Log "   ERROR: el informe sigue pidiendo filtros y NO se ha actualizado (los datos serian antiguos): $(Corto ($pendientes | ConvertTo-Json -Depth 6 -Compress))"
             return
         }
+        # Si BO no confirma la actualizacion ("success"), se fuerza: primero volviendo a enviar los
+        # filtros vacios y, si tampoco, pidiendo el estado "Refreshed" del documento.
+        $ok = { param($r) $r -and ($r.PSObject.Properties.Name -contains "success") }
+        if (-not (& $ok $resp)) {
+            Log "   BO no ha confirmado la actualizacion; se fuerza..."
+            try { $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body '{"parameters":{"parameter":[]}}' -TimeoutSec 1800 } catch {}
+            if (-not (& $ok $resp)) {
+                try { $resp = Invoke-RestMethod -Method Put -Uri $base -Headers $h -Body '{"document":{"state":"Refreshed"}}' -TimeoutSec 1800 }
+                catch { Log "   AVISO: no se pudo forzar la actualizacion: $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)")" }
+            }
+        }
         Log "   Actualizado en $([int]((Get-Date) - $t0).TotalSeconds) s. Respuesta: $(Corto ($resp | ConvertTo-Json -Depth 4 -Compress))"
+        # Comprobacion: fecha en la que BO actualizo por ultima vez cada consulta del informe
+        try {
+            foreach ($dp in @((Invoke-RestMethod -Uri "$base/dataproviders" -Headers $h).dataproviders.dataprovider | Where-Object { $_ })) {
+                $det = (Invoke-RestMethod -Uri "$base/dataproviders/$($dp.id)" -Headers $h).dataprovider
+                $cuando = try { ([datetime]$det.updated).ToLocalTime() } catch { $null }
+                $nota = if ($cuando -and $cuando.Date -ne (Get-Date).Date) { "   <-- AVISO: NO se ha actualizado hoy" } else { "" }
+                Log "   Consulta '$($dp.name)': actualizada $(if ($cuando) { $cuando.ToString('dd/MM HH:mm') } else { $det.updated }), $($det.rowCount) filas$nota"
+            }
+        } catch {}
 
         # 3. Descargar UN Excel con todas las pestanas (igual que a mano).
         #    Nombre fijo: cada ejecucion sustituye al anterior.
