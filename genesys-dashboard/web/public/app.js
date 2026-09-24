@@ -28,8 +28,6 @@
 // Skill) o registros en el Automarcador.
 
 const REFRESCO_MS = 60_000;
-// Codificaciones del automarcador que NO son contacto con el cliente
-const SIN_CONTACTO = new Set(["contestador", "ilocalizable", "ocupado", "no codificado"]);
 const $ = (s, r = document) => r.querySelector(s);
 
 // ----------------------------------------------------------------- utilidades
@@ -191,7 +189,7 @@ function procesar(paquete) {
             activo: 0, listo: 0, noListo: 0, occNum: 0, occDen: 0, entreLlamadas: 0, motivosEst: {},
             login: null, logout: null, conectado: false,
             auxLogin: 0, auxEspera: 0, auxEfectivo: 0, motivosAux: {}, pausasAux: 0,
-            autoReg: 0, autoContacto: 0, autoGestion: 0, autoCod: new Map(), autoLlamadas: 0, autoDur: 0, autoDial: 0 };
+            autoReg: 0, autoGestion: 0, autoCod: new Map(), autoLlamadas: 0, autoDur: 0, autoDial: 0 };
       gestores.set(id, a);
     }
     if (nombre && !a.nombre) a.nombre = nombreLimpio(nombre);
@@ -238,21 +236,20 @@ function procesar(paquete) {
   const codigos = new Map();          // codificación -> nº registros (todas las campañas)
   const autoFr = new Map();
   const campanaDeLlamada = new Map(); // CALL_ID -> campaña
-  let autoTotal = 0, autoContacto = 0, autoGestion = 0;
+  let autoTotal = 0, autoGestion = 0;
   const hReg = tabla(buscarHoja(inf.auto, /registos|registros/i));
   if (hReg.filas.length) {
     const c = indices(hReg, { call: "CALL_ID", id: ["EmployeID", "Employee ID"], info: "AGENT_INFO", camp: "NameCampaign", t: "Manage Time",
       ini: "Start_Timestamp (Date Time)", cod: "SD_BusinessCallResult", intento: "attempt" });
     for (const r of hReg.filas) {
       const cod = String(val(r, c.cod) ?? "").trim() || "(sin codificar)";
-      const contacto = !SIN_CONTACTO.has(norm(cod)) && cod !== "(sin codificar)";
       const t = nv(r, c.t);
-      autoTotal++; autoGestion += t; if (contacto) autoContacto++;
+      autoTotal++; autoGestion += t;
       sumar(codigos, cod, 1);
       const nomCamp = String(val(r, c.camp) ?? "(sin campaña)").trim();
       campanaDeLlamada.set(String(val(r, c.call) ?? ""), nomCamp);
-      const k = franjaDe(campanas, nomCamp, () => ({ nombre: nomCamp, reg: 0, contacto: 0, gestion: 0, intento2: 0, cod: new Map(), gestores: new Set(), llamadas: 0, dur: 0 }));
-      k.reg++; k.gestion += t; if (contacto) k.contacto++; if (nv(r, c.intento) > 1) k.intento2++;
+      const k = franjaDe(campanas, nomCamp, () => ({ nombre: nomCamp, reg: 0, gestion: 0, intento2: 0, cod: new Map(), gestores: new Set(), llamadas: 0, dur: 0 }));
+      k.reg++; k.gestion += t; if (nv(r, c.intento) > 1) k.intento2++;
       sumar(k.cod, cod, 1);
       const f = franjaDeHora(val(r, c.ini)); if (f) sumar(autoFr, f, 1);
       const info = String(val(r, c.info) ?? "");
@@ -260,7 +257,7 @@ function procesar(paquete) {
       if (!a) continue;
       a.servicio = true;
       k.gestores.add(a.id);
-      a.autoReg++; a.autoGestion += t; if (contacto) a.autoContacto++;
+      a.autoReg++; a.autoGestion += t;
       sumar(a.autoCod, cod, 1);
       const y = frG(a, f); if (y) y.auto++;
     }
@@ -329,12 +326,11 @@ function procesar(paquete) {
       pausas: a.pausasAux || pausasEst,
       motivos: Object.keys(a.motivosAux).length ? a.motivosAux : a.motivosEst,
       pEfectivo: div(a.auxEfectivo, a.auxLogin),
-      pContactoAuto: div(a.autoContacto, a.autoReg),
     };
   });
 
   return { inf, gestores: lista, queues, campanas: [...campanas.values()], codigos, autoFr,
-           autoTotal, autoContacto, autoGestion, autoLlamadas, autoDur };
+           autoTotal, autoGestion, autoLlamadas, autoDur };
 }
 
 // Totales de un gestor para la queue elegida ("" = todas sus queues) + derivados
@@ -451,7 +447,6 @@ function pintarKpis() {
     ]),
     bloque("Automarcador · todas las campañas", [
       kpi("Registros codificados", fmtN(d.autoTotal), `${fmtN(d.autoLlamadas)} llamadas`),
-      kpi("% contacto", fmtPct(div(d.autoContacto, d.autoTotal)), `${fmtN(d.autoContacto)} con contacto`, "Codificaciones distintas de Contestador, Ilocalizable, Ocupado y No Codificado"),
       kpi("T. medio gestión", fmtM(div(d.autoGestion, d.autoTotal)), `llamada media ${fmtM(div(d.autoDur, d.autoLlamadas))}`),
       kpi("Codificaciones", fmtN(d.codigos.size), cod),
     ]),
@@ -587,7 +582,7 @@ function columnasGestores(vista) {
       cT("dialT", "T. marcación"), cN("transfOut", "Transferencias")];
     case "auto": {
       const top = [...estado.datos.codigos].sort((a, b) => b[1] - a[1]).map(([c]) => c);
-      return [COL_GESTOR, cN("autoReg", "Registros"), cN("autoLlamadas", "Llamadas"), cP("pContactoAuto", "% contacto"),
+      return [COL_GESTOR, cN("autoReg", "Registros"), cN("autoLlamadas", "Llamadas"),
         { k: "gm", t: "T. medio gestión", orden: (a) => div(a.autoGestion, a.autoReg), f: (a) => fmtM(div(a.autoGestion, a.autoReg)) },
         { k: "lm", t: "Llamada media", orden: (a) => div(a.autoDur, a.autoLlamadas), f: (a) => fmtM(div(a.autoDur, a.autoLlamadas)) },
         ...top.map((c) => ({ k: "c:" + c, t: c, orden: (a) => a.autoCod.get(c) ?? 0, f: (a) => cero(a.autoCod.get(c) ?? 0, fmtN) }))];
@@ -601,7 +596,7 @@ function columnasGestores(vista) {
     default: return [COL_GESTOR, COL_ESTADO,
       { k: "login", t: "1ª conexión", f: (a) => fmtHora(a.login), orden: (a) => a.login ?? "" }, colQueues,
       cN("at", "Entrantes", "Atendidas"), cM("aht", "TMO ent."), cN("con", "Salientes", "Conectadas"), cM("ahtOut", "TMO sal."),
-      cN("autoReg", "Automarcador", "Registros codificados"), cP("pContactoAuto", "% contacto"),
+      cN("autoReg", "Automarcador", "Registros codificados"),
       cT("activo", "Conectado"), cP("occ", "Ocupación"), cT("pausas", "Pausas")];
   }
 }
@@ -676,7 +671,6 @@ function pintarCampanas() {
   pintarTabla("t-campanas", "campanas", [
     { k: "nombre", t: "Campaña", txt: true },
     cN("reg", "Registros"), cN("llamadas", "Llamadas"),
-    { k: "pc", t: "% contacto", orden: (k) => div(k.contacto, k.reg), f: (k) => fmtPct(div(k.contacto, k.reg)) },
     { k: "i2", t: "2º intento", orden: (k) => k.intento2, f: (k) => fmtN(k.intento2) },
     { k: "tm", t: "T. medio gestión", orden: (k) => div(k.gestion, k.reg), f: (k) => fmtM(div(k.gestion, k.reg)) },
     { k: "lm", t: "Llamada media", orden: (k) => div(k.dur, k.llamadas), f: (k) => fmtM(div(k.dur, k.llamadas)) },
@@ -687,7 +681,6 @@ function pintarCampanas() {
   pintarTabla("t-codif-gestor", "codif", [
     COL_GESTOR,
     { k: "autoReg", t: "Registros", celda: () => "celda total", f: (a) => fmtN(a.autoReg) },
-    { k: "pContactoAuto", t: "% contacto", celda: () => "celda", f: (a) => fmtPct(a.pContactoAuto) },
     ...cods.map(([c]) => ({ k: "c:" + c, t: c, cls: "skill", celda: () => "celda", orden: (a) => a.autoCod.get(c) ?? 0,
       estilo: (a) => calor(a.autoCod.get(c) ?? 0, max), f: (a) => (a.autoCod.get(c) ? fmtN(a.autoCod.get(c)) : "") })),
   ], gs, abrirDetalle);
@@ -725,7 +718,7 @@ function abrirDetalle(sel) {
       kpi("TMO", fmtM(t.ahtOut), `conv. ${fmtM(t.talkOutMed)} · ACW ${fmtM(t.acwOutMed)}`),
       kpi("Cortas < 3 s", fmtN(t.cortas), `${fmtN(t.transfOut)} transferencias`)]),
     bloque("Automarcador", [kpi("Registros", fmtN(a.autoReg), `${fmtN(a.autoLlamadas)} llamadas`),
-      kpi("% contacto", fmtPct(a.pContactoAuto), `gestión media ${fmtM(div(a.autoGestion, a.autoReg))}`)]),
+      kpi("T. medio gestión", fmtM(div(a.autoGestion, a.autoReg)), `llamada media ${fmtM(div(a.autoDur, a.autoLlamadas))}`)]),
     bloque("Tiempos", [kpi("Conectado", fmtT(a.activo), `en llamada ${fmtT(a.enLlamada)} · disponible ${fmtT(a.listo)}`),
       kpi("Ocupación", fmtPct(a.occ), `% efectivo ${fmtPct(a.pEfectivo)}`),
       kpi("Pausas", fmtT(a.pausas), esc(pausas))]),
@@ -783,14 +776,14 @@ function elegirSkill(s) {
 function descargarCsv() {
   const filas = gestoresFiltrados();
   const cab = ["ID", "Gestor", "Queue", "Estado", "Primera conexion", "Ofrecidas", "Atendidas", "TMO entrante (s)", "Hold medio (s)", "ACW medio (s)", "RONA",
-               "Marcadas", "Conectadas", "TMO saliente (s)", "Automarcador registros", "Automarcador % contacto", "Conectado (s)", "En llamada (s)",
+               "Marcadas", "Conectadas", "TMO saliente (s)", "Automarcador registros", "Conectado (s)", "En llamada (s)",
                "Disponible (s)", "No disponible (s)", "Pausas (s)", "Ocupacion", "% efectivo"];
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const r = (v) => (Number.isFinite(v) ? Math.round(v) : "");
   const p = (v) => (Number.isFinite(v) ? v.toFixed(3) : "");
   const lineas = filas.map((a) => [a.id, a.nombre, estado.skill ? etiqueta(estado.skill) : [...a.porSkill.keys()].map(etiqueta).join(", "),
     a.conectado ? "Conectado" : "Desconectado", a.login ?? "", a.of, a.at, r(a.aht), r(a.holdMed), r(a.acwMed), a.rona, a.marc, a.con, r(a.ahtOut),
-    a.autoReg, p(a.pContactoAuto), r(a.activo), r(a.enLlamada), r(a.listo), r(a.noListo), r(a.pausas), p(a.occ), p(a.pEfectivo)].map(q).join(";"));
+    a.autoReg, r(a.activo), r(a.enLlamada), r(a.listo), r(a.noListo), r(a.pausas), p(a.occ), p(a.pEfectivo)].map(q).join(";"));
   const blob = new Blob(["﻿" + [cab.map(q).join(";"), ...lineas].join("\r\n")], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   Object.assign(document.createElement("a"), { href: url, download: `gestores_${estado.skill ? etiqueta(estado.skill) : "todas"}_${hoyLocal()}.csv` }).click();
