@@ -34,7 +34,8 @@ $Informes = @(
     @{ nombre = "10.Agent_AUX";                  pestanas = @("AUX") },
     @{ nombre = "Agent State";                   pestanas = @("Agent States", "Login Time") },
     @{ nombre = "Agent Group + Skill - v2.3_06"; pestanas = @("INBOUND", "OUTBOUND") },
-    @{ nombre = "00.Servicio OP.Comerciales_6";  pestanas = @("LlamInbound", "TiemposInb", "TiemposOut", "Chat", "Email", "Callback", "Tareas") }
+    # contexto: el que eliges a mano en "Select a context" al actualizar (vacio = el que tenia guardado)
+    @{ nombre = "00.Servicio OP.Comerciales_6";  pestanas = @("LlamInbound", "TiemposInb", "TiemposOut", "Chat", "Email", "Callback", "Tareas"); contexto = "" }
 )
 # =========================
 
@@ -129,29 +130,72 @@ function Bajar($uri, $accept, $fichero) {
     } catch { Log "   NO  $([IO.Path]::GetFileName($fichero)) -> $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)")"; return $false }
 }
 
+# Contexto ("Select a context"): BO lo pregunta cuando la consulta puede ir por varios caminos.
+# Se usa el configurado en $Informes (contexto = "..."), si no el que tenia guardado, y si no el primero.
+function RespuestaContexto($p, $conf) {
+    $opciones = @($p.answer.info.lov.values.value | Where-Object { $_ } |
+        ForEach-Object { [pscustomobject]@{ id = "$($_.'@id')"; nombre = "$($_.'$')" } })
+    $previos = @(@($p.answer.values.value) + @($p.answer.info.previous.value) | Where-Object { $_ } |
+        ForEach-Object { if ($_ -is [string]) { $_ } else { "$($_.'@id')"; "$($_.'$')" } })
+    $elegido = $null
+    if ($conf -and $conf.contexto) { $elegido = $opciones | Where-Object { $_.nombre -like "*$($conf.contexto)*" -or $_.id -eq $conf.contexto } | Select-Object -First 1 }
+    if (-not $elegido) { $elegido = $opciones | Where-Object { $previos -contains $_.id -or $previos -contains $_.nombre } | Select-Object -First 1 }
+    if (-not $elegido) { $elegido = $opciones | Select-Object -First 1 }
+    Log "   Contexto '$($p.name)' = $($elegido.nombre)   (opciones: $(($opciones | ForEach-Object { $_.nombre }) -join ' | '))"
+    return $elegido
+}
+
 function Procesar($id, $nombre) {
     $base = "$Server/raylight/v1/documents/$id"
     Log "Empezando (id=$id)"
+    $conf = $Informes | Where-Object { "$($_.id)" -eq "$id" -or $_.nombre -eq $nombre } | Select-Object -First 1
     try {
-        # 1. Filtros
+        # 1. Filtros y actualizacion. Algunos informes piden los filtros por partes (p. ej. primero
+        #    el contexto y despues las fechas): se contesta y se vuelve a enviar hasta que no pida nada.
         $params = @((Invoke-RestMethod -Uri "$base/parameters" -Headers $h).parameters.parameter | Where-Object { $_ })
-        $lista = @()
-        foreach ($p in $params) {
-            if ($p.'@type' -ne 'prompt') { Log "   AVISO: filtro de tipo '$($p.'@type')' ('$($p.name)') sin responder"; continue }
-            $conf = $Informes | Where-Object { "$($_.id)" -eq "$id" } | Select-Object -First 1
-            if ($conf -and $conf.respuestas -and $conf.respuestas.ContainsKey("$($p.name)")) { $vals = @($conf.respuestas["$($p.name)"]) }
-            else { $vals = @(Respuesta $p) }
-            if ($vals.Count -eq 0) { Log "   AVISO: filtro '$($p.name)' sin valor" }
-            $antes = @($p.answer.values.value | Where-Object { $_ -ne $null }) -join ', '
-            Log "   Filtro '$($p.name)' = $(Corto ($vals -join ', '))   (antes: $(Corto $antes))"
-            $lista += @{ id = $p.id; answer = @{ values = @{ value = $vals } } }
-        }
         if ($params.Count -eq 0) { Log "   AVISO: este informe no pide filtros; si la fecha esta fija dentro de la consulta, no se puede cambiar desde aqui" }
-        # 2. Actualizar
         Log "   Actualizando..."
         $t0 = Get-Date
-        $cuerpo = if ($lista.Count -gt 0) { @{ parameters = @{ parameter = $lista } } | ConvertTo-Json -Depth 10 } else { '{"parameters":{"parameter":[]}}' }
-        $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body $cuerpo -TimeoutSec 1800
+        $contextoComoObjeto = $false
+        $pendientes = @()
+        for ($ronda = 1; $ronda -le 5; $ronda++) {
+            $lista = @()
+            foreach ($p in $params) {
+                if ($p.'@type' -eq 'context') {
+                    $ctx = RespuestaContexto $p $conf
+                    if ($ctx) {
+                        $v = if ($contextoComoObjeto) { @(@{ '@id' = $ctx.id }) } else { @($ctx.id) }
+                        $lista += @{ id = $p.id; answer = @{ values = @{ value = $v } } }
+                    }
+                    continue
+                }
+                if ($p.'@type' -ne 'prompt') { Log "   AVISO: filtro de tipo '$($p.'@type')' ('$($p.name)') sin responder"; continue }
+                if ($conf -and $conf.respuestas -and $conf.respuestas.ContainsKey("$($p.name)")) { $vals = @($conf.respuestas["$($p.name)"]) }
+                else { $vals = @(Respuesta $p) }
+                if ($vals.Count -eq 0) { Log "   AVISO: filtro '$($p.name)' sin valor" }
+                $antes = @($p.answer.values.value | Where-Object { $_ -ne $null }) -join ', '
+                Log "   Filtro '$($p.name)' = $(Corto ($vals -join ', '))   (antes: $(Corto $antes))"
+                $lista += @{ id = $p.id; answer = @{ values = @{ value = $vals } } }
+            }
+            $cuerpo = if ($lista.Count -gt 0) { @{ parameters = @{ parameter = $lista } } | ConvertTo-Json -Depth 10 } else { '{"parameters":{"parameter":[]}}' }
+            try {
+                $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body $cuerpo -TimeoutSec 1800
+            } catch {
+                # Si BO no acepta el contexto como texto, se reintenta con el formato {"@id": ...}
+                if (-not $contextoComoObjeto -and @($params | Where-Object { $_.'@type' -eq 'context' }).Count) {
+                    Log "   (reintento con otro formato de contexto)"; $contextoComoObjeto = $true; $ronda--; continue
+                }
+                throw
+            }
+            $pendientes = @($resp.parameters.parameter | Where-Object { $_ })
+            if ($pendientes.Count -eq 0) { break }
+            Log "   El informe pide mas filtros: $(($pendientes | ForEach-Object { $_.name }) -join ', ')"
+            $params = $pendientes
+        }
+        if ($pendientes.Count) {
+            Log "   ERROR: el informe sigue pidiendo filtros y NO se ha actualizado (los datos serian antiguos): $(Corto ($pendientes | ConvertTo-Json -Depth 6 -Compress))"
+            return
+        }
         Log "   Actualizado en $([int]((Get-Date) - $t0).TotalSeconds) s. Respuesta: $(Corto ($resp | ConvertTo-Json -Depth 4 -Compress))"
 
         # 3. Descargar UN Excel con todas las pestanas (igual que a mano).
