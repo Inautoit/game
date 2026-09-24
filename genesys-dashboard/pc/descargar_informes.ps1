@@ -35,7 +35,12 @@ $Informes = @(
     @{ nombre = "Agent State";                   pestanas = @("Agent States", "Login Time") },
     @{ nombre = "Agent Group + Skill - v2.3_06"; pestanas = @("INBOUND", "OUTBOUND") },
     # contexto: el que eliges a mano en "Select a context" al actualizar (vacio = el que tenia guardado)
-    @{ nombre = "00.Servicio OP.Comerciales_6";  pestanas = @("LlamInbound", "TiemposInb", "TiemposOut", "Chat", "Email", "Callback", "Tareas"); contexto = "" }
+    # OP.Comerciales: siempre "Today" (dia en curso)
+    @{ nombre = "00.Servicio OP.Comerciales_6";  pestanas = @("LlamInbound", "TiemposInb", "TiemposOut", "Chat", "Email", "Callback", "Tareas"); contexto = "";
+       respuestas = @{
+        "Pre-set Date Filter:" = @("Today"); "Pre-set Date Filter" = @("Today")
+        "Start Date:" = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z"); "Start Date" = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z")
+        "End Date:"   = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z"); "End Date"   = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z") } }
 )
 # =========================
 
@@ -151,79 +156,66 @@ function Procesar($id, $nombre) {
     $conf = $Informes | Where-Object { "$($_.id)" -eq "$id" -or $_.nombre -eq $nombre } | Select-Object -First 1
     try {
         # 1. Filtros y actualizacion. Algunos informes piden los filtros por partes (p. ej. primero
-        #    el contexto y despues las fechas): se contesta y se vuelve a enviar hasta que no pida nada.
-        $params = @((Invoke-RestMethod -Uri "$base/parameters" -Headers $h).parameters.parameter | Where-Object { $_ })
-        if ($params.Count -eq 0) { Log "   AVISO: este informe no pide filtros; si la fecha esta fija dentro de la consulta, no se puede cambiar desde aqui" }
+        #    el contexto y despues las fechas): se contesta y se vuelve a enviar hasta que BO confirme
+        #    la actualizacion ("success"). Como el formato del contexto varia segun la version de BO,
+        #    si uno no funciona se prueba el siguiente.
+        $params0 = @((Invoke-RestMethod -Uri "$base/parameters" -Headers $h).parameters.parameter | Where-Object { $_ })
+        if ($params0.Count -eq 0) { Log "   AVISO: este informe no pide filtros; si la fecha esta fija dentro de la consulta, no se puede cambiar desde aqui" }
         Log "   Actualizando..."
         $t0 = Get-Date
-        $contextoComoObjeto = $false
-        $pendientes = @()
-        for ($ronda = 1; $ronda -le 5; $ronda++) {
-            $lista = @()
-            foreach ($p in $params) {
-                if ($p.'@type' -eq 'context') {
-                    $ctx = RespuestaContexto $p $conf
-                    if ($ctx) {
-                        $v = if ($contextoComoObjeto) { @(@{ '@id' = $ctx.id }) } else { @($ctx.id) }
-                        $lista += @{ id = $p.id; answer = @{ values = @{ value = $v } } }
-                    }
-                    continue
-                }
-                if ($p.'@type' -ne 'prompt') { Log "   AVISO: filtro de tipo '$($p.'@type')' ('$($p.name)') sin responder"; continue }
-                if ($conf -and $conf.respuestas -and $conf.respuestas.ContainsKey("$($p.name)")) { $vals = @($conf.respuestas["$($p.name)"]) }
-                else { $vals = @(Respuesta $p) }
-                if ($vals.Count -eq 0) { Log "   AVISO: filtro '$($p.name)' sin valor" }
-                $antes = @($p.answer.values.value | Where-Object { $_ -ne $null }) -join ', '
-                Log "   Filtro '$($p.name)' = $(Corto ($vals -join ', '))   (antes: $(Corto $antes))"
-                $lista += @{ id = $p.id; answer = @{ values = @{ value = $vals } } }
-            }
-            $cuerpo = if ($lista.Count -gt 0) { @{ parameters = @{ parameter = $lista } } | ConvertTo-Json -Depth 10 } else { '{"parameters":{"parameter":[]}}' }
-            try {
-                $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body $cuerpo -TimeoutSec 1800
-            } catch {
-                # Si BO no acepta el contexto como texto, se reintenta con el formato {"@id": ...}
-                if (-not $contextoComoObjeto -and @($params | Where-Object { $_.'@type' -eq 'context' }).Count) {
-                    Log "   (reintento con otro formato de contexto)"; $contextoComoObjeto = $true; $ronda--; continue
-                }
-                throw
-            }
-            $pendientes = @($resp.parameters.parameter | Where-Object { $_ })
-            if ($pendientes.Count -eq 0) { break }
-            Log "   El informe pide mas filtros: $(($pendientes | ForEach-Object { $_.name }) -join ', ')"
-            $params = $pendientes
-        }
-        if ($pendientes.Count) {
-            Log "   ERROR: el informe sigue pidiendo filtros y NO se ha actualizado (los datos serian antiguos): $(Corto ($pendientes | ConvertTo-Json -Depth 6 -Compress))"
-            return
-        }
-        # Si BO no confirma la actualizacion ("success") -tipico de informes cuyo unico filtro es un
-        # contexto-, se prueban otras formas de contestar el contexto hasta que BO actualice.
         $ok = { param($r) $r -and ($r.PSObject.Properties.Name -contains "success") }
-        if (-not (& $ok $resp)) {
-            Log "   BO no ha confirmado la actualizacion; se prueban otras formas de enviar el contexto..."
-            $ctxParams = @((Invoke-RestMethod -Uri "$base/parameters" -Headers $h).parameters.parameter | Where-Object { $_.'@type' -eq 'context' })
-            $variantes = [ordered]@{
-                "eco completo" = { param($p, $c) $q = $p | ConvertTo-Json -Depth 20 | ConvertFrom-Json; $q.answer | Add-Member -Force values @{ value = @(@{ '@id' = $c.id; '$' = $c.nombre }) }; $q }
-                "objeto @id"   = { param($p, $c) @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $c.id }) } } } }
-                "objeto @id+$" = { param($p, $c) @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $c.id; '$' = $c.nombre }) } } } }
-                "nombre"       = { param($p, $c) @{ id = $p.id; answer = @{ values = @{ value = @($c.nombre) } } } }
-                "tipo context" = { param($p, $c) @{ id = $p.id; '@type' = 'context'; answer = @{ '@type' = 'Text'; values = @{ value = @($c.id) } } } }
+        $hayContexto = @($params0 | Where-Object { $_.'@type' -eq 'context' }).Count -gt 0
+        $formatos = if ($hayContexto) { @("texto", "objeto", "objeto+nombre", "eco") } else { @("texto") }
+        $resp = $null
+        foreach ($formato in $formatos) {
+            if ($formato -ne $formatos[0]) {
+                Log "   (se reintenta con el contexto en formato '$formato')"
+                try { Invoke-RestMethod -Method Put -Uri $base -Headers $h -Body '{"document":{"state":"Original"}}' | Out-Null } catch {}
             }
-            foreach ($nombreVar in $variantes.Keys) {
-                if (-not $ctxParams.Count) { break }
-                $lista = @(foreach ($p in $ctxParams) { $c = RespuestaContexto $p $conf; & $variantes[$nombreVar] $p $c })
-                $cuerpo = @{ parameters = @{ parameter = $lista } } | ConvertTo-Json -Depth 20
-                try {
-                    $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body $cuerpo -TimeoutSec 1800
-                    Log "   Variante '$nombreVar': $(Corto ($resp | ConvertTo-Json -Depth 3 -Compress))"
-                    if (& $ok $resp) { break }
-                    # si no pide nada mas, se lanza la actualizacion con los filtros vacios
-                    if (@($resp.parameters.parameter | Where-Object { $_ }).Count -eq 0) {
-                        $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body '{"parameters":{"parameter":[]}}' -TimeoutSec 1800
-                        if (& $ok $resp) { Log "   Variante '$nombreVar' + actualizar: OK"; break }
+            $params = $params0
+            for ($ronda = 1; $ronda -le 6; $ronda++) {
+                $lista = @()
+                foreach ($p in $params) {
+                    if ($p.'@type' -eq 'context') {
+                        $ctx = RespuestaContexto $p $conf
+                        if (-not $ctx) { continue }
+                        switch ($formato) {
+                            "objeto"        { $lista += @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $ctx.id }) } } } }
+                            "objeto+nombre" { $lista += @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $ctx.id; '$' = $ctx.nombre }) } } } }
+                            "eco"           { $q = $p | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+                                              $q.answer | Add-Member -Force -NotePropertyName values -NotePropertyValue @{ value = @(@{ '@id' = $ctx.id; '$' = $ctx.nombre }) }
+                                              $lista += $q }
+                            default         { $lista += @{ id = $p.id; answer = @{ values = @{ value = @($ctx.id) } } } }
+                        }
+                        continue
                     }
-                } catch { Log "   Variante '$nombreVar': $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)")" }
+                    if ($p.'@type' -ne 'prompt') { Log "   AVISO: filtro de tipo '$($p.'@type')' ('$($p.name)') sin responder"; continue }
+                    if ($conf -and $conf.respuestas -and $conf.respuestas.ContainsKey("$($p.name)".Trim())) { $vals = @($conf.respuestas["$($p.name)".Trim()]) }
+                    else { $vals = @(Respuesta $p) }
+                    if ($vals.Count -eq 0) { Log "   AVISO: filtro '$($p.name)' sin valor" }
+                    $antes = @($p.answer.values.value | Where-Object { $_ -ne $null }) -join ', '
+                    Log "   Filtro '$($p.name)' = $(Corto ($vals -join ', '))   (antes: $(Corto $antes))"
+                    $lista += @{ id = $p.id; answer = @{ values = @{ value = $vals } } }
+                }
+                $cuerpo = if ($lista.Count -gt 0) { @{ parameters = @{ parameter = $lista } } | ConvertTo-Json -Depth 20 } else { '{"parameters":{"parameter":[]}}' }
+                try { $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body $cuerpo -TimeoutSec 1800 }
+                catch { Log "   Formato '$formato': $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)")"; $resp = $null; break }
+                if (& $ok $resp) { break }
+                $params = @($resp.parameters.parameter | Where-Object { $_ })
+                if ($params.Count -eq 0) {
+                    # no pide nada mas pero tampoco ha confirmado: se lanza la actualizacion
+                    try { $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body '{"parameters":{"parameter":[]}}' -TimeoutSec 1800 } catch { $resp = $null; break }
+                    if (& $ok $resp) { break }
+                    $params = @($resp.parameters.parameter | Where-Object { $_ })
+                    if ($params.Count -eq 0) { break }
+                }
+                Log "   El informe pide: $(($params | ForEach-Object { $_.name }) -join ', ')"
             }
+            if (& $ok $resp) { break }
+        }
+        if (-not (& $ok $resp)) {
+            Log "   ERROR: BO no ha confirmado la actualizacion; este informe NO se descarga para no subir datos antiguos"
+            return
         }
         Log "   Actualizado en $([int]((Get-Date) - $t0).TotalSeconds) s. Respuesta: $(Corto ($resp | ConvertTo-Json -Depth 4 -Compress))"
         # Comprobacion: fecha en la que BO actualizo por ultima vez cada consulta del informe
