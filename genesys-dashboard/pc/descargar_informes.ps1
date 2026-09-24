@@ -55,11 +55,15 @@ $IdsFile  = Join-Path $Raiz "bo_ids_v2.json"   # ids ya encontrados (borralo par
 $Hoy      = (Get-Date).ToString("yyyy-MM-dd")
 $HoyISO   = "$($Hoy)T00:00:00.000Z"
 New-Item -ItemType Directory -Force -Path $Carpeta | Out-Null
-$Log = if ($WorkerId) { Join-Path $Carpeta "_parcial_$($WorkerId).txt" } else { Join-Path $Carpeta "resultado_$Sello.txt" }
+# Todos (principal e informes en paralelo) escriben en el mismo resultado, en directo
+$Log = Join-Path $Carpeta "resultado_$Sello.txt"
 
 function Log($t) {
     $t = if ($WorkerId) { "[$WorkerNombre] $t" } else { $t }
-    Write-Host $t; Add-Content -Path $Log -Value $t -Encoding UTF8
+    Write-Host $t
+    for ($i = 0; $i -lt 20; $i++) {   # varios procesos escriben a la vez: si esta ocupado, se reintenta
+        try { Add-Content -Path $Log -Value $t -Encoding UTF8 -ErrorAction Stop; break } catch { Start-Sleep -Milliseconds (50 + (Get-Random -Maximum 150)) }
+    }
 }
 function Corto($s) { $s = "$s"; if ($s.Length -gt 250) { $s.Substring(0, 250) + "..." } else { $s } }
 function Limpio($s) { ($s -replace '[\\/:*?"<>|]', '_').Trim() }
@@ -688,10 +692,5 @@ catch { Log "ERROR: $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)"
 finally {
     Salir
     $trabajos | Remove-Job -Force -ErrorAction SilentlyContinue
-    # Juntar los resultados parciales en el resultado final
-    foreach ($f in Get-ChildItem $Carpeta -Filter "_parcial_*.txt" -ErrorAction SilentlyContinue) {
-        Add-Content -Path $Log -Value ("`n" + (Get-Content $f.FullName -Raw)) -Encoding UTF8
-        Remove-Item $f.FullName -ErrorAction SilentlyContinue
-    }
     Log "`nFin: $(Get-Date). Duracion total: $([int]((Get-Date) - $inicio).TotalSeconds) s. Archivos en $Carpeta"
 }

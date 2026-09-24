@@ -2,10 +2,18 @@
 //
 //   POST /api/upload   el script del PC sube el paquete de informes (JSON comprimido con gzip).
 //                      Cabecera: Authorization: Bearer <UPLOAD_TOKEN>
-//   POST /api/login    { "clave": "..." } -> cookie de sesion si coincide con DASHBOARD_PASSWORD
+//   GET  /auth/login   inicio de sesion con Microsoft (Entra ID) -> redirige a Microsoft
+//   GET  /auth/callback vuelta de Microsoft: comprueba la cuenta corporativa y crea la sesion
+//   POST /api/login    { "clave": "..." } -> sesion con DASHBOARD_PASSWORD (solo si NO hay Microsoft configurado)
+//   GET  /api/sesion   { modo: "microsoft" | "clave", usuario }
 //   POST /api/logout   borra la cookie
 //   GET  /api/datos    devuelve el ultimo paquete (necesita sesion). Soporta ETag / 304.
 //   resto              ficheros estaticos de ./public
+//
+// Inicio de sesion con Microsoft: se activa al poner los secretos MS_TENANT_ID, MS_CLIENT_ID y
+// MS_CLIENT_SECRET (registro de aplicacion en Entra ID). Opcional: ALLOWED_DOMAINS (p. ej.
+// "verisure.es,verisure.com") y ALLOWED_EMAILS para limitar mas quien entra. Con Microsoft activo,
+// la clave compartida deja de funcionar.
 //
 // El paquete se guarda tal cual (ya comprimido) en KV: el Worker no lo descomprime ni lo
 // procesa, asi que apenas consume CPU. El navegador lo descomprime y calcula el dashboard.
@@ -46,12 +54,96 @@ function leerCookie(request, nombre) {
   return null;
 }
 
-async function sesionValida(request, env) {
+const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64urlTexto = (t) => b64url(enc.encode(t));
+const deB64url = (t) => new TextDecoder().decode(Uint8Array.from(atob(t.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
+const aleatorio = (n = 32) => b64url(crypto.getRandomValues(new Uint8Array(n)));
+const conMicrosoft = (env) => Boolean(env.MS_TENANT_ID && env.MS_CLIENT_ID && env.MS_CLIENT_SECRET);
+
+// Cookie de sesion: <caduca>.<usuario en base64url>.<firma HMAC>
+async function leerSesion(request, env) {
   const valor = leerCookie(request, "sesion");
-  if (!valor || !env.SESSION_SECRET) return false;
-  const [caduca, firma] = valor.split(".");
-  if (!caduca || !firma || Number(caduca) < Date.now()) return false;
-  return iguales(firma, await firmar(env.SESSION_SECRET, "sesion:" + caduca));
+  if (!valor || !env.SESSION_SECRET) return null;
+  const partes = valor.split(".");
+  if (partes.length !== 3) return null;
+  const [caduca, u, firma] = partes;
+  if (!caduca || Number(caduca) < Date.now()) return null;
+  let usuario;
+  try { usuario = deB64url(u); } catch { return null; }
+  if (!iguales(firma, await firmar(env.SESSION_SECRET, `sesion:${caduca}:${usuario}`))) return null;
+  // con Microsoft activo no valen las sesiones abiertas con la clave compartida
+  if (conMicrosoft(env) && !usuario.includes("@")) return null;
+  return usuario;
+}
+
+async function cookieSesion(env, usuario) {
+  const caduca = Date.now() + SESION_DIAS * 86400e3;
+  const valor = `${caduca}.${b64urlTexto(usuario)}.${await firmar(env.SESSION_SECRET, `sesion:${caduca}:${usuario}`)}`;
+  return `sesion=${valor}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESION_DIAS * 86400}`;
+}
+
+function permitido(env, correo) {
+  const c = correo.toLowerCase();
+  const lista = (x) => String(x || "").toLowerCase().split(/[\s,;]+/).filter(Boolean);
+  const correos = lista(env.ALLOWED_EMAILS), dominios = lista(env.ALLOWED_DOMAINS);
+  if (!correos.length && !dominios.length) return true; // basta con ser de la organizacion (tenant)
+  return correos.includes(c) || dominios.some((d) => c.endsWith("@" + d.replace(/^@/, "")));
+}
+
+function redirigir(destino, cookies = []) {
+  const h = new Headers({ Location: destino, "Cache-Control": "no-store" });
+  for (const c of cookies) h.append("Set-Cookie", c);
+  return new Response(null, { status: 302, headers: h });
+}
+const errorLogin = (msg) => redirigir("/?error=" + encodeURIComponent(msg), ["oauth=; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=0"]);
+
+async function msLogin(request, env) {
+  if (!conMicrosoft(env)) return redirigir("/");
+  const url = new URL(request.url);
+  const estado = aleatorio(), nonce = aleatorio(), verificador = aleatorio(48);
+  const reto = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(verificador))));
+  const datos = b64urlTexto(JSON.stringify({ estado, nonce, verificador, t: Date.now() }));
+  const cookie = `oauth=${datos}.${await firmar(env.SESSION_SECRET, "oauth:" + datos)}; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=600`;
+  const q = new URLSearchParams({
+    client_id: env.MS_CLIENT_ID, response_type: "code", response_mode: "query",
+    redirect_uri: url.origin + "/auth/callback", scope: "openid profile email",
+    state: estado, nonce, code_challenge: reto, code_challenge_method: "S256", prompt: "select_account",
+  });
+  return redirigir(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/authorize?${q}`, [cookie]);
+}
+
+async function msCallback(request, env) {
+  if (!conMicrosoft(env)) return redirigir("/");
+  const url = new URL(request.url);
+  if (url.searchParams.get("error")) return errorLogin(url.searchParams.get("error_description")?.split("\n")[0] || "Microsoft ha rechazado el inicio de sesión.");
+  const [datos, firma] = (leerCookie(request, "oauth") || "").split(".");
+  if (!datos || !firma || !iguales(firma, await firmar(env.SESSION_SECRET, "oauth:" + datos))) return errorLogin("La sesión de inicio ha caducado. Vuelve a intentarlo.");
+  const o = JSON.parse(deB64url(datos));
+  if (Date.now() - o.t > 600e3 || !iguales(url.searchParams.get("state") || "", o.estado)) return errorLogin("La sesión de inicio ha caducado. Vuelve a intentarlo.");
+
+  const r = await fetch(`https://login.microsoftonline.com/${env.MS_TENANT_ID}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: env.MS_CLIENT_ID, client_secret: env.MS_CLIENT_SECRET, grant_type: "authorization_code",
+      code: url.searchParams.get("code") || "", redirect_uri: url.origin + "/auth/callback", code_verifier: o.verificador,
+    }),
+  });
+  const tok = await r.json().catch(() => ({}));
+  if (!r.ok || !tok.id_token) return errorLogin("No se ha podido completar el inicio de sesión con Microsoft.");
+
+  // El id_token llega directamente de Microsoft por HTTPS con el secreto del cliente, asi que basta
+  // con comprobar que es para esta aplicacion, de esta organizacion, vigente y de este intento.
+  let c;
+  try { c = JSON.parse(deB64url(tok.id_token.split(".")[1])); } catch { return errorLogin("Respuesta de Microsoft no válida."); }
+  const ahora = Date.now() / 1000;
+  const tenantOk = /^[0-9a-f-]{36}$/i.test(env.MS_TENANT_ID) ? c.tid === env.MS_TENANT_ID : true;
+  if (c.aud !== env.MS_CLIENT_ID || !tenantOk || !(c.exp > ahora) || c.nonce !== o.nonce) return errorLogin("Respuesta de Microsoft no válida.");
+  const correo = String(c.email || c.preferred_username || c.upn || "").toLowerCase();
+  if (!correo.includes("@")) return errorLogin("Tu cuenta de Microsoft no tiene correo.");
+  if (!permitido(env, correo)) return errorLogin(`La cuenta ${correo} no tiene acceso a este dashboard.`);
+
+  return redirigir("/", [await cookieSesion(env, correo), "oauth=; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=0"]);
 }
 
 async function subir(request, env) {
@@ -69,21 +161,18 @@ async function subir(request, env) {
 }
 
 async function login(request, env) {
+  if (conMicrosoft(env)) return json({ error: "usa el inicio de sesión con Microsoft", modo: "microsoft" }, 403);
   let datos = {};
   try { datos = await request.json(); } catch {}
   if (!env.DASHBOARD_PASSWORD || !iguales(String(datos.clave ?? ""), env.DASHBOARD_PASSWORD)) {
     await new Promise((r) => setTimeout(r, 800)); // frena intentos a lo bruto
     return json({ error: "clave incorrecta" }, 401);
   }
-  const caduca = Date.now() + SESION_DIAS * 86400e3;
-  const valor = caduca + "." + (await firmar(env.SESSION_SECRET, "sesion:" + caduca));
-  return json({ ok: true }, 200, {
-    "Set-Cookie": `sesion=${valor}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESION_DIAS * 86400}`,
-  });
+  return json({ ok: true }, 200, { "Set-Cookie": await cookieSesion(env, "clave") });
 }
 
 async function datos(request, env) {
-  if (!(await sesionValida(request, env))) return json({ error: "sesion" }, 401);
+  if (!(await leerSesion(request, env))) return json({ error: "sesion", modo: conMicrosoft(env) ? "microsoft" : "clave" }, 401);
   const { value, metadata } = await env.DATA.getWithMetadata(CLAVE_KV, { type: "stream" });
   if (!value) return json({ error: "todavia no se ha subido ningun informe" }, 404);
 
@@ -111,9 +200,13 @@ export default {
     const ruta = url.pathname;
     try {
       if (ruta === "/api/upload" && request.method === "POST") return await subir(request, env);
+      if (ruta === "/auth/login" && request.method === "GET") return await msLogin(request, env);
+      if (ruta === "/auth/callback" && request.method === "GET") return await msCallback(request, env);
       if (ruta === "/api/login" && request.method === "POST") return await login(request, env);
+      if (ruta === "/api/sesion" && request.method === "GET")
+        return json({ modo: conMicrosoft(env) ? "microsoft" : "clave", usuario: await leerSesion(request, env) });
       if (ruta === "/api/logout" && request.method === "POST")
-        return json({ ok: true }, 200, { "Set-Cookie": "sesion=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0" });
+        return json({ ok: true }, 200, { "Set-Cookie": "sesion=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0" });
       if (ruta === "/api/datos" && request.method === "GET") return await datos(request, env);
       if (ruta.startsWith("/api/")) return json({ error: "no encontrado" }, 404);
       return env.ASSETS.fetch(request);

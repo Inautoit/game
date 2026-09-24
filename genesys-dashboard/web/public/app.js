@@ -798,6 +798,11 @@ async function cargar() {
     if (r.status === 404) { mostrarApp(); $("#subtitulo").textContent = "Todavía no se ha subido ningún informe desde el PC."; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     mostrarApp();
+    if (!estado.usuario) {
+      fetch("/api/sesion", { cache: "no-store" }).then((x) => x.json()).then((x) => {
+        estado.usuario = x.usuario; $("#usuario").textContent = x.usuario && x.usuario.includes("@") ? x.usuario : "";
+      }).catch(() => {});
+    }
     const etag = r.headers.get("ETag");
     if (etag && etag === estado.etag) { marcarRefresco(); return; }
     estado.paquete = await r.json();
@@ -810,7 +815,14 @@ async function cargar() {
   }
 }
 function marcarRefresco() { $("#refresco").textContent = "Comprobado " + new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); }
-function mostrarLogin() { $("#app").hidden = true; $("#login").hidden = false; $("#clave").focus(); }
+async function mostrarLogin() {
+  $("#app").hidden = true; $("#login").hidden = false;
+  let sesion = { modo: "clave" };
+  try { sesion = await (await fetch("/api/sesion", { cache: "no-store" })).json(); } catch {}
+  const ms = sesion.modo === "microsoft";
+  $("#login-ms").hidden = !ms; $("#form-login").hidden = ms;
+  if (!ms) $("#clave").focus();
+}
 function mostrarApp() { $("#login").hidden = true; $("#app").hidden = false; }
 
 // ----------------------------------------------------------------- eventos
@@ -820,7 +832,11 @@ $("#form-login").addEventListener("submit", async (e) => {
   const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clave: $("#clave").value }) });
   if (r.ok) { $("#clave").value = ""; cargar(); } else $("#login-error").textContent = "Clave incorrecta.";
 });
-$("#salir").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); estado.etag = null; mostrarLogin(); });
+$("#salir").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); estado.etag = null; estado.usuario = null; mostrarLogin(); });
+{ // error que devuelve el inicio de sesion con Microsoft (/?error=...)
+  const q = new URLSearchParams(location.search);
+  if (q.has("error")) { $("#login-error").textContent = q.get("error"); history.replaceState(null, "", "/"); }
+}
 $("#skill").addEventListener("change", (e) => estado.datos && elegirSkill(e.target.value));
 $("#buscar").addEventListener("input", () => estado.datos && pintarGestores());
 $("#solo-conectados").addEventListener("change", () => estado.datos && pintarGestores());
