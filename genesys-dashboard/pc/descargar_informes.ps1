@@ -1,4 +1,4 @@
-# =====================================================================
+﻿# =====================================================================
 #  Descarga automatica de informes de SAP BusinessObjects (Genesys)
 #  - Entra en BO, actualiza cada informe a fecha de HOY y lo descarga (Excel).
 #  - Los informes se actualizan EN PARALELO (ver $MaxParalelo).
@@ -165,28 +165,37 @@ function Procesar($id, $nombre) {
         $t0 = Get-Date
         $ok = { param($r) $r -and ($r.PSObject.Properties.Name -contains "success") }
         $hayContexto = @($params0 | Where-Object { $_.'@type' -eq 'context' }).Count -gt 0
-        $formatos = if ($hayContexto) { @("texto", "objeto", "objeto+nombre", "eco") } else { @("texto") }
+        # Intentos: formato del contexto + si en cada ronda se reenvian TODAS las respuestas ya dadas
+        # (BO rechaza con "Suspicious identifier(s)" si en la 2a ronda solo van los filtros nuevos).
+        $intentos = if ($hayContexto) {
+            @(@("objeto", $true), @("objeto+nombre", $true), @("eco", $true), @("texto", $true), @("objeto", $false))
+        } else { @(,@("texto", $true)) }
         $resp = $null
-        foreach ($formato in $formatos) {
-            if ($formato -ne $formatos[0]) {
-                Log "   (se reintenta con el contexto en formato '$formato')"
+        $primero = $true
+        foreach ($intento in $intentos) {
+            $formato = $intento[0]; $acumular = $intento[1]
+            if (-not $primero) {
+                Log "   (se reintenta: contexto '$formato', reenviar todo = $acumular)"
                 try { Invoke-RestMethod -Method Put -Uri $base -Headers $h -Body '{"document":{"state":"Original"}}' | Out-Null } catch {}
+                try { $params0 = @((Invoke-RestMethod -Uri "$base/parameters" -Headers $h).parameters.parameter | Where-Object { $_ }) } catch {}
             }
+            $primero = $false
             $params = $params0
+            $dadas = [ordered]@{}   # id -> respuesta ya enviada
             for ($ronda = 1; $ronda -le 6; $ronda++) {
-                $lista = @()
+                $nuevas = [ordered]@{}
                 foreach ($p in $params) {
                     if ($p.'@type' -eq 'context') {
                         $ctx = RespuestaContexto $p $conf
                         if (-not $ctx) { continue }
                         switch ($formato) {
-                            "objeto"        { $lista += @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $ctx.id }) } } } }
-                            "objeto+nombre" { $lista += @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $ctx.id; '$' = $ctx.nombre }) } } } }
-                            "eco"           { $q = $p | ConvertTo-Json -Depth 20 | ConvertFrom-Json
-                                              $q.answer | Add-Member -Force -NotePropertyName values -NotePropertyValue @{ value = @(@{ '@id' = $ctx.id; '$' = $ctx.nombre }) }
-                                              $lista += $q }
-                            default         { $lista += @{ id = $p.id; answer = @{ values = @{ value = @($ctx.id) } } } }
+                            "objeto"        { $r = @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $ctx.id }) } } } }
+                            "objeto+nombre" { $r = @{ id = $p.id; answer = @{ values = @{ value = @(@{ '@id' = $ctx.id; '$' = $ctx.nombre }) } } } }
+                            "eco"           { $r = $p | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+                                              $r.answer | Add-Member -Force -NotePropertyName values -NotePropertyValue @{ value = @(@{ '@id' = $ctx.id; '$' = $ctx.nombre }) } }
+                            default         { $r = @{ id = $p.id; answer = @{ values = @{ value = @($ctx.id) } } } }
                         }
+                        $nuevas["$($p.id)"] = $r
                         continue
                     }
                     if ($p.'@type' -ne 'prompt') { Log "   AVISO: filtro de tipo '$($p.'@type')' ('$($p.name)') sin responder"; continue }
@@ -195,11 +204,13 @@ function Procesar($id, $nombre) {
                     if ($vals.Count -eq 0) { Log "   AVISO: filtro '$($p.name)' sin valor" }
                     $antes = @($p.answer.values.value | Where-Object { $_ -ne $null }) -join ', '
                     Log "   Filtro '$($p.name)' = $(Corto ($vals -join ', '))   (antes: $(Corto $antes))"
-                    $lista += @{ id = $p.id; answer = @{ values = @{ value = $vals } } }
+                    $nuevas["$($p.id)"] = @{ id = $p.id; answer = @{ values = @{ value = $vals } } }
                 }
+                if ($acumular) { foreach ($k in $nuevas.Keys) { $dadas[$k] = $nuevas[$k] }; $lista = @($dadas.Values) }
+                else { $lista = @($nuevas.Values) }
                 $cuerpo = if ($lista.Count -gt 0) { @{ parameters = @{ parameter = $lista } } | ConvertTo-Json -Depth 20 } else { '{"parameters":{"parameter":[]}}' }
                 try { $resp = Invoke-RestMethod -Method Put -Uri "$base/parameters" -Headers $h -Body $cuerpo -TimeoutSec 1800 }
-                catch { Log "   Formato '$formato': $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)")"; $resp = $null; break }
+                catch { Log "   Intento '$formato': $(Corto "$($_.Exception.Message) $($_.ErrorDetails.Message)")"; $resp = $null; break }
                 if (& $ok $resp) { break }
                 $params = @($resp.parameters.parameter | Where-Object { $_ })
                 if ($params.Count -eq 0) {
@@ -208,6 +219,11 @@ function Procesar($id, $nombre) {
                     if (& $ok $resp) { break }
                     $params = @($resp.parameters.parameter | Where-Object { $_ })
                     if ($params.Count -eq 0) { break }
+                }
+                $ids = @($params | ForEach-Object { "$($_.id)" })
+                if (@($ids | Where-Object { -not $nuevas.Contains($_) }).Count -eq 0 -and $ronda -gt 1) {
+                    Log "   El informe vuelve a pedir lo mismo ($(($params | ForEach-Object { $_.name }) -join ', ')); se prueba otra forma"
+                    break
                 }
                 Log "   El informe pide: $(($params | ForEach-Object { $_.name }) -join ', ')"
             }
