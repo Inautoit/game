@@ -11,7 +11,18 @@ const CONFIG = {
   colasOut: ["RBE_Outbound_TMK"],   // skills de la cola outbound que cuentan (Service Outbound Call)
   campanasAuto: ["C_Vencimiento_Push_High", "C_OC_RBE_Auto"], // campañas del automarcador que cuentan; vacío = todas
   desde: null,                      // primer día de la competición "AAAA-MM-DD"; null = todos los guardados
+  // nombre corto de cada automarcador en pantalla
+  etiquetas: { C_Vencimiento_Push_High: "High", C_OC_RBE_Auto: "RBE Auto" },
 };
+const etq = (c) => CONFIG.etiquetas[c] ?? c;
+const vuelta = (n) => (n >= 3 ? "3+" : n >= 2 ? "2" : "1"); // columna "attempt" del automarcador
+const nuevoAuto = () => ({ reg: 0, llam: 0, dur: 0, gest: 0, cod: {}, v: {} });
+function sumarAuto(x, y) {
+  for (const k of ["reg", "llam", "dur", "gest"]) x[k] += y[k];
+  for (const [c, n] of Object.entries(y.cod)) sumar(x.cod, c, n);
+  for (const [c, n] of Object.entries(y.v)) sumar(x.v, c, n);
+  return x;
+}
 // ==========================================================
 
 const REFRESCO_MS = 60_000;
@@ -76,11 +87,11 @@ const buscarHoja = (inf, re) => inf?.hojas.find((h) => re.test(h.nombre));
 
 // La versión de la configuración forma parte de la clave de los resúmenes guardados: si se cambian
 // las colas o campañas, los días cerrados se recalculan con el nuevo criterio.
-const VERSION = "tmk1-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
+const VERSION = "tmk2-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
 
 // ----------------------------------------------------------------- resumen de un paquete (un día)
 const nuevoG = (nombre) => ({ n: nombre || "", marc: 0, con: 0, cortas: 0, tOut: 0, talk: 0, acw: 0,
-  reg: 0, llam: 0, dur: 0, gest: 0, cod: {}, camp: {} });
+  reg: 0, llam: 0, dur: 0, gest: 0, cod: {}, v: {}, camp: {} }); // camp: { campaña: nuevoAuto() }
 
 function resumir(paquete, conRegistro) {
   const auto = buscarInforme(paquete, /automarcador/i);
@@ -92,7 +103,7 @@ function resumir(paquete, conRegistro) {
     if (nombre && !a.n) a.n = nombreLimpio(nombre);
     return a;
   };
-  const F = (f) => (f ? (fr[f] ??= { marc: 0, con: 0, reg: 0 }) : null);
+  const F = (f) => (f ? (fr[f] ??= { marc: 0, con: 0, reg: 0, rc: {} }) : null);
   const registro = [], registroOut = [];
   let dia = "";
 
@@ -138,11 +149,12 @@ function resumir(paquete, conRegistro) {
       const cod = String(val(r, c.cod) ?? "").trim() || "(sin codificar)";
       const call = String(val(r, c.call) ?? "");
       const tieneLlamada = durDe.has(call), dur = durDe.get(call) ?? 0, t = nv(r, c.t);
-      a.reg++; a.gest += t; sumar(a.cod, cod, 1); sumar(a.camp, nomCamp, 1);
-      if (tieneLlamada) { a.llam++; a.dur += dur; }
-      const y = F(franjaDeHora(val(r, c.ini))); if (y) y.reg++;
-      const k = (camp[nomCamp] ??= { tipo: "auto", marc: 0, con: 0, reg: 0, llam: 0, dur: 0, gest: 0, gestores: {}, cod: {} });
-      k.reg++; k.gest += t; k.gestores[idLimpio(val(r, c.id))] = 1; sumar(k.cod, cod, 1);
+      const vu = vuelta(nv(r, c.intento));
+      const uno = { reg: 1, llam: tieneLlamada ? 1 : 0, dur: tieneLlamada ? dur : 0, gest: t, cod: { [cod]: 1 }, v: { [vu]: 1 } };
+      sumarAuto(a, uno); sumarAuto((a.camp[nomCamp] ??= nuevoAuto()), uno);
+      const y = F(franjaDeHora(val(r, c.ini))); if (y) { y.reg++; sumar(y.rc, nomCamp, 1); }
+      const k = (camp[nomCamp] ??= { tipo: "auto", marc: 0, con: 0, reg: 0, llam: 0, dur: 0, gest: 0, gestores: {}, cod: {}, v: {} });
+      k.reg++; k.gest += t; k.gestores[idLimpio(val(r, c.id))] = 1; sumar(k.cod, cod, 1); sumar(k.v, vu, 1);
       if (tieneLlamada) { k.llam++; k.dur += dur; }
       dia ||= d;
       if (conRegistro) registro.push({ hora: horaDe(val(r, c.ini)), id: idLimpio(val(r, c.id)), camp: nomCamp, cod,
@@ -157,17 +169,18 @@ function resumir(paquete, conRegistro) {
 function acumular(resumenes) {
   const G = {}, camp = {}, porDia = [];
   for (const r of resumenes) {
-    const t = { dia: r.dia, con: 0, marc: 0, reg: 0 };
+    const t = { dia: r.dia, con: 0, marc: 0, reg: 0, rc: {} };
     for (const [id, a] of Object.entries(r.G)) {
       const x = (G[id] ??= nuevoG(a.n));
       if (a.n && (!x.n || (!x.n.includes(",") && a.n.includes(",")))) x.n = a.n; // mejor "Apellidos, Nombre" (Genesys)
-      for (const k of ["marc", "con", "cortas", "tOut", "talk", "acw", "reg", "llam", "dur", "gest"]) x[k] += a[k];
-      for (const [c, n] of Object.entries(a.cod)) sumar(x.cod, c, n);
-      for (const [c, n] of Object.entries(a.camp)) sumar(x.camp, c, n);
+      for (const k of ["marc", "con", "cortas", "tOut", "talk", "acw"]) x[k] += a[k];
+      sumarAuto(x, a);
+      for (const [c, y] of Object.entries(a.camp)) { sumarAuto((x.camp[c] ??= nuevoAuto()), y); sumar(t.rc, c, y.reg); }
       t.con += a.con; t.marc += a.marc; t.reg += a.reg;
     }
     for (const [n, k] of Object.entries(r.camp)) {
-      const x = (camp[n] ??= { tipo: k.tipo, marc: 0, con: 0, reg: 0, llam: 0, dur: 0, gest: 0, gestores: 0, cod: {} });
+      const x = (camp[n] ??= { tipo: k.tipo, marc: 0, con: 0, reg: 0, llam: 0, dur: 0, gest: 0, gestores: 0, cod: {}, v: {} });
+      for (const [c, m] of Object.entries(k.v ?? {})) sumar(x.v, c, m);
       for (const q of ["marc", "con", "reg", "llam", "dur", "gest"]) x[q] += k[q];
       x.gestores = Math.max(x.gestores, k.gestores);
       for (const [c, m] of Object.entries(k.cod ?? {})) sumar(x.cod, c, m);
@@ -178,7 +191,7 @@ function acumular(resumenes) {
 }
 
 // ----------------------------------------------------------------- estado y carga
-const estado = { periodo: "hoy", hoy: null, etag: null, acum: null, cargandoAcum: false, dias: [], orden: { ranking: ["gestiones", -1], registro: ["hora", -1], out: ["f", -1], campanas: ["reg", -1] } };
+const estado = { auto: "", periodo: "hoy", hoy: null, etag: null, acum: null, cargandoAcum: false, dias: [], orden: { ranking: ["gestiones", -1], registro: ["hora", -1], out: ["f", -1], campanas: ["reg", -1] } };
 const graficos = {};
 
 async function cargar() {
@@ -247,9 +260,17 @@ function gestoresLista(G) {
   return Object.entries(G).map(([id, a]) => ({
     ...a, id, nombre: a.n || id,
     gestiones: a.con + a.reg,
+    ...Object.fromEntries(campanasVista().map((c) => ["r:" + c, a.camp[c]?.reg ?? 0])),
+    sel: estado.auto ? (a.camp[estado.auto] ?? nuevoAuto()) : a, // lo que se ve en las columnas del automarcador
     pCon: div(a.con, a.marc), tmo: div(a.tOut, a.con), talkMed: div(a.talk, a.con),
     llamMed: div(a.dur, a.llam), gestMed: div(a.gest, a.reg),
   }));
+}
+
+// automarcadores que salen en pantalla: los de la configuración, o los que haya en los datos
+function campanasVista() {
+  if (CONFIG.campanasAuto.length) return CONFIG.campanasAuto;
+  return Object.entries(datosVista().camp).filter(([, k]) => k.tipo === "auto").map(([n]) => n).sort();
 }
 
 function pintar() {
@@ -274,10 +295,15 @@ function pintar() {
       kpi("Conectadas", fmtN(t.con), `${fmtPct(div(t.con, t.marc))} de las marcadas · ${fmtN(t.cortas)} < 3 s`),
       kpi("TMO", fmtM(div(t.tOut, t.con)), `conversación media ${fmtM(div(t.talk, t.con))}`),
     ]),
-    bloque("Automarcador", [
-      kpi("Registros codificados", fmtN(t.reg), `${fmtN(t.llam)} con llamada`),
-      kpi("Llamada media", fmtM(div(t.dur, t.llam)), `gestión media ${fmtM(div(t.gest, t.reg))}`),
-    ]),
+    ...campanasVista().map((c) => {
+      const k = d.camp[c] ?? { reg: 0, llam: 0, dur: 0, gest: 0, cod: {}, v: {} };
+      const top = Object.entries(k.cod).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([x, n]) => `${esc(x)} ${fmtN(n)}`).join(" · ");
+      return bloque(`Automarcador ${etq(c)}`, [
+        kpi("Registros", fmtN(k.reg), `1ª vuelta ${fmtN(k.v["1"] ?? 0)} · 2ª ${fmtN(k.v["2"] ?? 0)}${k.v["3+"] ? ` · 3ª+ ${fmtN(k.v["3+"])}` : ""}`, `Campaña ${c}. Vuelta = columna attempt`),
+        kpi("Llamadas", fmtN(k.llam), `media ${fmtM(div(k.dur, k.llam))} · gestión ${fmtM(div(k.gest, k.reg))}`),
+        kpi("Codificaciones", fmtN(Object.keys(k.cod).length), top || "–"),
+      ]);
+    }),
     bloque("Competición", [
       kpi("Gestores", fmtN(lista.length), "con actividad en la cola o el automarcador"),
       kpi("Gestiones", fmtN(t.con + t.reg), "conectadas TMK + registros automarcador"),
@@ -290,31 +316,36 @@ function pintar() {
   const medallas = ["1º", "2º", "3º"];
   $("#podio").innerHTML = top.slice(0, 3).map((a, i) =>
     `<li class="puesto p${i + 1}"><span class="medalla" aria-hidden="true">${medallas[i]}</span><div><div class="nombre">${esc(a.nombre)}</div>` +
-    `<div class="muted pequeno">${fmtN(a.gestiones)} gestiones · ${fmtN(a.con)} conectadas TMK · ${fmtN(a.reg)} registros</div></div></li>`).join("")
+    `<div class="muted pequeno">${fmtN(a.gestiones)} gestiones · ${fmtN(a.con)} conectadas TMK${campanasVista().map((c) => (a["r:" + c] ? ` · ${fmtN(a["r:" + c])} ${esc(etq(c))}` : "")).join("")}</div></div></li>`).join("")
     || `<li class="muted">Todavía sin actividad.</li>`;
 
-  // Gráficos
+  // Gráficos: cola TMK y cada automarcador por separado
+  const cs = campanasVista();
+  const color = (i) => ["--c-oscuro", "--c-gris"][i] ?? "--c-gris";
   if (acum && d.porDia) {
     $("#g-evol-tit").textContent = "Actividad por día";
     grafico("g-evol", "bar", d.porDia.map((x) => fmtFecha(x.dia)), [
       { label: "Conectadas TMK", data: d.porDia.map((x) => x.con), color: "--c-marca" },
-      { label: "Registros automarcador", data: d.porDia.map((x) => x.reg), color: "--c-oscuro" },
+      ...cs.map((c, i) => ({ label: `Registros ${etq(c)}`, data: d.porDia.map((x) => x.rc?.[c] ?? 0), color: color(i) })),
     ]);
   } else {
     $("#g-evol-tit").textContent = "Actividad por franja";
     const fs = Object.keys(d.fr ?? {}).sort();
     grafico("g-evol", "bar", fs, [
       { label: "Conectadas TMK", data: fs.map((f) => d.fr[f].con), color: "--c-marca" },
-      { label: "Registros automarcador", data: fs.map((f) => d.fr[f].reg), color: "--c-oscuro" },
+      ...cs.map((c, i) => ({ label: `Registros ${etq(c)}`, data: fs.map((f) => d.fr[f].rc?.[c] ?? 0), color: color(i) })),
     ]);
   }
   const t10 = top.slice(0, 10);
-  $("#g-top-sub").textContent = "Gestiones de cada gestor, separadas en cola TMK y automarcador";
+  $("#g-top-sub").textContent = "Gestiones de cada gestor: cola TMK y cada automarcador";
   grafico("g-top", "bar", t10.map((a) => a.nombre), [
     { label: "Conectadas TMK", data: t10.map((a) => a.con), color: "--c-marca" },
-    { label: "Registros automarcador", data: t10.map((a) => a.reg), color: "--c-oscuro" },
+    ...cs.map((c, i) => ({ label: `Registros ${etq(c)}`, data: t10.map((a) => a["r:" + c]), color: color(i) })),
   ], { horizontal: true, apilado: true });
 
+  const sel = $("#auto-sel");
+  const opciones = `<option value="">Los dos automarcadores</option>` + cs.map((c) => `<option value="${esc(c)}">${esc(etq(c))} (${esc(c)})</option>`).join("");
+  if (sel.dataset.o !== opciones) { sel.innerHTML = opciones; sel.dataset.o = opciones; sel.value = estado.auto; }
   pintarRanking(lista, top);
   pintarRegistro();
   pintarCampanas(d.camp);
@@ -374,7 +405,10 @@ let columnasRanking = [];
 function pintarRanking(lista, top) {
   const puesto = new Map(top.map((a, i) => [a.id, i + 1]));
   const codigos = {};
-  for (const a of lista) for (const [c, n] of Object.entries(a.cod)) sumar(codigos, c, n);
+  for (const a of lista) for (const [c, n] of Object.entries(a.sel.cod)) sumar(codigos, c, n);
+  const cs = campanasVista();
+  const nomAuto = estado.auto ? etq(estado.auto) : "auto";
+  const cA = (k, t, f, ayuda) => ({ k: "a:" + k, t, ayuda, orden: (a) => f(a.sel), f: (a) => { const v = f(a.sel); return k.startsWith("m") ? fmtM(v) : cero(v, fmtN); } });
   const cods = Object.entries(codigos).sort((a, b) => b[1] - a[1]).map(([c]) => c);
   columnasRanking = [
     { k: "puesto", t: "#", orden: (a) => -puesto.get(a.id), f: (a) => `<b>${puesto.get(a.id)}</b>` },
@@ -382,8 +416,12 @@ function pintarRanking(lista, top) {
     cN("gestiones", "Gestiones", "Conectadas TMK + registros automarcador"),
     cN("marc", "Marcadas TMK", "NDialing en la cola TMK outbound"), cN("con", "Conectadas TMK", "NOutbound en la cola TMK outbound"),
     cP("pCon", "% conexión", "Conectadas / marcadas"), cM("tmo", "TMO TMK", "Tiempo total outbound / conectadas"), cT("talk", "Conversación TMK"),
-    cN("reg", "Registros auto", "Registros codificados en el automarcador"), cN("llam", "Llamadas auto"), cM("llamMed", "Llamada media auto"),
-    ...cods.map((c) => ({ k: "c:" + c, t: c, ayuda: `Registros codificados como ${c}`, orden: (a) => a.cod[c] ?? 0, f: (a) => cero(a.cod[c] ?? 0, fmtN) })),
+    ...(estado.auto ? [] : cs.map((c) => cN("r:" + c, `Reg. ${etq(c)}`, `Registros codificados en ${c}`))),
+    cA("reg", `Registros ${nomAuto}`, (x) => x.reg, "Registros codificados"),
+    cA("v1", "1ª vuelta", (x) => x.v["1"] ?? 0, "Registros con attempt = 1"), cA("v2", "2ª vuelta", (x) => x.v["2"] ?? 0, "Registros con attempt = 2"),
+    cA("v3", "3ª+ vuelta", (x) => x.v["3+"] ?? 0, "Registros con attempt 3 o más"),
+    cA("llam", `Llamadas ${nomAuto}`, (x) => x.llam), cA("mLlam", "Llamada media", (x) => div(x.dur, x.llam)),
+    ...cods.map((c) => ({ k: "c:" + c, t: c, ayuda: `Registros codificados como ${c}`, orden: (a) => a.sel.cod[c] ?? 0, f: (a) => cero(a.sel.cod[c] ?? 0, fmtN) })),
   ];
   const q = norm($("#buscar").value);
   const filas = lista.filter((a) => !q || norm(a.nombre).includes(q) || a.id.includes(q));
@@ -416,11 +454,14 @@ function pintarRegistro() {
 }
 
 function pintarCampanas(camp) {
-  const filas = Object.entries(camp).map(([n, k]) => ({ ...k, nombre: n, tipoTxt: k.tipo === "cola" ? "Cola outbound" : "Automarcador",
+  const filas = Object.entries(camp).map(([n, k]) => ({ ...k, nombre: k.tipo === "auto" ? `${n} (${etq(n)})` : n, tipoTxt: k.tipo === "cola" ? "Cola outbound" : "Automarcador",
     llamMed: div(k.dur, k.llam), gestMed: div(k.gest, k.reg) }));
   pintarTabla("t-campanas", "campanas", [
     { k: "nombre", t: "Campaña / cola", txt: true }, { k: "tipoTxt", t: "Origen", txt: true },
     cN("marc", "Marcadas"), cN("con", "Conectadas"), cN("reg", "Registros"), cN("llam", "Llamadas"),
+    { k: "v1", t: "1ª vuelta", orden: (k) => k.v?.["1"] ?? 0, f: (k) => (k.tipo === "auto" ? cero(k.v["1"] ?? 0, fmtN) : "") },
+    { k: "v2", t: "2ª vuelta", orden: (k) => k.v?.["2"] ?? 0, f: (k) => (k.tipo === "auto" ? cero(k.v["2"] ?? 0, fmtN) : "") },
+    { k: "v3", t: "3ª+ vuelta", orden: (k) => k.v?.["3+"] ?? 0, f: (k) => (k.tipo === "auto" ? cero(k.v["3+"] ?? 0, fmtN) : "") },
     cM("llamMed", "Llamada media"), cM("gestMed", "T. medio gestión"), cN("gestores", "Gestores", "Gestores distintos (en el acumulado: el máximo de un día)"),
   ], filas);
 }
@@ -457,6 +498,7 @@ document.querySelectorAll('input[name="periodo"]').forEach((r) => r.addEventList
   if (estado.periodo === "acum" && !estado.acum) { await cargarAcumulado(); pintar(); }
 }));
 $("#buscar").addEventListener("input", () => estado.hoy && pintar());
+$("#auto-sel").addEventListener("change", (e) => { estado.auto = e.target.value; estado.hoy && pintar(); });
 $("#buscar-r").addEventListener("input", () => estado.hoy && pintarRegistro());
 $("#csv").addEventListener("click", () => {
   if (!estado.filasRanking) return;
