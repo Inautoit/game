@@ -239,3 +239,15 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .segmentado { flex-wrap: wrap; }
 .valor-malo { color: var(--critical-text); }
 @media (max-width: 800px) { .dos-columnas { grid-template-columns: 1fr; } }
+
+/* ---- competición TMK ---- */
+.titulo-sec { margin: 0 0 2px; font-size: 16px; }
+.podio { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.podio .puesto { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--c-gris); }
+.podio .p1 { border-left-color: var(--marca); }
+.podio .p2 { border-left-color: var(--c-oscuro); }
+.podio .medalla { font-size: 22px; font-weight: 800; min-width: 2.2em; color: var(--text-primary); }
+.podio .p1 .medalla { color: var(--marca); }
+a.boton-barra { text-decoration: none; display: inline-flex; align-items: center; color: #fff; border-radius: 8px; font-size: 14px; }
+.barra-acciones { flex-wrap: wrap; }

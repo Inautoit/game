@@ -8,6 +8,10 @@
 //   GET  /api/sesion   { modo: "microsoft" | "clave", usuario }
 //   POST /api/logout   borra la cookie
 //   GET  /api/datos    devuelve el ultimo paquete (necesita sesion). Soporta ETag / 304.
+//                      ?dia=AAAA-MM-DD  el ultimo paquete de ese dia (se guarda uno por dia)
+//   GET  /api/dias     dias guardados
+//   GET/PUT /api/resumen?clave=...  resumenes pequenos que calcula el navegador (p. ej. de la
+//                      competicion TMK) para no volver a descargar dias ya cerrados
 //   resto              ficheros estaticos de ./public
 //
 // Inicio de sesion con Microsoft: se activa al poner los secretos MS_TENANT_ID, MS_CLIENT_ID y
@@ -102,7 +106,9 @@ async function msLogin(request, env) {
   const url = new URL(request.url);
   const estado = aleatorio(), nonce = aleatorio(), verificador = aleatorio(48);
   const reto = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(verificador))));
-  const datos = b64urlTexto(JSON.stringify({ estado, nonce, verificador, t: Date.now() }));
+  const v = url.searchParams.get("volver") || "/";
+  const volver = /^\/[a-z0-9_-]*$/i.test(v) ? v : "/"; // solo rutas de esta web
+  const datos = b64urlTexto(JSON.stringify({ estado, nonce, verificador, volver, t: Date.now() }));
   const cookie = `oauth=${datos}.${await firmar(env.SESSION_SECRET, "oauth:" + datos)}; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=600`;
   const q = new URLSearchParams({
     client_id: env.MS_CLIENT_ID, response_type: "code", response_mode: "query",
@@ -143,7 +149,7 @@ async function msCallback(request, env) {
   if (!correo.includes("@")) return errorLogin("Tu cuenta de Microsoft no tiene correo.");
   if (!permitido(env, correo)) return errorLogin(`La cuenta ${correo} no tiene acceso a este dashboard.`);
 
-  return redirigir("/", [await cookieSesion(env, correo), "oauth=; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=0"]);
+  return redirigir(o.volver || "/", [await cookieSesion(env, correo), "oauth=; Path=/auth; HttpOnly; Secure; SameSite=Lax; Max-Age=0"]);
 }
 
 async function subir(request, env) {
@@ -157,7 +163,41 @@ async function subir(request, env) {
 
   const subido = new Date().toISOString();
   await env.DATA.put(CLAVE_KV, cuerpo, { metadata: { subido, bytes: cuerpo.byteLength } });
+  // copia del dia: la ultima subida de cada dia queda guardada (historico para la competicion)
+  await env.DATA.put("dia:" + diaMadrid(), cuerpo, { metadata: { subido, bytes: cuerpo.byteLength } });
   return json({ ok: true, subido, bytes: cuerpo.byteLength });
+}
+
+function diaMadrid(fecha = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(fecha);
+}
+
+async function dias(request, env) {
+  if (!(await leerSesion(request, env))) return json({ error: "sesion" }, 401);
+  const lista = [];
+  let cursor;
+  do {
+    const r = await env.DATA.list({ prefix: "dia:", cursor });
+    for (const k of r.keys) lista.push({ dia: k.name.slice(4), subido: k.metadata?.subido ?? null });
+    cursor = r.list_complete ? null : r.cursor;
+  } while (cursor);
+  return json({ hoy: diaMadrid(), dias: lista.sort((a, b) => a.dia.localeCompare(b.dia)) });
+}
+
+async function resumen(request, env) {
+  if (!(await leerSesion(request, env))) return json({ error: "sesion" }, 401);
+  const clave = new URL(request.url).searchParams.get("clave") || "";
+  if (!/^[a-z0-9_.:-]{3,80}$/i.test(clave)) return json({ error: "clave no valida" }, 400);
+  if (request.method === "PUT") {
+    const cuerpo = await request.text();
+    if (cuerpo.length > 2 * 1024 * 1024) return json({ error: "demasiado grande" }, 413);
+    try { JSON.parse(cuerpo); } catch { return json({ error: "no es JSON" }, 400); }
+    await env.DATA.put("res:" + clave, cuerpo);
+    return json({ ok: true });
+  }
+  const v = await env.DATA.get("res:" + clave);
+  return v ? new Response(v, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "private, no-cache" } })
+           : json({ error: "no existe" }, 404);
 }
 
 async function login(request, env) {
@@ -174,7 +214,10 @@ async function login(request, env) {
 async function datos(request, env) {
   if (!(await leerSesion(request, env))) return json({ error: "sesion", modo: conMicrosoft(env) ? "microsoft" : "clave" }, 401);
   // ?p=verificacion: paquete aparte con un dia cerrado, para comprobar cifras (no lo toca el PC)
-  const clave = new URL(request.url).searchParams.get("p") === "verificacion" ? "verificacion" : CLAVE_KV;
+  const q = new URL(request.url).searchParams;
+  const dia = q.get("dia");
+  if (dia && !/^\d{4}-\d{2}-\d{2}$/.test(dia)) return json({ error: "dia no valido" }, 400);
+  const clave = q.get("p") === "verificacion" ? "verificacion" : dia ? "dia:" + dia : CLAVE_KV;
   const { value, metadata } = await env.DATA.getWithMetadata(clave, { type: "stream" });
   if (!value) return json({ error: "todavia no se ha subido ningun informe" }, 404);
 
@@ -210,6 +253,8 @@ export default {
       if (ruta === "/api/logout" && request.method === "POST")
         return json({ ok: true }, 200, { "Set-Cookie": "sesion=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0" });
       if (ruta === "/api/datos" && request.method === "GET") return await datos(request, env);
+      if (ruta === "/api/dias" && request.method === "GET") return await dias(request, env);
+      if (ruta === "/api/resumen" && (request.method === "GET" || request.method === "PUT")) return await resumen(request, env);
       if (ruta.startsWith("/api/")) return json({ error: "no encontrado" }, 404);
       return env.ASSETS.fetch(request);
     } catch (e) {
