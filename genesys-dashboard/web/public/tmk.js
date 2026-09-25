@@ -11,6 +11,8 @@ const CONFIG = {
   colasOut: ["RBE_Outbound_TMK"],   // skills de la cola outbound que cuentan (Service Outbound Call)
   campanasAuto: ["C_Vencimiento_Push_High", "C_OC_RBE_Auto"], // campañas del automarcador que cuentan; vacío = todas
   desde: null,                      // primer día de la competición "AAAA-MM-DD"; null = todos los guardados
+  objetivoDia: null,                // objetivo de gestiones por día (número) o null
+  inicio: "09:00", fin: "22:00",    // jornada, para la proyección cuando no hay día anterior con el que comparar
   // nombre corto de cada automarcador en pantalla
   etiquetas: { C_Vencimiento_Push_High: "High", C_OC_RBE_Auto: "RBE Auto" },
 };
@@ -191,7 +193,7 @@ function acumular(resumenes) {
 }
 
 // ----------------------------------------------------------------- estado y carga
-const estado = { auto: "", periodo: "hoy", hoy: null, etag: null, acum: null, cargandoAcum: false, dias: [], orden: { ranking: ["gestiones", -1], registro: ["hora", -1], out: ["f", -1], campanas: ["reg", -1] } };
+const estado = { ayer: null, auto: "", periodo: "hoy", hoy: null, etag: null, acum: null, cargandoAcum: false, dias: [], orden: { ranking: ["gestiones", -1], registro: ["hora", -1], out: ["f", -1], campanas: ["reg", -1] } };
 const graficos = {};
 
 async function cargar() {
@@ -209,7 +211,9 @@ async function cargar() {
       estado.acum = null; // se recalcula con el nuevo "hoy"
     }
     if (estado.periodo === "acum" && !estado.acum) await cargarAcumulado();
+    if (!estado.ayer) await cargarAyer();
     pintar();
+    if (!estado.acum && !estado.cargandoAcum) cargarAcumulado().then(pintar).catch(() => {}); // para el marcador
     $("#refresco").textContent = "Comprobado " + new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
   } catch (e) {
     $("#refresco").textContent = "Error al actualizar: " + e.message + " (se reintenta en 1 min)";
@@ -227,6 +231,16 @@ async function resumenDia(dia) {
   delete res.registro; delete res.registroOut;
   fetch("/api/resumen?clave=" + encodeURIComponent(clave), { method: "PUT", body: JSON.stringify(res) }).catch(() => {});
   return res;
+}
+
+// Día anterior con datos (para comparar "a la misma hora")
+async function cargarAyer() {
+  try {
+    const l = await (await fetch("/api/dias", { cache: "no-cache" })).json();
+    const hoyDia = estado.hoy?.dia || l.hoy;
+    const ant = l.dias.map((d) => d.dia).filter((d) => d < hoyDia).at(-1);
+    if (ant) estado.ayer = (await resumenDia(ant)) ?? false; else estado.ayer = false;
+  } catch { estado.ayer = null; }
 }
 
 async function cargarAcumulado() {
@@ -292,7 +306,7 @@ function pintar() {
   $("#kpis").innerHTML = [
     bloque("Cola TMK outbound", [
       kpi("Marcadas", fmtN(t.marc)),
-      kpi("Conectadas", fmtN(t.con), `${fmtPct(div(t.con, t.marc))} de las marcadas · ${fmtN(t.cortas)} < 3 s`),
+      kpi("Llamadas", fmtN(t.con), `${fmtPct(div(t.con, t.marc))} de las marcadas · ${fmtN(t.cortas)} < 3 s`, "N Outbound (Ind_Agent_016): llamadas salientes establecidas desde el puesto del gestor"),
       kpi("TMO", fmtM(div(t.tOut, t.con)), `conversación media ${fmtM(div(t.talk, t.con))}`),
     ]),
     ...campanasVista().map((c) => {
@@ -306,17 +320,19 @@ function pintar() {
     }),
     bloque("Competición", [
       kpi("Gestores", fmtN(lista.length), "con actividad en la cola o el automarcador"),
-      kpi("Gestiones", fmtN(t.con + t.reg), "conectadas TMK + registros automarcador"),
+      kpi("Gestiones", fmtN(t.con + t.reg), "llamadas TMK + registros automarcador"),
     ]),
   ].join("");
 
+  pintarMarcador(lista, t, d);
+
   // Ranking y podio
-  $("#criterio").textContent = "Ordenado por gestiones = conectadas de la cola TMK + registros codificados del automarcador. Pulsa una columna para ordenar por otra medida.";
+  $("#criterio").textContent = "Ordenado por gestiones = llamadas de la cola TMK + registros codificados del automarcador. Pulsa una columna para ordenar por otra medida.";
   const top = [...lista].sort((a, b) => b.gestiones - a.gestiones || b.con - a.con);
   const medallas = ["1º", "2º", "3º"];
   $("#podio").innerHTML = top.slice(0, 3).map((a, i) =>
     `<li class="puesto p${i + 1}"><span class="medalla" aria-hidden="true">${medallas[i]}</span><div><div class="nombre">${esc(a.nombre)}</div>` +
-    `<div class="muted pequeno">${fmtN(a.gestiones)} gestiones · ${fmtN(a.con)} conectadas TMK${campanasVista().map((c) => (a["r:" + c] ? ` · ${fmtN(a["r:" + c])} ${esc(etq(c))}` : "")).join("")}</div></div></li>`).join("")
+    `<div class="muted pequeno">${fmtN(a.gestiones)} gestiones · ${fmtN(a.con)} llamadas TMK${campanasVista().map((c) => (a["r:" + c] ? ` · ${fmtN(a["r:" + c])} ${esc(etq(c))}` : "")).join("")}</div></div></li>`).join("")
     || `<li class="muted">Todavía sin actividad.</li>`;
 
   // Gráficos: cola TMK y cada automarcador por separado
@@ -325,21 +341,21 @@ function pintar() {
   if (acum && d.porDia) {
     $("#g-evol-tit").textContent = "Actividad por día";
     grafico("g-evol", "bar", d.porDia.map((x) => fmtFecha(x.dia)), [
-      { label: "Conectadas TMK", data: d.porDia.map((x) => x.con), color: "--c-marca" },
+      { label: "Llamadas TMK", data: d.porDia.map((x) => x.con), color: "--c-marca" },
       ...cs.map((c, i) => ({ label: `Registros ${etq(c)}`, data: d.porDia.map((x) => x.rc?.[c] ?? 0), color: color(i) })),
     ]);
   } else {
     $("#g-evol-tit").textContent = "Actividad por franja";
     const fs = Object.keys(d.fr ?? {}).sort();
     grafico("g-evol", "bar", fs, [
-      { label: "Conectadas TMK", data: fs.map((f) => d.fr[f].con), color: "--c-marca" },
+      { label: "Llamadas TMK", data: fs.map((f) => d.fr[f].con), color: "--c-marca" },
       ...cs.map((c, i) => ({ label: `Registros ${etq(c)}`, data: fs.map((f) => d.fr[f].rc?.[c] ?? 0), color: color(i) })),
     ]);
   }
   const t10 = top.slice(0, 10);
   $("#g-top-sub").textContent = "Gestiones de cada gestor: cola TMK y cada automarcador";
   grafico("g-top", "bar", t10.map((a) => a.nombre), [
-    { label: "Conectadas TMK", data: t10.map((a) => a.con), color: "--c-marca" },
+    { label: "Llamadas TMK", data: t10.map((a) => a.con), color: "--c-marca" },
     ...cs.map((c, i) => ({ label: `Registros ${etq(c)}`, data: t10.map((a) => a["r:" + c]), color: color(i) })),
   ], { horizontal: true, apilado: true });
 
@@ -350,6 +366,130 @@ function pintar() {
   pintarRegistro();
   pintarCampanas(d.camp);
   $("#pie").textContent = `Datos de BusinessObjects (Genesys), actualizados cada 20 minutos. Cola outbound: Agent Group + Skill (OUTBOUND); automarcador: HistReport_Automarcador. Uso interno.`;
+}
+
+// ----------------------------------------------------------------- marcador del equipo
+const gFr = (x) => (x ? x.con + x.reg : 0);                       // gestiones de una franja
+const franjasCon = (fr) => Object.keys(fr ?? {}).filter((f) => gFr(fr[f]) > 0).sort();
+const hastaFranja = (fr, fc) => Object.entries(fr ?? {}).reduce((s, [f, x]) => s + (f <= fc ? gFr(x) : 0), 0);
+const totalFr = (fr) => Object.values(fr ?? {}).reduce((s, x) => s + gFr(x), 0);
+const minutos = (hhmm) => { const [h, m] = String(hhmm).split(":").map(Number); return h * 60 + m; };
+const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+function variacion(a, b) {
+  if (!b) return "";
+  const v = a / b - 1;
+  return `<span class="${v >= 0 ? "sube" : "baja"}">${v >= 0 ? "▲" : "▼"} ${fmtPct(Math.abs(v))}</span>`;
+}
+const dato = (etq, grande, nota = "", clase = "") => `<div class="marca-dato ${clase}"><div class="etiqueta">${etq}</div><div class="grande">${grande}</div>${nota ? `<div class="nota">${nota}</div>` : ""}</div>`;
+
+function pintarMarcador(lista, t, d) {
+  const acum = estado.periodo === "acum";
+  const hoy = estado.hoy, ayer = estado.ayer || null;
+  const cs = campanasVista();
+  const reparto = `TMK ${fmtN(t.con)}${cs.map((c) => ` · ${esc(etq(c))} ${fmtN(d.camp[c]?.reg ?? 0)}`).join("")}`;
+  const alertas = [];
+  const html = [];
+
+  if (acum) {
+    const dias = d.porDia ?? [];
+    const tot = t.con + t.reg;
+    const mejor = dias.reduce((m, x) => (x.con + x.reg > (m ? m.con + m.reg : -1) ? x : m), null);
+    $("#marcador-tit").textContent = "Marcador del equipo · acumulado de la competición";
+    $("#marcador-sub").textContent = dias.length ? `Del ${fmtFecha(dias[0].dia)} al ${fmtFecha(dias.at(-1).dia)} (${dias.length} días)` : "";
+    html.push(dato("Gestiones acumuladas", fmtN(tot), reparto, "principal"));
+    html.push(dato("Media por día", fmtN(div(tot, dias.length)), `${fmtN(lista.length)} gestores han participado`));
+    if (mejor) html.push(dato("Mejor día", fmtN(mejor.con + mejor.reg), fmtFecha(mejor.dia)));
+    if (dias.length) { const h = dias.at(-1); html.push(dato("Hoy", fmtN(h.con + h.reg), "en curso")); }
+    $("#marcador").innerHTML = html.join("");
+    $("#alertas").innerHTML = `<li class="bien">Las alertas se calculan sobre el día en curso: cambia a "Hoy" para verlas.</li>`;
+    $("#g-carrera-tit").textContent = "Carrera de la competición";
+    $("#g-carrera-sub").textContent = "Gestiones acumuladas día a día";
+    let s = 0;
+    grafico("g-carrera", "line", dias.map((x) => fmtFecha(x.dia)), [{ label: "Acumulado", data: dias.map((x) => (s += x.con + x.reg)), color: "--c-marca" }]);
+    return;
+  }
+
+  const fs = franjasCon(hoy.fr);
+  const ult = fs.at(-1);                                  // franja más reciente con actividad
+  const tot = totalFr(hoy.fr);
+  $("#marcador-tit").textContent = "Marcador del equipo · hoy";
+  $("#g-carrera-tit").textContent = "Carrera del día: hoy frente a ayer";
+  $("#g-carrera-sub").textContent = "Gestiones acumuladas a lo largo del día";
+  $("#marcador-sub").textContent = ult ? `Datos hasta la franja de las ${ult} (subidos a las ${fmtHora(hoy.subido)})` : "Todavía sin actividad hoy";
+  html.push(dato("Gestiones de hoy", fmtN(tot), reparto, "principal"));
+
+  // Ritmo: última hora (las dos últimas franjas) frente a la media del día
+  if (ult) {
+    const i = fs.length - 1;
+    const hora = gFr(hoy.fr[fs[i]]) + (i > 0 ? gFr(hoy.fr[fs[i - 1]]) : 0);
+    const horasDia = Math.max(0.5, (minutos(ult) + 30 - minutos(fs[0])) / 60);
+    html.push(dato("Ritmo última hora", `${fmtN(hora)}<span class="pequeno"> /h</span>`, `media del día ${fmtN(tot / horasDia)} /h`));
+  }
+
+  // Frente a ayer a la misma hora y proyección
+  let proy = NaN;
+  if (ayer && ult) {
+    const aMisma = hastaFranja(ayer.fr, ult), aTot = totalFr(ayer.fr);
+    html.push(dato(`Ayer (${fmtFecha(ayer.dia)}) a esta hora`, fmtN(aMisma), `${variacion(tot, aMisma)} hoy · ayer cerró con ${fmtN(aTot)}`));
+    if (aMisma > 0 && aTot > 0) proy = tot / (aMisma / aTot);
+  }
+  if (!Number.isFinite(proy) && ult) {
+    const trans = minutos(ult) + 30 - minutos(fs[0] < CONFIG.inicio ? fs[0] : CONFIG.inicio);
+    const jornada = minutos(CONFIG.fin) - minutos(fs[0] < CONFIG.inicio ? fs[0] : CONFIG.inicio);
+    if (trans > 0) proy = tot * Math.max(1, jornada / trans);
+  }
+  if (Number.isFinite(proy)) html.push(dato("Proyección fin del día", fmtN(proy), ayer ? "si se mantiene el ritmo, con el perfil horario de ayer" : `a este ritmo hasta las ${CONFIG.fin}`));
+
+  if (CONFIG.objetivoDia) {
+    const p = Math.min(1, tot / CONFIG.objetivoDia);
+    const quedan = Math.max(0, minutos(CONFIG.fin) - (ult ? minutos(ult) + 30 : minutos(CONFIG.inicio)));
+    const faltan = Math.max(0, CONFIG.objetivoDia - tot);
+    html.push(dato("Objetivo del día", `${fmtPct(tot / CONFIG.objetivoDia)}`,
+      `${fmtN(tot)} de ${fmtN(CONFIG.objetivoDia)} · faltan ${fmtN(faltan)}${quedan ? ` (${fmtN(faltan / (quedan / 60))} /h)` : ""}<div class="progreso"><i style="width:${p * 100}%"></i></div>`));
+    if (Number.isFinite(proy) && proy < CONFIG.objetivoDia) alertas.push(["mal", `A este ritmo el día acabaría en ${fmtN(proy)}: ${fmtN(CONFIG.objetivoDia - proy)} por debajo del objetivo.`]);
+  }
+  if (estado.acum?.porDia?.length > 1) {
+    const at = estado.acum.porDia.reduce((s, x) => s + x.con + x.reg, 0);
+    html.push(dato("Acumulado competición", fmtN(at), `${estado.acum.porDia.length} días, incluido hoy`));
+  }
+  $("#marcador").innerHTML = html.join("");
+
+  // ---- alertas
+  const min = Date.now() - new Date(String(hoy.subido)).getTime();
+  const hLocal = new Date().getHours();
+  if (min > 45 * 60e3 && hLocal >= 8 && hLocal < 23) alertas.push(["mal", `Los datos son de hace ${Math.round(min / 60e3)} min: revisa que el PC siga subiendo informes.`]);
+  if (ayer && fs.length >= 2) {
+    const f = fs.at(-2); // última franja completa
+    const h = gFr(hoy.fr[f]), a = gFr(ayer.fr?.[f]);
+    if (a >= 10 && h < a * 0.7) alertas.push(["mal", `Franja de las ${f}: ${fmtN(h)} gestiones, un ${fmtPct(1 - h / a)} menos que ayer a esa hora (${fmtN(a)}).`]);
+    else if (a >= 10 && h > a * 1.2) alertas.push(["bien", `Franja de las ${f}: ${fmtN(h)} gestiones, un ${fmtPct(h / a - 1)} más que ayer (${fmtN(a)}).`]);
+  }
+  if (fs.length >= 2) {
+    const ult2 = fs.slice(-2).reduce((s, f) => ({ m: s.m + hoy.fr[f].marc, c: s.c + hoy.fr[f].con }), { m: 0, c: 0 });
+    const pDia = div(t.con, t.marc), pHora = div(ult2.c, ult2.m);
+    if (ult2.m >= 10 && pHora < pDia - 0.1) alertas.push(["mal", `Cola TMK: en la última hora se completan el ${fmtPct(pHora)} de las marcadas (media del día ${fmtPct(pDia)}).`]);
+  }
+  // gestores con actividad hoy pero parados en la última hora
+  if (ult) {
+    const ultAct = {};
+    for (const r of hoy.registro) if (r.hora > (ultAct[r.id] ?? "")) ultAct[r.id] = r.hora;
+    for (const r of hoy.registroOut) { const fin = hhmm(minutos(r.f) + 30); if (fin > (ultAct[r.id] ?? "")) ultAct[r.id] = fin; }
+    const ahora = Object.values(ultAct).sort().at(-1) ?? ult;
+    const parados = Object.entries(ultAct).filter(([, h]) => minutos(ahora) - minutos(h) >= 60)
+      .map(([id, h]) => `${esc(nombreDe(id))} (${h})`);
+    if (parados.length) alertas.push(["", `${parados.length} gestor${parados.length > 1 ? "es" : ""} sin actividad en la última hora (última gestión): ${parados.slice(0, 12).join(", ")}${parados.length > 12 ? "…" : ""}`]);
+  }
+  $("#alertas").innerHTML = alertas.length ? alertas.map(([c, x]) => `<li class="${c}">${x}</li>`).join("") : `<li class="bien">Sin alertas: el equipo va a su ritmo.</li>`;
+
+  // ---- carrera: acumulado del día hoy frente a ayer
+  const todas = [...new Set([...Object.keys(hoy.fr), ...Object.keys(ayer?.fr ?? {})])].sort();
+  let sh = 0, sa = 0;
+  const serieHoy = todas.map((f) => (ult && f <= ult ? (sh += gFr(hoy.fr[f])) : null));
+  const serieAyer = todas.map((f) => (sa += gFr(ayer?.fr?.[f])));
+  grafico("g-carrera", "line", todas, [
+    { label: "Hoy", data: serieHoy, color: "--c-marca" },
+    ...(ayer ? [{ label: `Ayer (${fmtFecha(ayer.dia)})`, data: serieAyer, color: "--c-gris", discontinua: true }] : []),
+  ]);
 }
 
 function opcionesGrafico({ apilado = false, horizontal = false } = {}) {
@@ -370,7 +510,8 @@ function grafico(id, tipo, etiquetas, series, opciones = {}) {
   if (!window.Chart) return;
   const datasets = series.map((s) => ({
     label: s.label, data: s.data, borderColor: css(s.color), backgroundColor: css(s.color),
-    borderWidth: 0, borderRadius: 4, borderSkipped: "start", maxBarThickness: 22,
+    borderWidth: tipo === "line" ? 2.5 : 0, borderDash: s.discontinua ? [6, 4] : [], pointRadius: 0, pointHoverRadius: 5, tension: 0.2, spanGaps: false,
+    borderRadius: 4, borderSkipped: "start", maxBarThickness: 22,
   }));
   graficos[id]?.destroy();
   graficos[id] = new Chart(document.getElementById(id), { type: tipo, data: { labels: etiquetas, datasets }, options: opcionesGrafico(opciones) });
@@ -413,9 +554,9 @@ function pintarRanking(lista, top) {
   columnasRanking = [
     { k: "puesto", t: "#", orden: (a) => -puesto.get(a.id), f: (a) => `<b>${puesto.get(a.id)}</b>` },
     { k: "nombre", t: "Gestor", txt: true, f: (a) => `<div class="nombre">${esc(a.nombre)}</div><div class="id">${esc(a.id)}</div>` },
-    cN("gestiones", "Gestiones", "Conectadas TMK + registros automarcador"),
-    cN("marc", "Marcadas TMK", "NDialing en la cola TMK outbound"), cN("con", "Conectadas TMK", "NOutbound en la cola TMK outbound"),
-    cP("pCon", "% conexión", "Conectadas / marcadas"), cM("tmo", "TMO TMK", "Tiempo total outbound / conectadas"), cT("talk", "Conversación TMK"),
+    cN("gestiones", "Gestiones", "Llamadas TMK + registros automarcador"),
+    cN("marc", "Marcadas TMK", "NDialing en la cola TMK outbound"), cN("con", "Llamadas TMK", "NOutbound en la cola TMK outbound"),
+    cP("pCon", "% llamadas", "Llamadas / marcadas"), cM("tmo", "TMO TMK", "Tiempo total outbound / llamadas"), cT("talk", "Conversación TMK"),
     ...(estado.auto ? [] : cs.map((c) => cN("r:" + c, `Reg. ${etq(c)}`, `Registros codificados en ${c}`))),
     cA("reg", `Registros ${nomAuto}`, (x) => x.reg, "Registros codificados"),
     cA("v1", "1ª vuelta", (x) => x.v["1"] ?? 0, "Registros con attempt = 1"), cA("v2", "2ª vuelta", (x) => x.v["2"] ?? 0, "Registros con attempt = 2"),
@@ -449,7 +590,7 @@ function pintarRegistro() {
     .filter((r) => !q || norm(r.nombre).includes(q) || r.id.includes(q));
   pintarTabla("t-registro-out", "out", [
     { k: "f", t: "Franja", txt: true }, { k: "nombre", t: "Gestor", txt: true, f: (r) => `<div class="nombre">${esc(r.nombre)}</div><div class="id">${esc(r.id)}</div>` },
-    cN("marc", "Marcadas"), cN("con", "Conectadas"), cN("cortas", "< 3 s"), cT("talk", "Conversación"),
+    cN("marc", "Marcadas"), cN("con", "Llamadas"), cN("cortas", "< 3 s"), cT("talk", "Conversación"),
   ], out);
 }
 
@@ -458,7 +599,7 @@ function pintarCampanas(camp) {
     llamMed: div(k.dur, k.llam), gestMed: div(k.gest, k.reg) }));
   pintarTabla("t-campanas", "campanas", [
     { k: "nombre", t: "Campaña / cola", txt: true }, { k: "tipoTxt", t: "Origen", txt: true },
-    cN("marc", "Marcadas"), cN("con", "Conectadas"), cN("reg", "Registros"), cN("llam", "Llamadas"),
+    cN("marc", "Marcadas cola"), cN("con", "Llamadas cola"), cN("reg", "Registros auto"), cN("llam", "Llamadas auto"),
     { k: "v1", t: "1ª vuelta", orden: (k) => k.v?.["1"] ?? 0, f: (k) => (k.tipo === "auto" ? cero(k.v["1"] ?? 0, fmtN) : "") },
     { k: "v2", t: "2ª vuelta", orden: (k) => k.v?.["2"] ?? 0, f: (k) => (k.tipo === "auto" ? cero(k.v["2"] ?? 0, fmtN) : "") },
     { k: "v3", t: "3ª+ vuelta", orden: (k) => k.v?.["3+"] ?? 0, f: (k) => (k.tipo === "auto" ? cero(k.v["3+"] ?? 0, fmtN) : "") },

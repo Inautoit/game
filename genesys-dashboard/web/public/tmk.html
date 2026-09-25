@@ -65,17 +65,32 @@
       </section>
       <div id="aviso" class="aviso" hidden></div>
 
+      <section class="tarjeta marcador" aria-label="Marcador del equipo">
+        <h2 class="titulo-sec" id="marcador-tit">Marcador del equipo</h2>
+        <p class="muted pequeno" id="marcador-sub"></p>
+        <div class="marcador-grid" id="marcador"></div>
+      </section>
+
+      <section class="tarjeta" aria-label="Alertas">
+        <h2 class="titulo-sec">Alertas</h2>
+        <ul class="alertas" id="alertas"></ul>
+      </section>
+
       <section class="bloques" id="kpis" aria-label="Resumen"></section>
 
       <section class="tarjeta">
-        <h2 class="titulo-sec">Ranking de gestores</h2>
+        <h2 class="titulo-sec">Aportación de cada gestor</h2>
         <p class="muted pequeno" id="criterio"></p>
         <ol class="podio" id="podio" aria-label="Tres primeros"></ol>
       </section>
 
       <section class="graficos">
         <figure class="tarjeta">
-          <figcaption><h2 id="g-evol-tit">Actividad por franja</h2><p class="muted pequeno">Conectadas de la cola TMK outbound y registros del automarcador</p></figcaption>
+          <figcaption><h2 id="g-carrera-tit">Carrera del día: hoy frente a ayer</h2><p class="muted pequeno" id="g-carrera-sub">Gestiones acumuladas a lo largo del día</p></figcaption>
+          <div class="lienzo"><canvas id="g-carrera" role="img" aria-label="Gestiones acumuladas de hoy comparadas con ayer"></canvas></div>
+        </figure>
+        <figure class="tarjeta">
+          <figcaption><h2 id="g-evol-tit">Actividad por franja</h2><p class="muted pequeno">Llamadas de la cola TMK outbound y registros de cada automarcador</p></figcaption>
           <div class="lienzo"><canvas id="g-evol" role="img" aria-label="Actividad de la competición en el tiempo"></canvas></div>
         </figure>
         <figure class="tarjeta">

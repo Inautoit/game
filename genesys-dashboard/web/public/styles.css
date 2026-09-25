@@ -251,3 +251,18 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .podio .p1 .medalla { color: var(--marca); }
 a.boton-barra { text-decoration: none; display: inline-flex; align-items: center; color: #fff; border-radius: 8px; font-size: 14px; }
 .barra-acciones { flex-wrap: wrap; }
+.marcador-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 10px; }
+.marca-dato { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; }
+.marca-dato .etiqueta { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+.marca-dato .grande { font-size: 34px; font-weight: 800; line-height: 1.15; color: var(--text-primary); }
+.marca-dato.principal { background: var(--marca); }
+.marca-dato.principal .etiqueta, .marca-dato.principal .grande, .marca-dato.principal .nota { color: #fff; }
+.marca-dato .nota { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.marca-dato .sube { color: var(--good-text, #0a7a3d); font-weight: 700; }
+.marca-dato .baja { color: var(--critical-text); font-weight: 700; }
+.progreso { height: 8px; background: var(--grid); border-radius: 4px; margin-top: 6px; overflow: hidden; }
+.progreso i { display: block; height: 100%; background: var(--marca); }
+.alertas { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.alertas li { padding: 8px 12px; border-radius: 8px; background: var(--surface-2); border-left: 4px solid var(--warning); }
+.alertas li.mal { border-left-color: var(--critical); }
+.alertas li.bien { border-left-color: var(--good); }
