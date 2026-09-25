@@ -9,7 +9,7 @@
 // ============ CONFIGURACIÓN DE LA COMPETICIÓN ============
 const CONFIG = {
   colasOut: ["RBE_Outbound_TMK"],   // skills de la cola outbound que cuentan (Service Outbound Call)
-  campanasAuto: [],                 // campañas del automarcador que cuentan; vacío = todas
+  campanasAuto: ["C_Vencimiento_Push_High", "C_OC_RBE_Auto"], // campañas del automarcador que cuentan; vacío = todas
   desde: null,                      // primer día de la competición "AAAA-MM-DD"; null = todos los guardados
 };
 // ==========================================================
