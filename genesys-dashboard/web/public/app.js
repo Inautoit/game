@@ -64,7 +64,9 @@ function franjaDeHora(v) {
 const idLimpio = (v) => String(v ?? "").trim().replace(/\.0$/, "");
 const nombreLimpio = (v) => String(v ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
 const skillDeCola = (q) => String(q ?? "").trim().replace(/_Target_VQ$/i, "");
+const VERIFICAR = new URLSearchParams(location.search).has("verificar"); // vista con los datos de un dia cerrado
 function hoyLocal() {
+  if (VERIFICAR && estado?.paquete?.dia) return estado.paquete.dia;
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -237,11 +239,15 @@ function procesar(paquete) {
   const autoFr = new Map();
   const campanaDeLlamada = new Map(); // CALL_ID -> campaña
   let autoTotal = 0, autoGestion = 0;
+  // El informe puede traer varios dias (p. ej. el mes en curso): solo cuenta el mas reciente
+  const diaDe = (v) => /^(20\d\d-\d\d-\d\d)/.exec(String(v ?? ""))?.[1] ?? "";
   const hReg = tabla(buscarHoja(inf.auto, /registos|registros/i));
   if (hReg.filas.length) {
     const c = indices(hReg, { call: "CALL_ID", id: ["EmployeID", "Employee ID"], info: "AGENT_INFO", camp: "NameCampaign", t: "Manage Time",
       ini: "Start_Timestamp (Date Time)", cod: "SD_BusinessCallResult", intento: "attempt" });
+    const dia = hReg.filas.reduce((m, r) => { const d = diaDe(val(r, c.ini)); return d > m ? d : m; }, "");
     for (const r of hReg.filas) {
+      if (dia && diaDe(val(r, c.ini)) !== dia) continue;
       const cod = String(val(r, c.cod) ?? "").trim() || "(sin codificar)";
       const t = nv(r, c.t);
       autoTotal++; autoGestion += t;
@@ -265,8 +271,11 @@ function procesar(paquete) {
   const hCall = tabla(buscarHoja(inf.auto, /llamadas/i));
   let autoLlamadas = 0, autoDur = 0;
   if (hCall.filas.length) {
-    const c = indices(hCall, { call: "CALL_ID", ag: "CAF_AgentName", src: "Source Address", dial: "Dial Time", dur: "Call Duration" });
+    const c = indices(hCall, { call: "CALL_ID", ag: "CAF_AgentName", src: "Source Address", dial: "Dial Time", dur: "Call Duration",
+      ini: "Interaction beginning (Date Time)" });
+    const dia = hCall.filas.reduce((m, r) => { const d = diaDe(val(r, c.ini)); return d > m ? d : m; }, "");
     for (const r of hCall.filas) {
+      if (dia && diaDe(val(r, c.ini)) !== dia) continue;
       autoLlamadas++; autoDur += nv(r, c.dur);
       const k = campanas.get(campanaDeLlamada.get(String(val(r, c.call) ?? "")));
       if (k) { k.llamadas++; k.dur += nv(r, c.dur); }
@@ -380,6 +389,11 @@ function kpi(titulo, valor, nota = "", ayuda = "") {
 const bloque = (titulo, kpis) => `<div class="bloque"><h2>${esc(titulo)}</h2><div class="kpis">${kpis.join("")}</div></div>`;
 
 function fechaDatos(inf) {
+  if (/automarcador/i.test(inf.informe)) { // puede traer varios dias: vale el mas reciente
+    let max = "";
+    for (const h of inf.hojas) for (const fila of h.filas) for (const v of fila) { const m = /^(20\d\d-\d\d-\d\d)/.exec(v ?? ""); if (m && m[1] > max) max = m[1]; }
+    return max || null;
+  }
   const n = new Map();
   for (const h of inf.hojas)
     for (const fila of h.filas.slice(0, 400))
@@ -396,8 +410,8 @@ function pintarFrescura(paquete) {
     const fd = fechaDatos(i);
     const otroDia = fd && fd !== hoy;
     if (otroDia) deOtroDia.push(`${i.informe} (datos del ${fmtFecha(fd)})`);
-    const clase = otroDia || !String(i.generado).startsWith(hoy) ? "malo" : min <= 35 ? "ok" : min <= 90 ? "viejo" : "malo";
-    const txt = otroDia ? `trae datos del ${fmtFecha(fd)}, no de hoy` : clase === "ok" ? "al día" : clase === "viejo" ? "con retraso" : "desactualizado";
+    const clase = VERIFICAR ? (otroDia ? "malo" : "ok") : otroDia || !String(i.generado).startsWith(hoy) ? "malo" : min <= 35 ? "ok" : min <= 90 ? "viejo" : "malo";
+    const txt = otroDia ? `trae datos del ${fmtFecha(fd)}, no de hoy` : VERIFICAR ? "día cerrado" : clase === "ok" ? "al día" : clase === "viejo" ? "con retraso" : "desactualizado";
     return `<span class="chip ${clase}" title="${esc(txt)}"><i aria-hidden="true"></i>${esc(i.informe)} · ${fmtHora(i.generado)}${otroDia ? ` · <b>datos del ${fmtFecha(fd)}</b>` : ""} <span class="sr">(${esc(txt)})</span></span>`;
   }).join("");
   const faltan = [["Automarcador", /automarcador/i], ["Agent AUX", /agent_aux/i], ["Agent State", /agent state/i],
@@ -405,6 +419,7 @@ function pintarFrescura(paquete) {
     .filter(([, re]) => !paquete.informes.some((i) => re.test(i.informe))).map(([m]) => m);
   const avisos = [];
   if (faltan.length) avisos.push(`Faltan informes en la última subida: ${faltan.join(", ")}.`);
+  if (VERIFICAR) avisos.unshift(`VISTA DE VERIFICACIÓN: datos cerrados del ${fmtFecha(paquete.dia)}. No se actualiza; el dashboard normal está sin ?verificar.`);
   if (deOtroDia.length) avisos.push(`Estos informes no traen datos de hoy: ${deOtroDia.join(", ")}. Revisa sus filtros de fecha.`);
   $("#aviso").hidden = !avisos.length;
   $("#aviso").textContent = avisos.join(" ");
@@ -760,7 +775,9 @@ function pintarVista() {
   pintarPausas();
 }
 function pintarTodo() {
-  $("#subtitulo").textContent = `${new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })} · datos subidos a las ${fmtHora(estado.paquete.subido)}`;
+  $("#subtitulo").textContent = VERIFICAR
+    ? `Verificación · día cerrado ${new Date(hoyLocal() + "T12:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}`
+    : `${new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })} · datos subidos a las ${fmtHora(estado.paquete.subido)}`;
   pintarFrescura(estado.paquete);
   pintarSelector();
   pintarVista();
@@ -793,7 +810,7 @@ function descargarCsv() {
 // ----------------------------------------------------------------- carga y refresco
 async function cargar() {
   try {
-    const r = await fetch("/api/datos", { cache: "no-cache", credentials: "same-origin" });
+    const r = await fetch(VERIFICAR ? "/api/datos?p=verificacion" : "/api/datos", { cache: "no-cache", credentials: "same-origin" });
     if (r.status === 401) return mostrarLogin();
     if (r.status === 404) { mostrarApp(); $("#subtitulo").textContent = "Todavía no se ha subido ningún informe desde el PC."; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);

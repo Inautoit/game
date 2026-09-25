@@ -173,7 +173,9 @@ async function login(request, env) {
 
 async function datos(request, env) {
   if (!(await leerSesion(request, env))) return json({ error: "sesion", modo: conMicrosoft(env) ? "microsoft" : "clave" }, 401);
-  const { value, metadata } = await env.DATA.getWithMetadata(CLAVE_KV, { type: "stream" });
+  // ?p=verificacion: paquete aparte con un dia cerrado, para comprobar cifras (no lo toca el PC)
+  const clave = new URL(request.url).searchParams.get("p") === "verificacion" ? "verificacion" : CLAVE_KV;
+  const { value, metadata } = await env.DATA.getWithMetadata(clave, { type: "stream" });
   if (!value) return json({ error: "todavia no se ha subido ningun informe" }, 404);
 
   const etag = `"${metadata?.subido ?? "x"}"`;
