@@ -443,7 +443,6 @@ function pintarKpis() {
   const gs = gestoresVista();
   const sumG = (k) => gs.reduce((s, a) => s + (a[k] || 0), 0);
   const activo = sumG("activo"), listo = sumG("listo"), noListo = sumG("noListo"), enLlamada = sumG("enLlamada");
-  const cod = [...d.codigos].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c, k]) => `${esc(c)} ${fmtPct(k / d.autoTotal)}`).join(" · ");
   const sufijo = estado.skill ? ` · ${etiqueta(estado.skill)}` : "";
   $("#kpis").innerHTML = [
     bloque("Entrantes" + sufijo, [
@@ -463,7 +462,6 @@ function pintarKpis() {
     bloque("Automarcador · todas las campañas", [
       kpi("Registros codificados", fmtN(d.autoTotal), `${fmtN(d.autoLlamadas)} llamadas`),
       kpi("T. medio gestión", fmtM(div(d.autoGestion, d.autoTotal)), `llamada media ${fmtM(div(d.autoDur, d.autoLlamadas))}`),
-      kpi("Codificaciones", fmtN(d.codigos.size), cod),
     ]),
     bloque("Gestores" + sufijo, [
       kpi("Gestores", fmtN(gs.length), `${fmtN(gs.filter((a) => a.conectado).length)} conectados ahora`),
