@@ -19,6 +19,8 @@
 
   const eur = (n) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(Number(n) || 0);
   const numES = (n) => (Number(n) || 0).toLocaleString('es-ES', { maximumFractionDigits: 3 });
+  // Línea sin precio = título o sección: sin cantidad, precio ni importe
+  const isSection = (l) => !Number(l.precio) && !Number(l.importe);
   const fdate = (iso) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
 
   async function embedImage(pdf, dataUrl) {
@@ -195,6 +197,11 @@
       let top = t.top + t.head + 2;
       for (const { l, desc } of list) {
         const base = top + 8.5;
+        if (isSection(l)) {
+          desc.forEach((d, k) => text(d, t.x[1] + 6, base + k * ROW_H, { size: 8.5, f: helvB }));
+          top += desc.length * ROW_H;
+          continue;
+        }
         text(numES(l.cantidad) + (l.unidad && l.unidad !== 'ud' ? ' ' + l.unidad : ''), (t.x[0] + t.x[1]) / 2, base, { size: 8.5, align: 'center', maxWidth: t.x[1] - t.x[0] - 6 });
         desc.forEach((d, k) => text(d, t.x[1] + 6, base + k * ROW_H, { size: 8.5 }));
         const precio = eur(l.precio) + (Number(l.descuento) ? ` (-${numES(l.descuento)}%)` : '');
@@ -373,9 +380,10 @@
         newPage();
         top += 10;
       }
-      desc.forEach((d, i) => text(d, M, top + 16 + i * 15, { size: 11 }));
-      if (detalle) text(detalle, M, top + 16 + desc.length * 15 - 2, { size: 9, color: grey });
-      text(eur(l.importe), R, top + 16, { size: 11, font: fb, align: 'right' });
+      const seccion = isSection(l);
+      desc.forEach((d, i) => text(d, M, top + 16 + i * 15, { size: 11, font: seccion ? fb : f }));
+      if (detalle && !seccion) text(detalle, M, top + 16 + desc.length * 15 - 2, { size: 9, color: grey });
+      if (!seccion) text(eur(l.importe), R, top + 16, { size: 11, font: fb, align: 'right' });
       top += h;
       page.drawLine({ start: { x: M, y: Y(top) }, end: { x: R, y: Y(top) }, thickness: 0.5, color: line });
     }

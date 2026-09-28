@@ -23,6 +23,9 @@
     const v = Math.max(0, parseNum(valor));
     return Math.min(bruto, round2(tipo === 'eur' ? v : (bruto * Math.min(v, 100)) / 100));
   };
+  // Línea sin precio (título o sección): no se muestran ceros
+  const isSection = (l) => !Number(l.precio) && !Number(l.importe);
+  const blank0 = (v) => (v === '' || v == null || Number(v) === 0 ? '' : v);
   const addDays = (iso, days) => {
     const d = new Date(iso + 'T12:00:00Z');
     d.setUTCDate(d.getUTCDate() + days);
@@ -337,8 +340,8 @@
       estado: 'borrador',
       bank_id: defaultBank?.id || '',
     };
-    let lines = (data.lines || []).map((l) => ({ ...l }));
-    if (!lines.length) lines.push({ descripcion: '', cantidad: 1, unidad: 'ud', precio: 0, descuento: 0 });
+    let lines = (data.lines || []).map((l) => ({ ...l, precio: blank0(l.precio), descuento: blank0(l.descuento) }));
+    if (!lines.length) lines.push({ descripcion: '', cantidad: '', unidad: 'ud', precio: '', descuento: '' });
     let dirty = false;
     leaveGuard = () => dirty;
 
@@ -462,7 +465,7 @@
     };
 
     // --- Líneas
-    const lineImporte = (l) => round2(parseNum(l.cantidad) * parseNum(l.precio) * (1 - parseNum(l.descuento) / 100));
+    const lineImporte = (l) => round2((String(l.cantidad ?? '').trim() === '' ? 1 : parseNum(l.cantidad)) * parseNum(l.precio) * (1 - parseNum(l.descuento) / 100));
 
     function renderTotals() {
       const bruto = round2(lines.reduce((sum, l) => sum + (l.descripcion ? lineImporte(l) : 0), 0));
@@ -491,11 +494,11 @@
         .map(
           (l, i) => `<tr data-i="${i}">
             <td class="c-desc"><div class="ac"><input data-f="descripcion" value="${esc(l.descripcion)}" placeholder="Producto o servicio"></div></td>
-            <td class="c-qty"><input data-f="cantidad" inputmode="decimal" class="num" value="${esc(l.cantidad)}"></td>
+            <td class="c-qty"><input data-f="cantidad" inputmode="decimal" class="num" value="${esc(l.cantidad)}" placeholder="1"></td>
             <td class="c-ud"><input data-f="unidad" value="${esc(l.unidad || '')}"></td>
-            <td class="c-price"><input data-f="precio" inputmode="decimal" class="num" value="${esc(l.precio)}"></td>
-            <td class="c-dto"><input data-f="descuento" inputmode="decimal" class="num" value="${esc(l.descuento || 0)}"></td>
-            <td class="c-imp num" data-imp>${eur(lineImporte(l))}</td>
+            <td class="c-price"><input data-f="precio" inputmode="decimal" class="num" value="${esc(l.precio)}" placeholder="€"></td>
+            <td class="c-dto"><input data-f="descuento" inputmode="decimal" class="num" value="${esc(blank0(l.descuento))}"></td>
+            <td class="c-imp num" data-imp>${l.precio === '' ? '' : eur(lineImporte(l))}</td>
             <td class="c-del"><button type="button" class="btn ghost sm" data-del title="Quitar línea">✕</button></td>
           </tr>`
         )
@@ -507,7 +510,7 @@
       const tr = e.target.closest('tr');
       const i = Number(tr.dataset.i);
       lines[i][e.target.dataset.f] = e.target.value;
-      $('[data-imp]', tr).textContent = eur(lineImporte(lines[i]));
+      $('[data-imp]', tr).textContent = String(lines[i].precio).trim() === '' ? '' : eur(lineImporte(lines[i]));
       renderTotals();
       dirty = true;
     });
@@ -515,12 +518,12 @@
       if (!e.target.closest('[data-del]')) return;
       const i = Number(e.target.closest('tr').dataset.i);
       lines.splice(i, 1);
-      if (!lines.length) lines.push({ descripcion: '', cantidad: 1, unidad: 'ud', precio: 0, descuento: 0 });
+      if (!lines.length) lines.push({ descripcion: '', cantidad: '', unidad: 'ud', precio: '', descuento: '' });
       renderLines();
       dirty = true;
     });
     $('#add-line').onclick = () => {
-      lines.push({ descripcion: '', cantidad: 1, unidad: 'ud', precio: 0, descuento: 0 });
+      lines.push({ descripcion: '', cantidad: '', unidad: 'ud', precio: '', descuento: '' });
       renderLines();
       $$('input[data-f=descripcion]', tbody).at(-1).focus();
     };
@@ -644,7 +647,10 @@
             <thead><tr><th class="num">Cantidad</th><th>Descripción</th><th class="num">Precio unitario</th><th class="num">Dto.</th><th class="num">Total</th></tr></thead>
             <tbody>${inv.lines
               .map(
-                (l) => `<tr><td class="num">${l.cantidad.toLocaleString('es-ES')} ${esc(l.unidad && l.unidad !== 'ud' ? l.unidad : '')}</td><td>${esc(l.descripcion)}</td>
+                (l) =>
+                  isSection(l)
+                    ? `<tr><td></td><td><strong>${esc(l.descripcion)}</strong></td><td></td><td></td><td></td></tr>`
+                    : `<tr><td class="num">${l.cantidad.toLocaleString('es-ES')} ${esc(l.unidad && l.unidad !== 'ud' ? l.unidad : '')}</td><td>${esc(l.descripcion)}</td>
                   <td class="num">${eur(l.precio)}</td><td class="num">${l.descuento ? l.descuento + '%' : ''}</td><td class="num">${eur(l.importe)}</td></tr>`
               )
               .join('')}</tbody>
@@ -867,8 +873,8 @@
     const fecha = inv?.fecha || today();
     const dias = parseNum(s['presupuesto.dias_validez']);
     const numero = inv?.numero || (await api('/invoices/next-number?tipo=presupuesto&fecha=' + fecha)).numero;
-    let lines = (inv?.lines || []).map((l) => ({ descripcion: l.descripcion, cantidad: l.cantidad, precio: l.precio, unidad: l.unidad, descuento: l.descuento }));
-    if (!lines.length) lines.push({ descripcion: '', cantidad: 1, precio: '' });
+    let lines = (inv?.lines || []).map((l) => ({ descripcion: l.descripcion, cantidad: l.cantidad, precio: blank0(l.precio), unidad: l.unidad, descuento: l.descuento }));
+    if (!lines.length) lines.push({ descripcion: '', cantidad: '', precio: '' });
     let clientId = inv?.client_id || '';
     let dirty = false;
     leaveGuard = () => dirty;
@@ -942,7 +948,7 @@
         .map(
           (l, i) => `<div class="q-line" data-i="${i}">
             <input data-f="descripcion" value="${esc(l.descripcion)}" placeholder="Concepto (ej.: cambiar enchufe)">
-            <input data-f="cantidad" inputmode="decimal" value="${esc(l.cantidad ?? 1)}" title="Cantidad" class="num">
+            <input data-f="cantidad" inputmode="decimal" value="${esc(l.cantidad ?? '')}" placeholder="1" title="Cantidad" class="num">
             <input data-f="precio" inputmode="decimal" value="${esc(l.precio)}" placeholder="€" class="num">
             <button type="button" class="btn ghost sm" data-del aria-label="Quitar">✕</button>
           </div>`
@@ -960,11 +966,11 @@
     $('#q-lines').addEventListener('click', (e) => {
       if (!e.target.closest('[data-del]')) return;
       lines.splice(Number(e.target.closest('.q-line').dataset.i), 1);
-      if (!lines.length) lines.push({ descripcion: '', cantidad: 1, precio: '' });
+      if (!lines.length) lines.push({ descripcion: '', cantidad: '', precio: '' });
       renderLines();
     });
     $('#q-add').onclick = () => {
-      lines.push({ descripcion: '', cantidad: 1, precio: '' });
+      lines.push({ descripcion: '', cantidad: '', precio: '' });
       renderLines();
       $$('#q-lines [data-f=descripcion]').at(-1).focus();
     };

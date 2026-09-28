@@ -338,7 +338,7 @@ export function computeInvoice(b) {
   const lines = (Array.isArray(b.lines) ? b.lines : [])
     .map((l) => ({
       descripcion: str(l.descripcion, 1000),
-      cantidad: num(l.cantidad, 1),
+      cantidad: String(l.cantidad ?? '').trim() === '' ? 1 : num(l.cantidad, 1),
       unidad: str(l.unidad, 20),
       precio: round2(num(l.precio)),
       descuento: Math.min(Math.max(num(l.descuento), 0), 100),

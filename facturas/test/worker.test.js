@@ -39,3 +39,12 @@ test('presupuesto: sin IVA y con descuento', () => {
   const fac = computeInvoice({ cliente_nombre: 'X', iva_pct: 21, lines }).inv;
   assert.deepEqual([fac.iva, fac.total], [42, 242]);
 });
+
+test('cantidad vacía cuenta como 1 y una línea sin precio es un título', () => {
+  const { inv, lines } = computeInvoice({ cliente_nombre: 'X', iva_pct: 21, lines: [
+    { descripcion: 'TRABAJOS REALIZADOS', cantidad: '', precio: '' },
+    { descripcion: 'Enchufes', cantidad: '', precio: '50' },
+  ] });
+  assert.deepEqual(lines.map((l) => [l.cantidad, l.precio, l.importe]), [[1, 0, 0], [1, 50, 50]]);
+  assert.equal(inv.base, 50);
+});
