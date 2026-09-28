@@ -32,6 +32,7 @@
   }
 
   async function buildInvoicePdf(inv, s) {
+    if (inv.tipo === 'presupuesto' && s['presupuesto.formal'] !== '1') return buildQuotePdf(inv, s);
     const pdf = await PDFDocument.create();
     const esPres = inv.tipo === 'presupuesto';
     const TITULO = esPres ? 'PRESUPUESTO' : 'FACTURA';
@@ -269,6 +270,141 @@
     } else {
       hline(122, 471, 714, 0.4, grey);
     }
+
+    return pdf.save();
+  }
+
+
+  // ------------------------------------------------------------------------
+  // Presupuesto: diseño informal y claro (para mandar por WhatsApp)
+  async function buildQuotePdf(inv, s) {
+    const pdf = await PDFDocument.create();
+    pdf.setTitle(`Presupuesto ${inv.numero}`);
+    pdf.setAuthor(s['empresa.nombre'] || '');
+    const f = await pdf.embedFont(StandardFonts.Helvetica);
+    const fb = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const charset = new Set(f.getCharacterSet());
+    const clean = (t) => [...String(t ?? '').replace(/\t/g, ' ')].map((ch) => (ch === '\n' || charset.has(ch.codePointAt(0)) ? ch : '?')).join('');
+    const logo = await embedImage(pdf, s['empresa.logo']);
+
+    const orange = rgb(0.94, 0.49, 0.12);
+    const dark = rgb(0.13, 0.15, 0.19);
+    const grey = rgb(0.45, 0.48, 0.53);
+    const soft = rgb(0.97, 0.97, 0.98);
+    const line = rgb(0.88, 0.89, 0.91);
+    const M = 48;
+    const R = PW - M;
+    let page;
+    let top;
+    const Y = (t) => PH - t;
+    const text = (t, x, tp, { size = 11, font = f, color = dark, align = 'left', maxWidth } = {}) => {
+      t = clean(t);
+      if (maxWidth && font.widthOfTextAtSize(t, size) > maxWidth) {
+        while (t && font.widthOfTextAtSize(t + '…', size) > maxWidth) t = t.slice(0, -1);
+        t += '…';
+      }
+      const w = font.widthOfTextAtSize(t, size);
+      page.drawText(t, { x: align === 'right' ? x - w : align === 'center' ? x - w / 2 : x, y: Y(tp), size, font, color });
+    };
+    const wrap = (t, width, size) => {
+      const out = [];
+      for (const para of clean(t).split('\n')) {
+        let cur = '';
+        for (const word of para.split(/\s+/)) {
+          const next = cur ? cur + ' ' + word : word;
+          if (f.widthOfTextAtSize(next, size) <= width) cur = next;
+          else {
+            if (cur) out.push(cur);
+            cur = word;
+          }
+        }
+        out.push(cur);
+      }
+      return out;
+    };
+
+    const newPage = () => {
+      page = pdf.addPage([PW, PH]);
+      page.drawRectangle({ x: 0, y: PH - 8, width: PW, height: 8, color: orange });
+      top = 40;
+      if (logo) {
+        const r = Math.min(120 / logo.width, 46 / logo.height);
+        page.drawImage(logo, { x: M, y: Y(top + logo.height * r), width: logo.width * r, height: logo.height * r });
+      }
+      text(s['empresa.actividad'] || s['empresa.nombre'] || '', R, top + 12, { size: 10, font: fb, align: 'right' });
+      const contacto = [s['empresa.nombre'], s['empresa.telefono'] && 'Tel. ' + s['empresa.telefono'], s['empresa.email']].filter(Boolean);
+      contacto.forEach((l, i) => text(l, R, top + 26 + i * 12, { size: 9, color: grey, align: 'right' }));
+      top += 78;
+    };
+
+    newPage();
+    text('Presupuesto', M, top, { size: 26, font: fb });
+    text(`Nº ${inv.numero}  ·  ${fdate(inv.fecha)}`, M, top + 20, { size: 10, color: grey });
+    if (inv.vencimiento) text(`Válido hasta el ${fdate(inv.vencimiento)}`, R, top + 20, { size: 10, color: grey, align: 'right' });
+    top += 42;
+
+    // Cliente
+    const cli = [inv.cliente_direccion, [inv.cliente_cp, inv.cliente_ciudad].filter(Boolean).join(' '), inv.cliente_telefono].filter(Boolean).join('  ·  ');
+    const boxH = cli ? 44 : 30;
+    page.drawRectangle({ x: M, y: Y(top + boxH), width: R - M, height: boxH, color: soft });
+    text('Para', M + 12, top + 18, { size: 9, color: grey });
+    text(inv.cliente_nombre, M + 48, top + 18, { size: 12, font: fb, maxWidth: R - M - 60 });
+    if (cli) text(cli, M + 48, top + 33, { size: 9, color: grey, maxWidth: R - M - 60 });
+    top += boxH + 26;
+
+    // Conceptos
+    text('Concepto', M, top, { size: 9, font: fb, color: grey });
+    text('Importe', R, top, { size: 9, font: fb, color: grey, align: 'right' });
+    top += 8;
+    page.drawLine({ start: { x: M, y: Y(top) }, end: { x: R, y: Y(top) }, thickness: 1, color: dark });
+    top += 4;
+    for (const l of inv.lines) {
+      const desc = wrap(l.descripcion, R - M - 110, 11);
+      const detalle = Number(l.cantidad) !== 1 || Number(l.descuento)
+        ? `${numES(l.cantidad)}${l.unidad && l.unidad !== 'ud' ? ' ' + l.unidad : ''} × ${eur(l.precio)}${Number(l.descuento) ? `  (-${numES(l.descuento)}%)` : ''}`
+        : '';
+      const h = desc.length * 15 + (detalle ? 13 : 0) + 12;
+      if (top + h > PH - 180) {
+        newPage();
+        top += 10;
+      }
+      desc.forEach((d, i) => text(d, M, top + 16 + i * 15, { size: 11 }));
+      if (detalle) text(detalle, M, top + 16 + desc.length * 15 - 2, { size: 9, color: grey });
+      text(eur(l.importe), R, top + 16, { size: 11, font: fb, align: 'right' });
+      top += h;
+      page.drawLine({ start: { x: M, y: Y(top) }, end: { x: R, y: Y(top) }, thickness: 0.5, color: line });
+    }
+
+    // Totales
+    if (top > PH - 200) {
+      newPage();
+      top += 10;
+    }
+    top += 18;
+    const tx = R - 220;
+    const fila = (k, v) => {
+      text(k, tx, top, { size: 10, color: grey });
+      text(v, R, top, { size: 10, align: 'right' });
+      top += 16;
+    };
+    fila('Base', eur(inv.base));
+    fila(`IVA ${numES(inv.iva_pct)}%`, eur(inv.iva));
+    if (Number(inv.irpf_pct)) fila(`IRPF ${numES(inv.irpf_pct)}%`, '-' + eur(inv.irpf));
+    top += 4;
+    page.drawRectangle({ x: tx - 12, y: Y(top + 30), width: R - tx + 12, height: 34, color: orange });
+    text('TOTAL', tx, top + 20, { size: 12, font: fb, color: rgb(1, 1, 1) });
+    text(eur(inv.total), R - 10, top + 21, { size: 16, font: fb, color: rgb(1, 1, 1), align: 'right' });
+    top += 56;
+
+    if (inv.notas) {
+      for (const n of wrap(inv.notas, R - M, 10).slice(0, 8)) {
+        text(n, M, top, { size: 10, color: dark });
+        top += 14;
+      }
+      top += 6;
+    }
+    const tel = s['empresa.telefono'];
+    text(tel ? `¿Te encaja? Contesta a este mensaje o llámame al ${tel}.` : '¿Te encaja? Contesta a este mensaje.', M, Math.max(top, PH - 70), { size: 10, color: grey });
 
     return pdf.save();
   }

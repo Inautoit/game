@@ -125,9 +125,11 @@
     [/^#\/facturas$/, () => pageList('factura'), 'facturas'],
     [/^#\/presupuestos$/, () => pageList('presupuesto'), 'presupuestos'],
     [/^#\/nueva$/, () => pageInvoiceForm(null, 'factura'), 'facturas'],
-    [/^#\/presupuestos\/nuevo$/, () => pageInvoiceForm(null, 'presupuesto'), 'presupuestos'],
+    [/^#\/presupuestos\/nuevo$/, () => pageQuoteForm(null), 'presupuestos'],
     [/^#\/factura\/(\d+)(?:\?enviar)?$/, (id) => pageInvoiceView(id), 'facturas'],
     [/^#\/factura\/(\d+)\/editar$/, (id) => pageInvoiceForm(id), 'facturas'],
+    [/^#\/factura\/(\d+)\/editar-completo$/, (id) => pageInvoiceForm(id, 'factura', true), 'facturas'],
+    [/^#\/presupuestos\/completo$/, () => pageInvoiceForm(null, 'presupuesto', true), 'presupuestos'],
     [/^#\/clientes$/, pageClients, 'clientes'],
     [/^#\/productos$/, pageProducts, 'productos'],
     [/^#\/ajustes$/, pageSettings, 'ajustes'],
@@ -284,7 +286,7 @@
             <option value="">Todos los estados</option>
             ${T.estados.map((e) => `<option value="${e}" ${e === st.estado ? 'selected' : ''}>${e === 'borrador' ? 'guardado (borrador)' : e}</option>`).join('')}
           </select>
-          <input id="f-q" type="search" placeholder="Buscar por nº, cliente o NIF…" value="${esc(st.q)}" style="flex:1;min-width:200px">
+          <input id="f-q" type="search" placeholder="Buscar: nº, cliente, calle, teléfono, email, NIF, concepto…" value="${esc(st.q)}" style="flex:1;min-width:200px">
         </div>
         <div class="table-wrap" id="list"></div>
       </div>`;
@@ -333,7 +335,12 @@
 
   const setNav = (nav) => $$('nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
 
-  async function pageInvoiceForm(id, tipoNuevo = 'factura') {
+  async function pageInvoiceForm(id, tipoNuevo = 'factura', completo = false) {
+    // Los presupuestos se editan con el formulario rápido (salvo que se pida el completo)
+    if (id && !completo) {
+      const doc = await api('/invoices/' + id);
+      if (doc.tipo === 'presupuesto') return pageQuoteForm(id);
+    }
     const [settingsRes, clients, products, inv, banks] = await Promise.all([
       api('/settings'),
       api('/clients'),
@@ -655,7 +662,7 @@
       </div>
       <div class="card no-print">
         <div class="row">
-          <button class="btn primary" id="send">✉ Enviar por correo</button>
+          ${esPres ? '<button class="btn wa" id="wa">WhatsApp</button><button class="btn" id="send">✉ Correo</button>' : '<button class="btn primary" id="send">✉ Enviar por correo</button>'}
           <button class="btn" id="preview">Ver PDF</button>
           <button class="btn" id="download">Descargar PDF</button>
           <a class="btn" href="#/factura/${inv.id}/editar">Editar</a>
@@ -726,6 +733,26 @@
       }`;
 
     $('#send').onclick = () => sendDialog(inv);
+    if (esPres) {
+      // Se prepara el PDF antes de pulsar para que WhatsApp se abra al instante
+      const settings = (await api('/settings')).settings;
+      const pdfReady = window.InvoicePdf.build(inv, settings);
+      $('#wa').onclick = async (e) => {
+        e.target.disabled = true;
+        try {
+          const r = await sharePdf(inv, await pdfReady, fillText(settings['whatsapp.mensaje'], inv, settings));
+          if (r) {
+            await markShared(inv);
+            toast('Enviado por WhatsApp', 'ok');
+            router();
+          }
+        } catch (err) {
+          toast(err.message, 'error');
+        } finally {
+          e.target.disabled = false;
+        }
+      };
+    }
     $('#preview').onclick = (e) =>
       busy(e.target, async () => {
         const url = URL.createObjectURL(new Blob([await invoicePdf(inv)], { type: 'application/pdf' }));
@@ -820,6 +847,258 @@
     });
   }
 
+  // ============================================================ PRESUPUESTO RÁPIDO (WhatsApp)
+
+  const waPhone = (tel) => {
+    let d = String(tel || '').replace(/\D/g, '');
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.length === 9) d = '34' + d; // número español sin prefijo
+    return d;
+  };
+
+  // Comparte el PDF por WhatsApp (en el móvil abre la lista de contactos de WhatsApp).
+  // `pdfBytes` debe estar ya generado: el navegador solo deja compartir justo después del toque.
+  async function sharePdf(inv, pdfBytes, text) {
+    const file = new File([pdfBytes], pdfName(inv), { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], text });
+      } catch (err) {
+        if (err.name === 'AbortError') return false;
+        throw err;
+      }
+      return 'share';
+    }
+    // Ordenador: descarga el PDF y abre WhatsApp Web con el mensaje
+    const url = URL.createObjectURL(new Blob([pdfBytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    const tel = waPhone(inv.cliente_telefono);
+    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(text)}`, '_blank');
+    toast('PDF descargado: arrástralo al chat de WhatsApp', 'ok');
+    return 'web';
+  }
+
+  // Rellena {{marcadores}} del mensaje en el navegador
+  function fillText(tpl, inv, s) {
+    const v = {
+      numero: inv.numero,
+      fecha: fdate(inv.fecha),
+      total: eur(inv.total),
+      'cliente.nombre': inv.cliente_nombre || '',
+      'empresa.nombre': s['empresa.nombre'] || '',
+      'empresa.telefono': s['empresa.telefono'] || '',
+    };
+    return String(tpl || '').replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (m, k) => (k in v ? v[k] : ''));
+  }
+
+  async function markShared(inv) {
+    return api(`/invoices/${inv.id}/shared`, { method: 'POST', body: { to: 'WhatsApp' + (inv.cliente_telefono ? ' ' + inv.cliente_telefono : '') } });
+  }
+
+  async function pageQuoteForm(id) {
+    const [{ settings: s }, clients, products, inv] = await Promise.all([
+      api('/settings'),
+      api('/clients'),
+      api('/products'),
+      id ? api('/invoices/' + id) : null,
+    ]);
+    setNav('presupuestos');
+    const fecha = inv?.fecha || today();
+    const dias = parseNum(s['presupuesto.dias_validez']);
+    const numero = inv?.numero || (await api('/invoices/next-number?tipo=presupuesto&fecha=' + fecha)).numero;
+    let lines = (inv?.lines || []).map((l) => ({ descripcion: l.descripcion, cantidad: l.cantidad, precio: l.precio, unidad: l.unidad, descuento: l.descuento }));
+    if (!lines.length) lines.push({ descripcion: '', cantidad: 1, precio: '' });
+    let clientId = inv?.client_id || '';
+    let dirty = false;
+    leaveGuard = () => dirty;
+    const canPick = 'contacts' in navigator && 'select' in navigator.contacts;
+
+    app.innerHTML = `
+      <div class="page-head">
+        <h1>${inv ? 'Presupuesto ' + esc(inv.numero) : 'Presupuesto rápido'}</h1>
+        <a class="btn sm ghost" href="${inv ? `#/factura/${inv.id}/editar-completo` : '#/presupuestos/completo'}">Formulario completo</a>
+      </div>
+      <form id="q-form" class="quick" autocomplete="off">
+        <div class="card">
+          <div class="grid grid-2">
+            <label>Cliente
+              <input name="cliente_nombre" list="q-clients" value="${esc(inv?.cliente_nombre || '')}" placeholder="Nombre" required>
+            </label>
+            <label>Teléfono (WhatsApp)
+              <div class="row" style="flex-wrap:nowrap">
+                <input name="cliente_telefono" type="tel" inputmode="tel" value="${esc(inv?.cliente_telefono || '')}" placeholder="600 000 000">
+                ${canPick ? '<button type="button" class="btn" id="pick" title="Elegir de mis contactos">📇</button>' : ''}
+              </div>
+            </label>
+          </div>
+          <datalist id="q-clients">${clients.map((c) => `<option value="${esc(c.nombre)}">${esc(c.telefono || c.direccion || '')}</option>`).join('')}</datalist>
+          <details class="small" style="margin-top:8px" ${inv?.cliente_direccion ? 'open' : ''}><summary class="muted" style="cursor:pointer">Dirección de la obra (opcional)</summary>
+            <input name="cliente_direccion" value="${esc(inv?.cliente_direccion || '')}" placeholder="C/ … nº …" style="margin-top:6px">
+          </details>
+        </div>
+
+        <div class="card">
+          <div id="q-lines"></div>
+          <datalist id="q-products">${products.map((p) => `<option value="${esc(p.nombre)}">${eur(p.precio)}</option>`).join('')}</datalist>
+          <button type="button" class="btn" id="q-add" style="margin-top:8px">+ Añadir concepto</button>
+          <div class="row" style="margin-top:14px">
+            <span class="small muted">IVA</span>
+            ${['21', '10', '0'].map((v) => `<label class="chip"><input type="radio" name="iva_pct" value="${v}" ${String(parseNum(inv?.iva_pct ?? s['factura.iva_pct'])) === v ? 'checked' : ''}><span>${v}%</span></label>`).join('')}
+          </div>
+          <details class="small" style="margin-top:10px" ${inv?.notas ? 'open' : ''}><summary class="muted" style="cursor:pointer">Nota (opcional)</summary>
+            <textarea name="notas" rows="2" style="margin-top:6px" placeholder="Ej.: material incluido, plazo 2 días…">${esc(inv?.notas ?? s['presupuesto.notas'] ?? '')}</textarea>
+          </details>
+        </div>
+
+        <div class="quick-bar">
+          <div><div class="small muted">Total (IVA incl.)</div><div class="quick-total" id="q-total"></div></div>
+          <button type="submit" class="btn" value="save">Guardar</button>
+          <button type="submit" class="btn wa" value="wa">WhatsApp</button>
+        </div>
+      </form>`;
+
+    const form = $('#q-form');
+    const imp = (l) => round2(parseNum(l.cantidad || 1) * parseNum(l.precio));
+    const totals = () => {
+      const base = round2(lines.reduce((a, l) => a + (String(l.descripcion).trim() ? imp(l) : 0), 0));
+      const ivaPct = parseNum(form.iva_pct.value);
+      return { base, total: round2(base + round2((base * ivaPct) / 100)) };
+    };
+    const renderTotal = () => ($('#q-total').textContent = eur(totals().total));
+    const renderLines = () => {
+      $('#q-lines').innerHTML = lines
+        .map(
+          (l, i) => `<div class="q-line" data-i="${i}">
+            <input data-f="descripcion" list="q-products" value="${esc(l.descripcion)}" placeholder="Concepto (ej.: cambiar enchufe)">
+            <input data-f="cantidad" inputmode="decimal" value="${esc(l.cantidad ?? 1)}" title="Cantidad" class="num">
+            <input data-f="precio" inputmode="decimal" value="${esc(l.precio)}" placeholder="€" class="num">
+            <button type="button" class="btn ghost sm" data-del aria-label="Quitar">✕</button>
+          </div>`
+        )
+        .join('');
+      renderTotal();
+    };
+    $('#q-lines').addEventListener('input', (e) => {
+      const i = Number(e.target.closest('.q-line').dataset.i);
+      const f = e.target.dataset.f;
+      lines[i][f] = e.target.value;
+      if (f === 'descripcion') {
+        const p = products.find((x) => x.nombre.toLowerCase() === e.target.value.trim().toLowerCase());
+        if (p && !parseNum(lines[i].precio)) {
+          lines[i].precio = p.precio;
+          e.target.closest('.q-line').querySelector('[data-f=precio]').value = p.precio;
+        }
+      }
+      dirty = true;
+      renderTotal();
+    });
+    $('#q-lines').addEventListener('click', (e) => {
+      if (!e.target.closest('[data-del]')) return;
+      lines.splice(Number(e.target.closest('.q-line').dataset.i), 1);
+      if (!lines.length) lines.push({ descripcion: '', cantidad: 1, precio: '' });
+      renderLines();
+    });
+    $('#q-add').onclick = () => {
+      lines.push({ descripcion: '', cantidad: 1, precio: '' });
+      renderLines();
+      $$('#q-lines [data-f=descripcion]').at(-1).focus();
+    };
+    form.addEventListener('change', (e) => {
+      if (e.target.name === 'iva_pct') renderTotal();
+    });
+    form.cliente_nombre.addEventListener('input', () => {
+      dirty = true;
+      const c = clients.find((x) => x.nombre.toLowerCase() === form.cliente_nombre.value.trim().toLowerCase());
+      clientId = c ? c.id : '';
+      if (c && c.telefono && !form.cliente_telefono.value) form.cliente_telefono.value = c.telefono;
+      if (c && c.direccion && !form.cliente_direccion.value) form.cliente_direccion.value = c.direccion;
+    });
+    $('#pick')?.addEventListener('click', async () => {
+      try {
+        const [c] = await navigator.contacts.select(['name', 'tel'], { multiple: false });
+        if (!c) return;
+        if (c.name?.[0]) form.cliente_nombre.value = c.name[0];
+        if (c.tel?.[0]) form.cliente_telefono.value = c.tel[0];
+        dirty = true;
+      } catch {
+        /* cancelado */
+      }
+    });
+
+    // Datos del presupuesto tal y como se guardarán (y se pintan en el PDF)
+    const buildDoc = () => {
+      const f = formData(form);
+      const good = lines
+        .filter((l) => String(l.descripcion).trim())
+        .map((l) => ({ ...l, cantidad: parseNum(l.cantidad || 1) || 1, precio: round2(parseNum(l.precio)), descuento: parseNum(l.descuento), importe: imp(l) }));
+      const ivaPct = parseNum(form.iva_pct.value);
+      const base = round2(good.reduce((a, l) => a + l.importe, 0));
+      const iva = round2((base * ivaPct) / 100);
+      return {
+        ...(inv || {}),
+        tipo: 'presupuesto',
+        numero,
+        fecha,
+        vencimiento: inv?.vencimiento || (dias ? addDays(fecha, dias) : ''),
+        client_id: clientId,
+        guardar_cliente: true,
+        cliente_nombre: f.cliente_nombre.trim(),
+        cliente_telefono: f.cliente_telefono.trim(),
+        cliente_direccion: f.cliente_direccion.trim(),
+        forma_pago: inv?.forma_pago || s['factura.forma_pago'],
+        notas: f.notas,
+        iva_pct: ivaPct,
+        irpf_pct: inv?.irpf_pct || 0,
+        base,
+        iva,
+        irpf: 0,
+        total: round2(base + iva),
+        lines: good,
+      };
+    };
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const action = e.submitter?.value;
+      const doc = buildDoc();
+      if (!doc.cliente_nombre) return toast('Escribe el nombre del cliente.', 'error');
+      if (!doc.lines.length) return toast('Añade al menos un concepto con su precio.', 'error');
+      const btn = e.submitter;
+      btn.disabled = true;
+      try {
+        const save = inv ? api('/invoices/' + inv.id, { method: 'PUT', body: doc }) : api('/invoices', { method: 'POST', body: doc });
+        if (action === 'wa') {
+          // El PDF y el mensaje se preparan aquí mismo (sin esperar al servidor)
+          // para que WhatsApp se abra al momento de pulsar.
+          const pdfBytes = await window.InvoicePdf.build(doc, s);
+          const text = fillText(s['whatsapp.mensaje'], doc, s);
+          const r = await sharePdf(doc, pdfBytes, text);
+          const saved = await save;
+          dirty = false;
+          if (r) await markShared(saved);
+          else toast('Presupuesto guardado (no se envió)', 'ok');
+          go('#/factura/' + saved.id);
+        } else {
+          const saved = await save;
+          dirty = false;
+          toast('Presupuesto guardado', 'ok');
+          go('#/factura/' + saved.id);
+        }
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    renderLines();
+    if (!inv) form.cliente_nombre.focus();
+  }
+
   // ============================================================= CLIENTES
 
   async function pageClients() {
@@ -827,14 +1106,14 @@
     app.innerHTML = `
       <div class="page-head"><h1>Clientes</h1><button class="btn primary" id="new">+ Nuevo cliente</button></div>
       <div class="card">
-        <input id="q" type="search" placeholder="Buscar cliente…" style="margin-bottom:12px">
+        <input id="q" type="search" placeholder="Buscar por nombre, calle, teléfono, email, NIF…" style="margin-bottom:12px">
         <div class="table-wrap">
         ${
           clients.length
             ? `<table><thead><tr><th>Nombre</th><th>NIF</th><th class="hide-sm">Email</th><th class="hide-sm">Teléfono</th><th class="num">Facturas</th><th class="num">Facturado</th><th></th></tr></thead>
           <tbody>${clients
             .map(
-              (c) => `<tr data-id="${c.id}" data-s="${esc((c.nombre + ' ' + (c.nif || '') + ' ' + (c.email || '')).toLowerCase())}">
+              (c) => `<tr data-id="${c.id}" data-s="${esc([c.nombre, c.nif, c.email, c.telefono, String(c.telefono || '').replace(/\D/g, ''), c.direccion, c.cp, c.ciudad, c.provincia, c.notas].filter(Boolean).join(' ').toLowerCase())}">
               <td><strong>${esc(c.nombre)}</strong><br><span class="small muted">${esc(c.ciudad || '')}</span></td><td>${esc(c.nif || '')}</td>
               <td class="hide-sm">${esc(c.email || '')}</td><td class="hide-sm">${esc(c.telefono || '')}</td>
               <td class="num">${c.facturas}</td><td class="num">${eur(c.facturado)}</td>
@@ -849,7 +1128,8 @@
     $('#new').onclick = () => clientDialog(null);
     $('#q').oninput = (e) => {
       const q = e.target.value.toLowerCase();
-      $$('tbody tr[data-s]').forEach((tr) => tr.classList.toggle('hidden', !tr.dataset.s.includes(q)));
+      const words = q.split(/\s+/).filter(Boolean).map((w) => (/^[\d\s]+$/.test(w) ? w.replace(/\s/g, '') : w));
+      $$('tbody tr[data-s]').forEach((tr) => tr.classList.toggle('hidden', !words.every((w) => tr.dataset.s.includes(w))));
     };
     $$('tbody tr[data-id]').forEach((tr) => {
       const c = clients.find((x) => String(x.id) === tr.dataset.id);
@@ -1064,6 +1344,7 @@
             <label>Días de validez <input name="presupuesto.dias_validez" type="number" min="0" value="${v('presupuesto.dias_validez')}"></label>
             <div></div>
             <label style="grid-column:1/-1">Observaciones por defecto <textarea name="presupuesto.notas" rows="2">${v('presupuesto.notas')}</textarea></label>
+            <label style="grid-column:1/-1">Mensaje de WhatsApp <textarea name="whatsapp.mensaje" rows="2">${v('whatsapp.mensaje')}</textarea></label>
           </div>
         </div>
 

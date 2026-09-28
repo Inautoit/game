@@ -50,6 +50,7 @@ const DEFAULT_SETTINGS = {
     'Te adjunto el presupuesto {{numero}} con fecha {{fecha}}.\n\n' +
     'Quedo a tu disposición para cualquier duda.\n\n' +
     'Un saludo,\n{{empresa.nombre}}\n{{empresa.telefono}}',
+  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te paso el presupuesto {{numero}}. Cualquier duda me dices. Un saludo, {{empresa.nombre}}',
   'correo.remitente_nombre': '',
   'correo.remitente_email': '',
 };
@@ -772,9 +773,17 @@ route('GET', '/api/invoices', async (req, env) => {
     params.push(q.get('estado'));
   }
   if (q.get('q')) {
-    where.push('(numero LIKE ? OR cliente_nombre LIKE ? OR cliente_nif LIKE ?)');
-    const like = `%${q.get('q')}%`;
-    params.push(like, like, like);
+    // Busca en cualquier dato: nº, cliente, calle, teléfono, email, ciudad, CP, NIF, notas y conceptos.
+    // Cada palabra debe aparecer en algún campo (así "mayor 5" encuentra "C/ Mayor 5").
+    const campos = ['numero', 'cliente_nombre', 'cliente_nif', 'cliente_direccion', 'cliente_cp', 'cliente_ciudad', 'cliente_provincia', 'cliente_email', 'notas', 'sent_to'];
+    for (const palabra of q.get('q').trim().split(/\s+/).slice(0, 6)) {
+      const like = `%${palabra}%`;
+      const tel = palabra.replace(/\D/g, '');
+      where.push(`(${campos.map((c) => `${c} LIKE ?`).join(' OR ')}
+        ${tel.length >= 3 ? " OR REPLACE(REPLACE(REPLACE(cliente_telefono, ' ', ''), '-', ''), '.', '') LIKE ?" : ' OR cliente_telefono LIKE ?'}
+        OR EXISTS (SELECT 1 FROM invoice_lines l WHERE l.invoice_id = invoices.id AND l.descripcion LIKE ?))`);
+      params.push(...campos.map(() => like), tel.length >= 3 ? `%${tel}%` : like, like);
+    }
   }
   const limit = Math.min(num(q.get('limit'), 0), 500);
   const sql = `SELECT id, tipo, numero, fecha, vencimiento, client_id, cliente_nombre, cliente_email, base, iva, irpf, total, estado, sent_at, sent_to, paid_at, factura_id
@@ -895,6 +904,29 @@ route('POST', '/api/invoices/:id/convert', async (req, env, { params }) => {
     env.DB.prepare("UPDATE invoices SET factura_id = ?, estado = 'aceptado', updated_at = datetime('now') WHERE id = ?").bind(id, src.id),
   ]);
   return json(await getInvoice(env, id));
+});
+
+// Registra un envío hecho desde el móvil (WhatsApp)
+route('POST', '/api/invoices/:id/shared', async (req, env, { params }) => {
+  const inv = await getInvoice(env, params.id);
+  const b = await body(req);
+  const to = str(b.to, 200) || 'WhatsApp';
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO email_log (invoice_id, to_addr, cc_addr, subject, status, error) VALUES (?, ?, NULL, ?, ?, NULL)').bind(inv.id, to, 'WhatsApp', 'ok'),
+    env.DB.prepare(
+      `UPDATE invoices SET sent_at = datetime('now'), sent_to = ?,
+       estado = CASE WHEN tipo = 'presupuesto' AND estado = 'borrador' THEN 'enviado'
+                     WHEN tipo = 'factura' AND estado IN ('borrador', 'emitida') THEN 'enviada' ELSE estado END,
+       updated_at = datetime('now') WHERE id = ?`
+    ).bind(to, inv.id),
+  ]);
+  return json(await getInvoice(env, inv.id));
+});
+
+route('GET', '/api/invoices/:id/whatsapp-text', async (req, env, { params }) => {
+  const inv = await getInvoice(env, params.id);
+  const s = await getSettings(env);
+  return json({ text: renderText(s['whatsapp.mensaje'], inv, s) });
 });
 
 route('GET', '/api/invoices/:id/email-preview', async (req, env, { params }) => {
