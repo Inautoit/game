@@ -1,0 +1,16 @@
+{
+  "name": "C&M Facturas",
+  "short_name": "C&M Facturas",
+  "description": "Facturas y presupuestos de C&M Instalaciones Eléctricas",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f9",
+  "theme_color": "#1f5fae",
+  "lang": "es",
+  "icons": [
+    { "src": "/static/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

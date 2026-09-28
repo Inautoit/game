@@ -42,13 +42,14 @@ h3 { font-size: 0.95rem; margin: 16px 0 8px; }
   border-bottom: 1px solid var(--line);
 }
 .brand { font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.brand svg { width: 22px; height: 22px; }
+.brand { text-decoration: none; }
+.brand img { height: 34px; width: auto; display: block; }
 nav { display: flex; gap: 4px; flex: 1; overflow-x: auto; }
 nav a {
   padding: 8px 12px; border-radius: 8px; text-decoration: none; color: var(--muted); font-weight: 500; white-space: nowrap;
 }
 nav a.active, nav a:hover { background: var(--accent-soft); color: var(--accent); }
-.user { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+.user { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
 main { max-width: 1150px; margin: 0 auto; padding: 24px 20px 60px; }
 .page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .page-head h1 { flex: 1; }
@@ -197,3 +198,7 @@ code { background: #eef1f5; padding: 1px 6px; border-radius: 5px; font-size: 0.8
 .bar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; gap: 4px; }
 .bar-fill { width: 100%; max-width: 28px; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; }
 .bar span { font-size: 0.7rem; color: var(--muted); }
+
+.login-logo { display: block; height: 72px; width: auto; margin: 0 auto 12px; }
+.login h1 { text-align: center; }
+.login > p.muted { text-align: center; }
