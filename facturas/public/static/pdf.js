@@ -240,7 +240,8 @@
     const sb = L.sello;
     rect(sb.x, sb.top, sb.w, sb.h, { borderColor: rgb(0.7, 0.7, 0.7), borderWidth: 0.6 });
     if (sello) {
-      const r = Math.min((sb.w - 8) / sello.width, (sb.h - 6) / sello.height);
+      // Como un sello real: puede sobresalir un poco del recuadro
+      const r = Math.min((sb.w - 10) / sello.width, (sb.h + 30) / sello.height);
       const w = sello.width * r;
       const h = sello.height * r;
       page.drawImage(sello, { x: sb.x + (sb.w - w) / 2, y: Y(sb.top + sb.h - (sb.h - h) / 2), width: w, height: h });
