@@ -7,9 +7,8 @@ Funciona en **Cloudflare Workers** (plan gratuito) con base de datos **D1**.
 
 ## Qué hace
 
-- **Inicio**: resumen del dinero (facturado, cobrado, pendiente de cobro, IVA
-  del trimestre), gráfico por meses, resumen por trimestres, facturas
-  pendientes y últimos presupuestos.
+- **Inicio**: menú con iconos (nueva factura, nuevo presupuesto, facturas,
+  presupuestos, clientes y ajustes).
 - **Facturas** y **Presupuestos**: registro de todos (guardados y enviados),
   con filtros. Un presupuesto se convierte en factura con un botón.
 - **Corregir y reenviar**: cualquier factura, aunque ya esté enviada, se puede

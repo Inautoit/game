@@ -180,48 +180,31 @@
 
   // ============================================================ INICIO
 
+  // Iconos (trazos simples, se colorean con currentColor)
+  const ICON = {
+    factura: '<path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><path d="M9 12h8M9 16h8M9 8h3"/>',
+    nuevaFactura: '<path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><path d="M13 11v8M9 15h8"/>',
+    presupuesto: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    nuevoPresupuesto: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 8v8M8 12h8"/>',
+    clientes: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 2 5 4.9"/>',
+    ajustes: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  };
+  const icon = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+
   async function pageHome() {
-    const year = String(new Date().getFullYear());
-    const stats = await api('/stats?year=' + year);
-    const tot = stats.trimestres.reduce((a, t) => ({ base: a.base + t.base, total: a.total + t.total, n: a.n + t.n }), { base: 0, total: 0, n: 0 });
-    const q = Math.ceil((new Date().getMonth() + 1) / 3);
-    const maxMes = Math.max(1, ...stats.meses.map((m) => m.total));
-    const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
+    const tiles = [
+      ['#/nueva', 'nuevaFactura', 'Nueva factura', 'blue'],
+      ['#/presupuestos/nuevo', 'nuevoPresupuesto', 'Nuevo presupuesto', 'orange'],
+      ['#/facturas', 'factura', 'Facturas', 'blue'],
+      ['#/presupuestos', 'presupuesto', 'Presupuestos', 'orange'],
+      ['#/clientes', 'clientes', 'Clientes', 'green'],
+      ['#/ajustes', 'ajustes', 'Ajustes', 'grey'],
+    ];
     app.innerHTML = `
-      <div class="page-head">
-        <h1>Inicio</h1>
-        <a class="btn" href="#/presupuestos/nuevo">+ Nuevo presupuesto</a>
-        <a class="btn primary" href="#/nueva">+ Nueva factura</a>
-      </div>
-      <div class="stat stat-big">
-        <div class="label">Facturado ${year}</div>
-        <div class="value">${eur(tot.total)}</div>
-        <div class="small muted">${tot.n} factura${tot.n === 1 ? '' : 's'} · ${eur(tot.base)} sin IVA</div>
-      </div>
-
-      <div class="grid grid-2" style="align-items:start;margin-top:16px">
-        <div class="card">
-          <h2>Facturado por mes (${year})</h2>
-          <div class="bars">
-            ${MESES.map((m, i) => {
-              const d = stats.meses.find((x) => Number(x.mes) === i + 1);
-              const v = d ? d.total : 0;
-              return `<div class="bar" title="${m}: ${eur(v)}"><div class="bar-fill" style="height:${Math.round((v / maxMes) * 100)}%"></div><span>${m}</span></div>`;
-            }).join('')}
-          </div>
-        </div>
-        <div class="card">
-          <h2>Facturado por trimestre (${year})</h2>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Trimestre</th><th class="num">Facturas</th><th class="num">Facturado</th></tr></thead>
-            <tbody>${stats.trimestres
-              .map((t) => `<tr${t.t === q ? ' style="font-weight:600"' : ''}><td>${t.t}º</td><td class="num">${t.n}</td><td class="num">${eur(t.total)}</td></tr>`)
-              .join('')}</tbody>
-            <tfoot><tr><td>Total ${year}</td><td class="num">${tot.n}</td><td class="num">${eur(tot.total)}</td></tr></tfoot>
-          </table></div>
-          <p class="small muted" style="margin:8px 0 0"><a href="/api/export.csv?year=${year}">Descargar libro de facturas ${year}</a></p>
-        </div>
+      <div class="home-menu">
+        ${tiles
+          .map(([href, ic, label, color]) => `<a class="tile ${color}" href="${href}"><span class="tile-icon">${icon(ic)}</span><span class="tile-label">${label}</span></a>`)
+          .join('')}
       </div>`;
   }
 
