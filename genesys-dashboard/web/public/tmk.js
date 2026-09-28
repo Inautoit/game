@@ -10,7 +10,7 @@
 const CONFIG = {
   colasOut: ["RBE_Outbound_TMK"],   // skills de la cola outbound que cuentan (Service Outbound Call)
   campanasAuto: ["C_OC_RBE_Auto"], // campañas del automarcador que cuentan; vacío = todas
-  desde: null,                      // primer día de la competición "AAAA-MM-DD"; null = todos los guardados
+  desde: "2026-09-28",              // primer día de la competición "AAAA-MM-DD"; null = todos los guardados
   objetivoDia: null,                // objetivo de gestiones por día (número) o null
   inicio: "09:00", fin: "22:00",    // jornada, para la proyección cuando no hay día anterior con el que comparar
   // nombre corto de cada automarcador en pantalla
@@ -458,9 +458,10 @@ function pintarMarcador(lista, t, d) {
       `${fmtN(tot)} de ${fmtN(CONFIG.objetivoDia)} · faltan ${fmtN(faltan)}${quedan ? ` (${fmtN(faltan / (quedan / 60))} /h)` : ""}<div class="progreso"><i style="width:${p * 100}%"></i></div>`));
     if (Number.isFinite(proy) && proy < CONFIG.objetivoDia) alertas.push(["mal", `A este ritmo el día acabaría en ${fmtN(proy)}: ${fmtN(CONFIG.objetivoDia - proy)} por debajo del objetivo.`]);
   }
-  if (estado.acum?.porDia?.length > 1) {
+  if (estado.acum?.porDia?.length) {
     const at = estado.acum.porDia.reduce((s, x) => s + x.con + x.reg, 0);
-    html.push(dato("Acumulado competición", fmtN(at), `${estado.acum.porDia.length} días, incluido hoy`));
+    const n = estado.acum.porDia.length;
+    html.push(dato("Acumulado competición", fmtN(at), n > 1 ? `${n} días desde el ${fmtFecha(estado.acum.porDia[0].dia)}, incluido hoy` : `día 1 de la competición (desde el ${fmtFecha(estado.acum.porDia[0].dia)})`));
   }
   $("#marcador").innerHTML = html.join("");
 
