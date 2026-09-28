@@ -647,9 +647,9 @@
             <thead><tr><th class="num">Cantidad</th><th>Descripción</th><th class="num">Precio unitario</th><th class="num">Dto.</th><th class="num">Total</th></tr></thead>
             <tbody>${inv.lines
               .map(
-                (l) =>
+                (l, i) =>
                   isSection(l)
-                    ? `<tr><td></td><td><strong>${esc(l.descripcion)}</strong></td><td></td><td></td><td></td></tr>`
+                    ? `<tr><td></td><td>${i === 0 ? `<strong>${esc(l.descripcion)}</strong>` : esc(l.descripcion)}</td><td></td><td></td><td></td></tr>`
                     : `<tr><td class="num">${l.cantidad.toLocaleString('es-ES')} ${esc(l.unidad && l.unidad !== 'ud' ? l.unidad : '')}</td><td>${esc(l.descripcion)}</td>
                   <td class="num">${eur(l.precio)}</td><td class="num">${l.descuento ? l.descuento + '%' : ''}</td><td class="num">${eur(l.importe)}</td></tr>`
               )

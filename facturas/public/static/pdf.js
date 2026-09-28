@@ -198,7 +198,9 @@
       for (const { l, desc } of list) {
         const base = top + 8.5;
         if (isSection(l)) {
-          desc.forEach((d, k) => text(d, t.x[1] + 6, base + k * ROW_H, { size: 8.5, f: helvB }));
+          // Solo la primera línea sin precio va en negrita (título)
+          const titulo = l === inv.lines[0];
+          desc.forEach((d, k) => text(d, t.x[1] + 6, base + k * ROW_H, { size: 8.5, f: titulo ? helvB : helv }));
           top += desc.length * ROW_H;
           continue;
         }
@@ -381,7 +383,8 @@
         top += 10;
       }
       const seccion = isSection(l);
-      desc.forEach((d, i) => text(d, M, top + 16 + i * 15, { size: 11, font: seccion ? fb : f }));
+      const titulo = seccion && l === inv.lines[0];
+      desc.forEach((d, i) => text(d, M, top + 16 + i * 15, { size: 11, font: titulo ? fb : f }));
       if (detalle && !seccion) text(detalle, M, top + 16 + desc.length * 15 - 2, { size: 9, color: grey });
       if (!seccion) text(eur(l.importe), R, top + 16, { size: 11, font: fb, align: 'right' });
       top += h;
