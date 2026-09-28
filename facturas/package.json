@@ -15,5 +15,8 @@
     "pdf-lib": "^1.17.1",
     "wrangler": "^4.143.0"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "worker-mailer": "^1.2.1"
+  }
 }

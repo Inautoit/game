@@ -1,6 +1,7 @@
 // Facturas — API en Cloudflare Workers + base de datos D1.
 // La interfaz (carpeta public/) la sirve Cloudflare como archivos estáticos.
 // El PDF de la factura se genera en el navegador y se envía aquí solo para mandarlo por correo.
+import { WorkerMailer } from 'worker-mailer';
 import { randomToken, sha256, safeEqual, hashPassword, verifyPassword, encrypt, decrypt } from './crypto.js';
 
 const ESTADOS = ['borrador', 'emitida', 'enviada', 'pagada', 'anulada'];
@@ -187,6 +188,31 @@ function parseAddresses(s) {
     .filter(Boolean);
 }
 
+// --- SMTP (Gmail con contraseña de aplicación, u otro servidor)
+const SMTP_PRESETS = [
+  { re: /^(gmail|googlemail)\.com$/, host: 'smtp.gmail.com', port: 465, secure: true },
+  { re: /^yahoo\.[a-z.]+$/, host: 'smtp.mail.yahoo.com', port: 465, secure: true },
+  { re: /^(icloud|me|mac)\.com$/, host: 'smtp.mail.me.com', port: 587, secure: false },
+];
+
+function smtpPreset(email) {
+  const domain = String(email).split('@')[1]?.toLowerCase() || '';
+  return SMTP_PRESETS.find((p) => p.re.test(domain)) || null;
+}
+
+function smtpOptions(cfg) {
+  return {
+    host: cfg.host,
+    port: Number(cfg.port),
+    secure: !!cfg.secure,
+    startTls: !cfg.secure,
+    credentials: { username: cfg.user, password: cfg.pass },
+    authType: ['plain', 'login'],
+    socketTimeoutMs: 20000,
+    responseTimeoutMs: 20000,
+  };
+}
+
 async function sendMail(env, { to, cc, bcc, subject, text, attachment }) {
   const toList = parseAddresses(to);
   const ccList = parseAddresses(cc);
@@ -195,7 +221,23 @@ async function sendMail(env, { to, cc, bcc, subject, text, attachment }) {
   for (const a of [...toList, ...ccList, ...bccList]) if (!EMAIL_RE.test(a)) throw new HttpError(400, `Dirección no válida: ${a}`);
 
   const account = await env.DB.prepare('SELECT * FROM mail_account WHERE id = 1').first();
-  if (account && msEnabled(env)) {
+  if (account?.provider === 'smtp') {
+    const s = await getSettings(env);
+    await WorkerMailer.send(
+      smtpOptions({ host: account.smtp_host, port: account.smtp_port, secure: account.smtp_secure, user: account.email, pass: await decrypt(env.ENC_KEY, account.secret_enc) }),
+      {
+        from: { name: account.name || s['empresa.nombre'] || account.email, email: account.email },
+        to: toList,
+        ...(ccList.length ? { cc: ccList } : {}),
+        ...(bccList.length ? { bcc: bccList } : {}),
+        subject,
+        text,
+        attachments: [{ filename: attachment.name, content: attachment.base64, type: 'application/pdf' }],
+      }
+    );
+    return account.email;
+  }
+  if (account?.provider === 'microsoft' && msEnabled(env)) {
     const token = await msAccessToken(env, account);
     const addr = (list) => list.map((address) => ({ emailAddress: { address } }));
     const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
@@ -536,6 +578,41 @@ route('POST', '/api/me/email', async (req, env, { user }) => {
     env.DB.prepare('UPDATE users SET email = ? WHERE email = ?').bind(email, user.email),
     env.DB.prepare('UPDATE sessions SET email = ? WHERE email = ?').bind(email, user.email),
   ]);
+  return json({ ok: true, email });
+});
+
+// Conectar Gmail (u otro correo) por SMTP: se comprueba la contraseña antes de guardarla
+route('POST', '/api/mail-account/smtp', async (req, env) => {
+  await rateLimit(env, req);
+  const b = await body(req);
+  const email = str(b.email, 254).toLowerCase();
+  const pass = String(b.password || '').replace(/\s+/g, '');
+  if (!EMAIL_RE.test(email) || !pass) throw new HttpError(400, 'Escribe el correo y la contraseña de aplicación.');
+  const preset = smtpPreset(email);
+  const cfg = b.host
+    ? { host: str(b.host, 200), port: num(b.port, 465), secure: num(b.port, 465) === 465 }
+    : preset;
+  if (!cfg) throw new HttpError(400, 'No conozco el servidor de ese correo: indica el servidor SMTP.');
+  try {
+    const m = await WorkerMailer.connect(smtpOptions({ ...cfg, user: email, pass }));
+    await m.close();
+  } catch (err) {
+    const msg = String(err?.message || err);
+    throw new HttpError(
+      401,
+      /auth|535|534|password|credential/i.test(msg)
+        ? 'Google rechazó la contraseña. Tiene que ser una "contraseña de aplicación" de 16 letras (no tu contraseña normal) y la verificación en dos pasos debe estar activada.'
+        : `No se pudo conectar con ${cfg.host}: ${msg}`
+    );
+  }
+  await env.DB.prepare(
+    `INSERT INTO mail_account (id, provider, email, name, secret_enc, smtp_host, smtp_port, smtp_secure, updated_at)
+     VALUES (1, 'smtp', ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET provider = excluded.provider, email = excluded.email, name = excluded.name, secret_enc = excluded.secret_enc,
+       smtp_host = excluded.smtp_host, smtp_port = excluded.smtp_port, smtp_secure = excluded.smtp_secure, updated_at = excluded.updated_at`
+  )
+    .bind(email, str(b.name, 100), await encrypt(env.ENC_KEY, pass), cfg.host, cfg.port, cfg.secure ? 1 : 0)
+    .run();
   return json({ ok: true, email });
 });
 

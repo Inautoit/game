@@ -702,11 +702,11 @@
     } catch (err) {
       return toast(err.message, 'error');
     }
-    const conectado = (me.mail && me.microsoft) || me.brevo;
+    const conectado = (me.mail && (me.mail.provider === 'smtp' || me.microsoft)) || me.brevo;
     openDialog({
       title: 'Enviar factura ' + inv.numero,
       body: `
-        ${conectado ? `<div class="small muted">Se enviará desde <strong>${esc(me.mail?.email || 'tu remitente de Brevo')}</strong> con la factura en PDF adjunta.</div>` : '<div class="alert warn">Aún no has conectado tu correo. Ve a <a href="#/ajustes">Ajustes → Correo</a> y pulsa "Conectar Outlook".</div>'}
+        ${conectado ? `<div class="small muted">Se enviará desde <strong>${esc(me.mail?.email || 'tu remitente de Brevo')}</strong> con la factura en PDF adjunta.</div>` : '<div class="alert warn">Aún no has conectado tu correo. Ve a <a href="#/ajustes">Ajustes → Correo</a> y pulsa "Conectar Gmail".</div>'}
         <label>Para <input name="to" type="text" value="${esc(p.to)}" placeholder="correo@cliente.com" required></label>
         <label>CC (opcional) <input name="cc" type="text" placeholder="otro@correo.com"></label>
         <label>Asunto <input name="subject" value="${esc(p.subject)}" required></label>
@@ -965,7 +965,7 @@
             <p class="small muted" style="margin:0">Marcadores: <code>{{numero}}</code> <code>{{fecha}}</code> <code>{{total}}</code> <code>{{cliente.nombre}}</code> <code>{{forma_pago}}</code> <code>{{banco.nombre}}</code> <code>{{banco.iban}}</code> <code>{{empresa.nombre}}</code> <code>{{empresa.telefono}}</code></p>
           </div>
           <details style="margin-top:14px">
-            <summary class="small" style="cursor:pointer">Alternativa sin Microsoft: enviar con Brevo</summary>
+            <summary class="small" style="cursor:pointer">Otra alternativa: enviar con Brevo</summary>
             <p class="small muted">Si no quieres registrar la app en Microsoft, crea una cuenta gratis en brevo.com, verifica tu correo como remitente y pega aquí la clave API.</p>
             <div class="grid grid-3">
               <label>Clave API de Brevo <input name="correo.brevo_key" type="password" placeholder="${me.brevo ? '•••••• (guardada)' : 'xkeysib-…'}" autocomplete="off"></label>
@@ -990,19 +990,22 @@
 
     // --- Estado del correo
     const ms = $('#mail-status');
+    const connectButtons = `<button type="button" class="btn primary sm" id="gmail-connect">Conectar Gmail</button>
+      ${me.microsoft ? '<a class="btn sm" href="/auth/microsoft?modo=conectar">Conectar Outlook</a>' : ''}`;
     if (me.mail) {
-      ms.innerHTML = `<div class="alert info">Conectado a <strong>${esc(me.mail.email)}</strong> (Outlook). Las facturas se envían desde esta cuenta y se guardan en tus Enviados.
-        <div class="row" style="margin-top:8px"><a class="btn sm" href="/auth/microsoft?modo=conectar">Cambiar de cuenta</a><button class="btn sm danger" id="mail-off">Desconectar</button></div></div>`;
+      const tipo = me.mail.provider === 'smtp' ? (/gmail|googlemail/.test(me.mail.email) ? 'Gmail' : 'SMTP') : 'Outlook';
+      ms.innerHTML = `<div class="alert info">Las facturas se envían desde <strong>${esc(me.mail.email)}</strong> (${tipo}).
+        <div class="row" style="margin-top:8px">${connectButtons.replace('Conectar Gmail', 'Cambiar cuenta de Gmail')}<button type="button" class="btn sm danger" id="mail-off">Desconectar</button></div></div>`;
       $('#mail-off').onclick = async () => {
+        if (!(await confirmDialog('Desconectar correo', 'Dejarás de poder enviar facturas hasta que conectes otro correo. ¿Continuar?', 'Desconectar', true))) return;
         await api('/mail-account', { method: 'DELETE' });
         router();
       };
-    } else if (me.microsoft) {
-      ms.innerHTML = `<div class="alert warn">Tu correo no está conectado todavía.
-        <div class="row" style="margin-top:8px"><a class="btn primary sm" href="/auth/microsoft?modo=conectar">Conectar Outlook</a></div></div>`;
     } else {
-      ms.innerHTML = `<div class="alert ${me.brevo ? 'info' : 'warn'}">${me.brevo ? 'Enviando con Brevo.' : 'Para enviar desde tu Outlook falta registrar la app en Microsoft (ver instrucciones del README). Mientras tanto puedes usar Brevo (abajo).'}</div>`;
+      ms.innerHTML = `<div class="alert ${me.brevo ? 'info' : 'warn'}">${me.brevo ? 'Enviando con Brevo.' : 'Aún no has conectado el correo desde el que se envían las facturas.'}
+        <div class="row" style="margin-top:8px">${connectButtons}</div></div>`;
     }
+    $('#gmail-connect').onclick = () => gmailDialog(me.mail?.provider === 'smtp' ? me.mail.email : '');
 
     // --- Imágenes (logo y sello)
     const renderImg = (k) => {
@@ -1086,6 +1089,33 @@
           return true;
         },
       });
+  }
+
+  function gmailDialog(email) {
+    openDialog({
+      title: 'Conectar Gmail',
+      body: `<ol class="small" style="margin:0;padding-left:18px">
+          <li>Tu cuenta de Google debe tener activada la <strong>verificación en dos pasos</strong>.</li>
+          <li>Entra en <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>, escribe un nombre (p. ej. "Facturas") y pulsa <strong>Crear</strong>.</li>
+          <li>Copia la contraseña de 16 letras que aparece y pégala aquí abajo.</li>
+        </ol>
+        <label>Correo de Gmail <input type="email" name="email" value="${esc(email)}" required placeholder="tunombre@gmail.com"></label>
+        <label>Contraseña de aplicación <input type="password" name="password" required autocomplete="off" placeholder="xxxx xxxx xxxx xxxx"></label>
+        <label>Nombre que verá el cliente (opcional) <input name="name" placeholder="C&M Instalaciones Eléctricas"></label>
+        <details><summary class="small muted" style="cursor:pointer">Otro proveedor (servidor SMTP)</summary>
+          <div class="grid grid-2" style="margin-top:8px">
+            <label>Servidor SMTP <input name="host" placeholder="smtp.tudominio.com"></label>
+            <label>Puerto <input name="port" type="number" placeholder="465"></label>
+          </div>
+        </details>`,
+      buttons: [{ label: 'Cancelar', value: 'cancel' }, { label: 'Comprobar y conectar', value: 'save', primary: true }],
+      onSubmit: async (f) => {
+        const r = await api('/mail-account/smtp', { method: 'POST', body: formData(f) });
+        toast('Correo conectado: ' + r.email, 'ok');
+        setTimeout(router, 50);
+        return true;
+      },
+    });
   }
 
   function bankDialog(b, first = false) {

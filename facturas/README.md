@@ -20,8 +20,11 @@ Funciona en **Cloudflare Workers** (plan gratuito) con base de datos **D1**.
 - Productos con precio (autocompletado), clientes, numeración automática por
   año, IVA e IRPF, estados (borrador, enviada, pagada, anulada), historial de
   envíos, resumen por trimestre y libro de facturas en CSV (para abrir en Excel).
-- **Envío por correo** con la factura en PDF adjunta: desde tu Outlook
-  (con Microsoft) o con Brevo.
+- **Borradores**: pulsa *Guardar* y la factura queda como borrador. Puedes verla
+  en PDF, editarla, borrarla o enviarla cuando quieras.
+- **Envío por correo** con la factura en PDF adjunta desde tu **Gmail**
+  (*Ajustes → Correo → Conectar Gmail*, con una contraseña de aplicación de
+  Google), desde Outlook (con Microsoft) o con Brevo.
 
 ## Primer acceso
 
