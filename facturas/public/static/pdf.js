@@ -279,7 +279,7 @@
   // Presupuesto: diseño informal y claro (para mandar por WhatsApp)
   async function buildQuotePdf(inv, s) {
     const pdf = await PDFDocument.create();
-    pdf.setTitle(`Presupuesto ${inv.numero}`);
+    pdf.setTitle(`Presupuesto ${inv.cliente_nombre || ''}`.trim());
     pdf.setAuthor(s['empresa.nombre'] || '');
     const f = await pdf.embedFont(StandardFonts.Helvetica);
     const fb = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -339,7 +339,7 @@
 
     newPage();
     text('Presupuesto', M, top, { size: 26, font: fb });
-    text(`Nº ${inv.numero}  ·  ${fdate(inv.fecha)}`, M, top + 20, { size: 10, color: grey });
+    text(fdate(inv.fecha), M, top + 20, { size: 10, color: grey });
     const valido = inv.vencimiento || (() => {
       const d = new Date(String(inv.fecha).slice(0, 10) + 'T12:00:00Z');
       d.setUTCDate(d.getUTCDate() + 30);

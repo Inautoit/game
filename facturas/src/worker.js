@@ -24,8 +24,6 @@ const DEFAULT_SETTINGS = {
   'empresa.web': '',
   'empresa.logo': '', // imagen en data URL (PNG/JPG)
   'empresa.sello': '', // imagen del sello/firma en data URL (opcional)
-  'factura.prefijo': 'F',
-  'factura.digitos': '4',
   'factura.numero_inicial': '', // la numeración de ese año empieza en este número
   'factura.numero_inicial_anio': '',
   'factura.iva_pct': '21',
@@ -41,10 +39,9 @@ const DEFAULT_SETTINGS = {
     'Te adjunto la factura {{numero}} con fecha {{fecha}}.\n\n' +
     'El número de cuenta al que se tiene que realizar el pago está al final de la factura.\n\n' +
     'Un saludo,\n{{empresa.nombre}}\n{{empresa.telefono}}',
-  'presupuesto.prefijo': 'P',
   'presupuesto.dias_validez': '30',
   'presupuesto.notas': '',
-  'correo.presupuesto_asunto': 'Presupuesto {{numero}} - {{empresa.nombre}}',
+  'correo.presupuesto_asunto': 'Presupuesto{{obra}} - {{empresa.nombre}}',
   'correo.presupuesto_cuerpo': 'Hola {{cliente.nombre}}, te adjunto el presupuesto{{obra}}.\n\nSi tienes cualquier duda, contáctame. Un saludo, Cefe',
   'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te adjunto el presupuesto{{obra}}.\n\nSi tienes cualquier duda, contáctame. Un saludo, Cefe',
   'correo.remitente_nombre': '',
@@ -310,23 +307,23 @@ async function sendMail(env, { to, cc, bcc, subject, text, attachment }) {
 
 // ------------------------------------------------------------------ Facturas
 
+// Numeración "33/26": número correlativo / año con dos cifras (serie propia para facturas y presupuestos)
 async function nextNumber(env, fecha, tipo = 'factura') {
   const s = await getSettings(env);
   const year = (isoDate(fecha) || today()).slice(0, 4);
-  const prefix = `${s[tipo === 'presupuesto' ? 'presupuesto.prefijo' : 'factura.prefijo'] || ''}${year}-`;
-  const digits = Math.min(Math.max(num(s['factura.digitos'], 4), 1), 8);
-  const { results } = await env.DB.prepare('SELECT numero FROM invoices WHERE substr(numero, 1, ?) = ?').bind(prefix.length, prefix).all();
+  const yy = year.slice(2);
+  const { results } = await env.DB.prepare("SELECT numero FROM invoices WHERE tipo = ? AND numero LIKE ?").bind(tipo, `%/${yy}`).all();
   let max = 0;
   for (const { numero } of results) {
-    const n = parseInt(numero.slice(prefix.length), 10);
-    if (Number.isFinite(n) && n > max) max = n;
+    const m = /^(\d+)\/(\d{2})$/.exec(numero.trim());
+    if (m && m[2] === yy && Number(m[1]) > max) max = Number(m[1]);
   }
   let next = max + 1;
   // Número inicial (p. ej. 33 si las anteriores se hicieron fuera de la app)
   if (tipo === 'factura' && String(s['factura.numero_inicial_anio']) === year) {
     next = Math.max(next, Math.floor(num(s['factura.numero_inicial'], 1)));
   }
-  return prefix + String(next).padStart(digits, '0');
+  return `${next}/${yy}`;
 }
 
 function dueDate(fecha, days) {
@@ -458,7 +455,7 @@ function linesStatements(env, invoiceId, lines) {
 }
 
 function duplicateError(err) {
-  if (/UNIQUE constraint failed: invoices.numero/.test(err.message)) throw new HttpError(409, 'Ya existe un documento con ese número.');
+  if (/UNIQUE constraint failed: invoices\./.test(err.message)) throw new HttpError(409, 'Ya existe otro documento con ese número.');
   throw err;
 }
 
@@ -809,7 +806,7 @@ route('GET', '/api/invoices', async (req, env) => {
   }
   const limit = Math.min(num(q.get('limit'), 0), 500);
   const sql = `SELECT id, tipo, numero, fecha, vencimiento, client_id, cliente_nombre, cliente_email, base, iva, irpf, total, estado, sent_at, sent_to, paid_at, factura_id
-    FROM invoices ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY fecha DESC, numero DESC${limit ? ' LIMIT ' + limit : ''}`;
+    FROM invoices ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY fecha DESC, id DESC${limit ? ' LIMIT ' + limit : ''}`;
   return json((await env.DB.prepare(sql).bind(...params).all()).results);
 });
 
@@ -985,8 +982,7 @@ route('POST', '/api/invoices/:id/send', async (req, env, { params, user }) => {
   const b = await body(req);
   const to = str(b.to, 1000);
   const cc = str(b.cc, 1000);
-  const Nombre = inv.tipo === 'presupuesto' ? 'Presupuesto' : 'Factura';
-  const subject = str(b.subject, 500) || `${Nombre} ${inv.numero}`;
+  const subject = str(b.subject, 500) || (inv.tipo === 'presupuesto' ? 'Presupuesto' : `Factura ${inv.numero}`);
   const pdf = String(b.pdf || '');
   if (!/^[A-Za-z0-9+/=]+$/.test(pdf) || pdf.length < 100) throw new HttpError(400, 'No se ha podido generar el PDF.');
   const log = env.DB.prepare('INSERT INTO email_log (invoice_id, to_addr, cc_addr, subject, status, error) VALUES (?, ?, ?, ?, ?, ?)');
@@ -998,7 +994,13 @@ route('POST', '/api/invoices/:id/send', async (req, env, { params, user }) => {
       bcc: b.copia ? account?.email || user.email : '',
       subject,
       text: str(b.body, 20000),
-      attachment: { name: `${Nombre}_${inv.numero.replace(/[^\w.-]+/g, '_')}.pdf`, base64: pdf },
+      attachment: {
+        name:
+          inv.tipo === 'presupuesto'
+            ? `Presupuesto_${String(inv.cliente_nombre || 'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '_')}_${fmtDate(inv.fecha).replace(/\//g, '-')}.pdf`
+            : `Factura_${inv.numero.replace(/[^\w.-]+/g, '_')}.pdf`,
+        base64: pdf,
+      },
     });
   } catch (err) {
     await log.bind(inv.id, to, cc, subject, 'error', err.message).run();
@@ -1047,7 +1049,7 @@ route('GET', '/api/stats', async (req, env) => {
 // Libro de facturas emitidas en CSV (se abre directamente con Excel)
 route('GET', '/api/export.csv', async (req, env) => {
   const year = new URL(req.url).searchParams.get('year') || today().slice(0, 4);
-  const rows = (await env.DB.prepare("SELECT * FROM invoices WHERE tipo = 'factura' AND substr(fecha, 1, 4) = ? ORDER BY fecha, numero").bind(year).all()).results;
+  const rows = (await env.DB.prepare("SELECT * FROM invoices WHERE tipo = 'factura' AND substr(fecha, 1, 4) = ? ORDER BY fecha, id").bind(year).all()).results;
   const n = (v) => (Number(v) || 0).toFixed(2).replace('.', ',');
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const head = ['Número', 'Fecha', 'Cliente', 'NIF', 'Base imponible', '% IVA', 'Cuota IVA', '% IRPF', 'Retención IRPF', 'Total', 'Estado', 'Banco', 'Enviada a', 'Fecha pago'];

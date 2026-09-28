@@ -272,12 +272,12 @@
       }
       $('#list').innerHTML = `
         <table>
-          <thead><tr><th>Nº</th><th class="hide-sm">Fecha</th><th>Cliente</th><th class="num hide-sm">Base</th><th class="num">Total</th><th>Estado</th><th class="hide-sm">${T.enviada}</th><th></th></tr></thead>
+          <thead><tr>${tipo === 'factura' ? '<th>Nº</th>' : ''}<th class="hide-sm">Fecha</th><th>Cliente</th><th class="num hide-sm">Base</th><th class="num">Total</th><th>Estado</th><th class="hide-sm">${T.enviada}</th><th></th></tr></thead>
           <tbody>
             ${rows
               .map(
                 (r) => `<tr class="link" data-id="${r.id}">
-                <td><strong>${esc(r.numero)}</strong></td>
+                ${tipo === 'factura' ? `<td><strong>${esc(r.numero)}</strong></td>` : ''}
                 <td class="hide-sm">${fdate(r.fecha)}</td>
                 <td>${esc(r.cliente_nombre)}</td>
                 <td class="num hide-sm">${eur(r.base)}</td>
@@ -289,7 +289,7 @@
               )
               .join('')}
           </tbody>
-          <tfoot><tr><td colspan="8" class="small muted">${rows.length} ${rows.length === 1 ? T.uno : T.titulo.toLowerCase()} · ${rows.filter((r) => r.estado === 'borrador').length} guardado(s) sin enviar · ${rows.filter((r) => r.sent_at).length} enviado(s)</td></tr></tfoot>
+          <tfoot><tr><td colspan="${tipo === 'factura' ? 8 : 7}" class="small muted">${rows.length} ${rows.length === 1 ? T.uno : T.titulo.toLowerCase()} · ${rows.filter((r) => r.estado === 'borrador').length} guardado(s) sin enviar · ${rows.filter((r) => r.sent_at).length} enviado(s)</td></tr></tfoot>
         </table>`;
       $$('#list tr.link').forEach((tr) =>
         tr.addEventListener('click', async (e) => {
@@ -297,7 +297,7 @@
           if (!del) return go('#/factura/' + tr.dataset.id);
           e.stopPropagation();
           const r = rows.find((x) => String(x.id) === del.dataset.del);
-          const quien = `${tipo === 'presupuesto' ? 'el presupuesto' : 'la factura'} ${esc(r.numero)} de ${esc(r.cliente_nombre)} (${eur(r.total)})`;
+          const quien = `${esc(docName(r))}${tipo === 'factura' ? ' de ' + esc(r.cliente_nombre) : ''} (${eur(r.total)})`;
           if (!(await confirmDialog('Eliminar', `¿Eliminar ${quien}? No se puede deshacer.`, 'Eliminar', true))) return;
           await busy(null, async () => {
             await api('/invoices/' + r.id, { method: 'DELETE' });
@@ -371,7 +371,7 @@
         <div class="card">
           <h2>Datos ${esPres ? 'del presupuesto' : 'de la factura'}</h2>
           <div class="grid grid-4">
-            <label>Nº de ${T.uno} <input name="numero" value="${esc(data.numero)}" required></label>
+            ${esPres ? `<input type="hidden" name="numero" value="${esc(data.numero)}">` : `<label>Nº de factura <input name="numero" value="${esc(data.numero)}" required></label>`}
             <label>Fecha <input type="date" name="fecha" value="${esc(data.fecha)}" required></label>
             <label>${esPres ? 'Válido hasta' : 'Vencimiento'} <input type="date" name="vencimiento" value="${esc(data.vencimiento || '')}"></label>
             <label>Forma de pago <input name="forma_pago" value="${esc(data.forma_pago || '')}" list="formas-pago"></label>
@@ -596,7 +596,13 @@
     const { settings } = await api('/settings');
     return window.InvoicePdf.build(inv, settings);
   }
-  const pdfName = (inv) => `${inv.tipo === 'presupuesto' ? 'Presupuesto' : 'Factura'}_${String(inv.numero).replace(/[^\w.-]+/g, '_')}.pdf`;
+  const fileSafe = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '');
+  const pdfName = (inv) =>
+    inv.tipo === 'presupuesto'
+      ? `Presupuesto_${fileSafe(inv.cliente_nombre) || 'cliente'}_${fdate(inv.fecha).replace(/\//g, '-')}.pdf`
+      : `Factura_${fileSafe(inv.numero)}.pdf`;
+  // Cómo se nombra el documento en pantalla (los presupuestos no llevan número)
+  const docName = (inv) => (inv.tipo === 'presupuesto' ? `el presupuesto de ${inv.cliente_nombre}` : `la factura ${inv.numero}`);
 
   async function pageInvoiceView(id) {
     const inv = await api('/invoices/' + id);
@@ -607,7 +613,7 @@
 
     app.innerHTML = `
       <div class="page-head">
-        <h1>${esPres ? 'Presupuesto' : 'Factura'} ${esc(inv.numero)} ${badge(inv.estado)}</h1>
+        <h1>${esPres ? 'Presupuesto · ' + esc(inv.cliente_nombre) : 'Factura ' + esc(inv.numero)} ${badge(inv.estado)}</h1>
         <a class="btn" href="${esPres ? '#/presupuestos' : '#/facturas'}">← Volver</a>
       </div>
       <div class="card no-print">
@@ -715,7 +721,7 @@
         // En móvil los PDF no se ven dentro de la página: se abren en otra pestaña
         if (matchMedia('(max-width: 800px)').matches) return void window.open(url, '_blank');
         const dlg = openDialog({
-          title: (esPres ? 'Presupuesto ' : 'Factura ') + inv.numero,
+          title: esPres ? 'Presupuesto · ' + inv.cliente_nombre : 'Factura ' + inv.numero,
           wide: true,
           body: `<iframe class="preview" src="${url}"></iframe>`,
           buttons: [{ label: 'Cerrar', value: 'cancel' }],
@@ -734,7 +740,7 @@
     $('#dup').onclick = (e) =>
       busy(e.target, async () => {
         const copy = await api(`/invoices/${inv.id}/duplicate`, { method: 'POST' });
-        toast('Copia creada: ' + copy.numero, 'ok');
+        toast('Copia creada', 'ok');
         go('#/factura/' + copy.id + '/editar');
       });
     $('#estado').onchange = async (e) => {
@@ -750,7 +756,7 @@
       });
     };
     $('#del')?.addEventListener('click', async () => {
-      if (!(await confirmDialog('Eliminar', `¿Eliminar ${esPres ? 'el presupuesto' : 'la factura'} ${esc(inv.numero)}? No se puede deshacer.`, 'Eliminar', true))) return;
+      if (!(await confirmDialog('Eliminar', `¿Eliminar ${esc(docName(inv))}? No se puede deshacer.`, 'Eliminar', true))) return;
       await busy(null, async () => {
         await api('/invoices/' + inv.id, { method: 'DELETE' });
         toast('Eliminado', 'ok');
@@ -761,7 +767,7 @@
     $('#convert')?.addEventListener('click', (e) =>
       busy(e.target, async () => {
         if (inv.factura_id) return go('#/factura/' + inv.factura_id);
-        if (!(await confirmDialog('Convertir en factura', `Se creará una factura nueva con los datos del presupuesto ${esc(inv.numero)}. Quedará guardada para que la revises antes de enviarla.`, 'Crear factura'))) return;
+        if (!(await confirmDialog('Convertir en factura', `Se creará una factura nueva con los datos del presupuesto de ${esc(inv.cliente_nombre)}. Quedará guardada para que la revises antes de enviarla.`, 'Crear factura'))) return;
         const f = await api(`/invoices/${inv.id}/convert`, { method: 'POST' });
         toast('Factura ' + f.numero + ' creada', 'ok');
         go('#/factura/' + f.id + '/editar');
@@ -783,7 +789,7 @@
     }
     const conectado = (me.mail && (me.mail.provider === 'smtp' || me.microsoft)) || me.brevo;
     openDialog({
-      title: (inv.tipo === 'presupuesto' ? 'Enviar presupuesto ' : 'Enviar factura ') + inv.numero,
+      title: inv.tipo === 'presupuesto' ? 'Enviar presupuesto' : 'Enviar factura ' + inv.numero,
       body: `
         ${conectado ? `<div class="small muted">Se enviará desde <strong>${esc(me.mail?.email || 'tu remitente de Brevo')}</strong> con el PDF adjunto.</div>` : '<div class="alert warn">Aún no has conectado tu correo. Ve a <a href="#/ajustes">Ajustes → Correo</a> y pulsa "Conectar Gmail".</div>'}
         <label>Para <input name="to" type="text" value="${esc(p.to)}" placeholder="correo@cliente.com" required></label>
@@ -887,7 +893,7 @@
 
     app.innerHTML = `
       <div class="page-head">
-        <h1>${inv ? 'Presupuesto ' + esc(inv.numero) : 'Presupuesto rápido'}</h1>
+        <h1>${inv ? 'Editar presupuesto' : 'Presupuesto rápido'}</h1>
         <a class="btn sm ghost" href="${inv ? `#/factura/${inv.id}/editar-completo` : '#/presupuestos/completo'}">Formulario completo</a>
       </div>
       <form id="q-form" class="quick" autocomplete="off">
@@ -1249,14 +1255,12 @@
         <div class="card">
           <h2>Facturas</h2>
           <div class="grid grid-3">
-            <label>Prefijo de numeración <input name="factura.prefijo" value="${v('factura.prefijo')}"></label>
-            <label>Dígitos del número <input name="factura.digitos" type="number" min="1" max="8" value="${v('factura.digitos')}"></label>
-            <div class="small muted" style="align-self:end">Ejemplo: <code id="num-example"></code><br>La numeración se reinicia cada año.</div>
+            <div class="small muted span-2" style="align-self:end">Formato del número: <code id="num-example"></code> (número / año). La numeración vuelve a empezar cada año.</div>
             <label>Empezar las facturas de ${new Date().getFullYear()} en el número
               <input name="factura.numero_inicial" type="number" min="1" value="${String(s['factura.numero_inicial_anio']) === String(new Date().getFullYear()) ? v('factura.numero_inicial') : ''}" placeholder="1">
             </label>
             <input type="hidden" name="factura.numero_inicial_anio" value="${new Date().getFullYear()}">
-            <div class="small muted" style="align-self:end;grid-column:span 2">Úsalo si ya tienes facturas hechas fuera de la app este año. Ej.: pon 33 y la próxima factura será la nº 33.</div>
+            <div class="small muted" style="align-self:end;grid-column:span 2">Úsalo si ya tienes facturas hechas fuera de la app este año. Ej.: pon 33 y la próxima factura será la 33/26.</div>
             <label>IVA por defecto (%) <input name="factura.iva_pct" inputmode="decimal" value="${v('factura.iva_pct')}"></label>
             <label>Retención IRPF por defecto (%) <input name="factura.irpf_pct" inputmode="decimal" value="${v('factura.irpf_pct')}"></label>
             <label>Días hasta vencimiento <input name="factura.dias_vencimiento" type="number" min="0" value="${v('factura.dias_vencimiento')}"></label>
@@ -1268,7 +1272,7 @@
         <div class="card">
           <h2>Presupuestos</h2>
           <div class="grid grid-3">
-            <label>Prefijo de numeración <input name="presupuesto.prefijo" value="${v('presupuesto.prefijo')}"></label>
+            <div class="small muted" style="align-self:end">Numeración propia: 1/26, 2/26…</div>
             <label>Días de validez <input name="presupuesto.dias_validez" type="number" min="0" value="${v('presupuesto.dias_validez')}"></label>
             <div></div>
             <label style="grid-column:1/-1">Observaciones por defecto <textarea name="presupuesto.notas" rows="2">${v('presupuesto.notas')}</textarea></label>
@@ -1370,10 +1374,8 @@
     const form = $('#settings-form');
     const updateExample = () => {
       const n = String(Number(form['factura.numero_inicial'].value) || 1);
-      $('#num-example').textContent = `${form['factura.prefijo'].value}${new Date().getFullYear()}-${n.padStart(Number(form['factura.digitos'].value) || 4, '0')}`;
+      $('#num-example').textContent = `${n}/${String(new Date().getFullYear()).slice(2)}`;
     };
-    form['factura.prefijo'].oninput = updateExample;
-    form['factura.digitos'].oninput = updateExample;
     form['factura.numero_inicial'].oninput = updateExample;
     updateExample();
 
