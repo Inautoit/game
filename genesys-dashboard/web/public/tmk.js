@@ -362,6 +362,15 @@ function pintar() {
   const sel = $("#auto-sel");
   const opciones = `<option value="">Los dos automarcadores</option>` + cs.map((c) => `<option value="${esc(c)}">${esc(etq(c))} (${esc(c)})</option>`).join("");
   if (sel.dataset.o !== opciones) { sel.innerHTML = opciones; sel.dataset.o = opciones; sel.value = estado.auto; }
+  // Codificaciones de los automarcadores juntos (barras apiladas por campaña; la etiqueta lleva el total)
+  const codT = {};
+  for (const c of cs) for (const [x, n] of Object.entries(d.camp[c]?.cod ?? {})) sumar(codT, x, n);
+  const regT = Object.values(codT).reduce((s, n) => s + n, 0);
+  const cods = Object.entries(codT).sort((a, b) => b[1] - a[1]).map(([x]) => x);
+  $("#g-codif-sub").textContent = `${cs.map(etq).join(" + ")} · ${fmtN(regT)} registros${acum ? " en el acumulado" : " hoy"}`;
+  grafico("g-codif", "bar", cods.map((x) => `${x}  ${fmtN(codT[x])} (${fmtPct(codT[x] / regT)})`),
+    cs.map((c, i) => ({ label: etq(c), data: cods.map((x) => d.camp[c]?.cod?.[x] ?? 0), color: color(i) })), { horizontal: true, apilado: true });
+
   pintarRanking(lista, top);
   pintarRegistro();
   pintarCampanas(d.camp);

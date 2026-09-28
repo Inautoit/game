@@ -266,3 +266,4 @@ a.boton-barra { text-decoration: none; display: inline-flex; align-items: center
 .alertas li { padding: 8px 12px; border-radius: 8px; background: var(--surface-2); border-left: 4px solid var(--warning); }
 .alertas li.mal { border-left-color: var(--critical); }
 .alertas li.bien { border-left-color: var(--good); }
+.lienzo-codif { height: 320px; }
