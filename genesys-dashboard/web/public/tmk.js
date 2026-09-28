@@ -9,7 +9,7 @@
 // ============ CONFIGURACIÓN DE LA COMPETICIÓN ============
 const CONFIG = {
   colasOut: ["RBE_Outbound_TMK"],   // skills de la cola outbound que cuentan (Service Outbound Call)
-  campanasAuto: ["C_Vencimiento_Push_High", "C_OC_RBE_Auto"], // campañas del automarcador que cuentan; vacío = todas
+  campanasAuto: ["C_OC_RBE_Auto"], // campañas del automarcador que cuentan; vacío = todas
   desde: null,                      // primer día de la competición "AAAA-MM-DD"; null = todos los guardados
   objetivoDia: null,                // objetivo de gestiones por día (número) o null
   inicio: "09:00", fin: "22:00",    // jornada, para la proyección cuando no hay día anterior con el que comparar
@@ -362,6 +362,7 @@ function pintar() {
   const sel = $("#auto-sel");
   const opciones = `<option value="">Los dos automarcadores</option>` + cs.map((c) => `<option value="${esc(c)}">${esc(etq(c))} (${esc(c)})</option>`).join("");
   if (sel.dataset.o !== opciones) { sel.innerHTML = opciones; sel.dataset.o = opciones; sel.value = estado.auto; }
+  sel.closest("label").hidden = cs.length < 2; // con un solo automarcador no hace falta elegir
   // Codificaciones de los automarcadores juntos (barras apiladas por campaña; la etiqueta lleva el total)
   const codT = {};
   for (const c of cs) for (const [x, n] of Object.entries(d.camp[c]?.cod ?? {})) sumar(codT, x, n);
