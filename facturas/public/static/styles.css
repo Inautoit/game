@@ -186,3 +186,6 @@ code { background: #eef1f5; padding: 1px 6px; border-radius: 5px; font-size: 0.8
 @media print {
   .topbar, .no-print { display: none !important; }
 }
+
+.img-box { height: 110px; border: 1px dashed #cfd6e0; border-radius: 8px; display: grid; place-items: center; background: #fafbfc; overflow: hidden; }
+.img-box img { max-width: 100%; max-height: 100px; object-fit: contain; }

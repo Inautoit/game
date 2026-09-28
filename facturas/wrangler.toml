@@ -1,0 +1,22 @@
+# Configuración de Cloudflare Workers
+name = "facturas"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "facturas-db"
+database_id = "9c4c8b0d-d191-4bc4-80aa-1c26f5fbbde4"
+migrations_dir = "migrations"
+
+# Secretos (no van en este archivo; se definen con `npx wrangler secret put NOMBRE`):
+#   ENC_KEY          clave aleatoria para cifrar tokens guardados
+#   SETUP_CODE       código para crear la contraseña la primera vez
+#   OWNER_EMAIL      tu correo: el único que puede entrar
+#   MS_CLIENT_ID     (opcional) app registrada en Microsoft Entra para Outlook
+#   MS_CLIENT_SECRET (opcional)

@@ -179,7 +179,7 @@
     app.innerHTML = `
       <div class="page-head">
         <h1>Registro de facturas</h1>
-        <a class="btn" id="export" href="#">Exportar libro Excel</a>
+        <a class="btn" id="export" href="#">Exportar libro (Excel)</a>
         <a class="btn primary" href="#/nueva">+ Nueva factura</a>
       </div>
       <div class="stats" id="stats"></div>
@@ -204,7 +204,7 @@
         api('/invoices?' + params),
         api('/stats?year=' + (listState.year || new Date().getFullYear())),
       ]);
-      $('#export').href = '/api/export.xlsx?year=' + encodeURIComponent(listState.year || stats.year);
+      $('#export').href = '/api/export.csv?year=' + encodeURIComponent(listState.year || stats.year);
       const tot = stats.trimestres.reduce((a, t) => ({ base: a.base + t.base, iva: a.iva + t.iva, total: a.total + t.total }), { base: 0, iva: 0, total: 0 });
       const q = Math.ceil((new Date().getMonth() + 1) / 3);
       const tq = stats.trimestres[q - 1];
@@ -257,13 +257,15 @@
   // ------------------------------------------------------- Formulario factura
 
   async function pageInvoiceForm(id) {
-    const [settingsRes, clients, products, inv] = await Promise.all([
+    const [settingsRes, clients, products, inv, banks] = await Promise.all([
       api('/settings'),
       api('/clients'),
       api('/products'),
       id ? api('/invoices/' + id) : null,
+      api('/banks'),
     ]);
     const s = settingsRes.settings;
+    const defaultBank = banks.find((b) => b.predeterminado) || banks[0];
     const fecha = inv?.fecha || today();
     const dias = parseNum(s['factura.dias_vencimiento']);
     const data = inv || {
@@ -276,6 +278,7 @@
       notas: s['factura.notas'],
       lines: [],
       estado: 'borrador',
+      bank_id: defaultBank?.id || '',
     };
     let lines = (data.lines || []).map((l) => ({ ...l }));
     if (!lines.length) lines.push({ descripcion: '', cantidad: 1, unidad: 'ud', precio: 0, descuento: 0 });
@@ -299,6 +302,13 @@
             <label>Fecha <input type="date" name="fecha" value="${esc(data.fecha)}" required></label>
             <label>Vencimiento <input type="date" name="vencimiento" value="${esc(data.vencimiento || '')}"></label>
             <label>Forma de pago <input name="forma_pago" value="${esc(data.forma_pago || '')}" list="formas-pago"></label>
+            <label class="span-2">Banco (sale en la factura con su nº de cuenta)
+              <select name="bank_id">
+                ${banks.length ? '' : '<option value="">— Añade tus bancos en Ajustes —</option>'}
+                ${banks.map((b) => `<option value="${b.id}" ${String(b.id) === String(data.bank_id) ? 'selected' : ''}>${esc(b.nombre)}</option>`).join('')}
+              </select>
+            </label>
+            <div class="span-2 small muted" id="bank-iban" style="align-self:end;padding-bottom:9px"></div>
           </div>
           <datalist id="formas-pago">
             <option>Transferencia bancaria</option><option>Efectivo</option><option>Bizum</option><option>Tarjeta</option><option>Domiciliación bancaria</option>
@@ -367,6 +377,14 @@
 
     const form = $('#inv-form');
     const tbody = $('#lines');
+
+    // --- Banco
+    const showIban = () => {
+      const b = banks.find((x) => String(x.id) === form.bank_id.value);
+      $('#bank-iban').innerHTML = b ? 'IBAN: <strong>' + esc(b.iban) + '</strong>' : banks.length ? '' : '<a href="#/ajustes">Añadir bancos</a>';
+    };
+    form.bank_id.onchange = showIban;
+    showIban();
 
     // --- Cliente
     const clientFields = ['nombre', 'nif', 'direccion', 'cp', 'ciudad', 'provincia', 'email', 'telefono'];
@@ -536,9 +554,15 @@
 
   // ------------------------------------------------------------ Ver factura
 
+  // Genera el PDF de una factura (en el navegador)
+  async function invoicePdf(inv) {
+    const { settings } = await api('/settings');
+    return window.InvoicePdf.build(inv, settings);
+  }
+  const pdfName = (inv) => `Factura_${String(inv.numero).replace(/[^\w.-]+/g, '_')}.pdf`;
+
   async function pageInvoiceView(id) {
     const inv = await api('/invoices/' + id);
-    const settings = await api('/settings');
 
     app.innerHTML = `
       <div class="page-head">
@@ -548,9 +572,8 @@
       <div class="card no-print">
         <div class="row">
           <button class="btn primary" id="send">✉ Enviar por correo</button>
-          ${settings.pdf ? '<button class="btn" id="preview">Ver PDF</button>' : ''}
-          ${settings.pdf ? `<a class="btn" href="/api/invoices/${inv.id}/pdf?download=1">Descargar PDF</a>` : ''}
-          <a class="btn" href="/api/invoices/${inv.id}/xlsx">Descargar Excel</a>
+          <button class="btn" id="preview">Ver PDF</button>
+          <button class="btn" id="download">Descargar PDF</button>
           <a class="btn" href="#/factura/${inv.id}/editar">Editar</a>
           <button class="btn" id="dup">Duplicar</button>
           <span class="spacer"></span>
@@ -576,6 +599,7 @@
             <div><span class="muted">Fecha</span><br>${fdate(inv.fecha)}</div>
             <div><span class="muted">Vencimiento</span><br>${fdate(inv.vencimiento) || '—'}</div>
             <div><span class="muted">Forma de pago</span><br>${esc(inv.forma_pago || '—')}</div>
+            <div><span class="muted">Banco</span><br>${inv.banco_nombre ? esc(inv.banco_nombre) + '<br>' + esc(inv.banco_iban) : '—'}</div>
             <div><span class="muted">Enviada</span><br>${inv.sent_at ? fdate(inv.sent_at) + ' a ' + esc(inv.sent_to) : 'No'}</div>
             ${inv.paid_at ? `<div><span class="muted">Pagada</span><br>${fdate(inv.paid_at)}</div>` : ''}
           </div>
@@ -585,45 +609,59 @@
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Descripción</th><th class="num">Cantidad</th><th>Ud.</th><th class="num">Precio</th><th class="num">Dto.</th><th class="num">Importe</th></tr></thead>
+            <thead><tr><th class="num">Cantidad</th><th>Descripción</th><th class="num">Precio unitario</th><th class="num">Dto.</th><th class="num">Total</th></tr></thead>
             <tbody>${inv.lines
               .map(
-                (l) => `<tr><td>${esc(l.descripcion)}</td><td class="num">${l.cantidad.toLocaleString('es-ES')}</td><td>${esc(l.unidad || '')}</td>
+                (l) => `<tr><td class="num">${l.cantidad.toLocaleString('es-ES')} ${esc(l.unidad && l.unidad !== 'ud' ? l.unidad : '')}</td><td>${esc(l.descripcion)}</td>
                   <td class="num">${eur(l.precio)}</td><td class="num">${l.descuento ? l.descuento + '%' : ''}</td><td class="num">${eur(l.importe)}</td></tr>`
               )
               .join('')}</tbody>
           </table>
         </div>
         <div class="totals" style="margin-top:14px">
-          <div><span>Base imponible</span><span class="num">${eur(inv.base)}</span></div>
+          <div><span>Subtotal</span><span class="num">${eur(inv.base)}</span></div>
           <div><span>IVA (${inv.iva_pct}%)</span><span class="num">${eur(inv.iva)}</span></div>
           ${inv.irpf_pct ? `<div><span>Retención IRPF (${inv.irpf_pct}%)</span><span class="num">-${eur(inv.irpf)}</span></div>` : ''}
           <div class="grand"><span>TOTAL</span><span class="num">${eur(inv.total)}</span></div>
         </div>
-        ${inv.notas ? `<p class="small"><strong>Notas:</strong> ${esc(inv.notas)}</p>` : ''}
+        ${inv.notas ? `<p class="small"><strong>Observaciones:</strong> ${esc(inv.notas)}</p>` : ''}
       </div>
 
       ${
         inv.emails.length
-          ? `<div class="card"><h2>Historial de envíos</h2><table><thead><tr><th>Fecha</th><th>Para</th><th>Asunto</th><th>Resultado</th></tr></thead><tbody>
+          ? `<div class="card"><h2>Historial de envíos</h2><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Para</th><th>Asunto</th><th>Resultado</th></tr></thead><tbody>
           ${inv.emails
             .map(
               (m) => `<tr><td class="small">${esc(m.sent_at)}</td><td>${esc(m.to_addr)}${m.cc_addr ? '<br><span class="small muted">CC: ' + esc(m.cc_addr) + '</span>' : ''}</td><td>${esc(m.subject)}</td>
-                <td>${m.status === 'ok' ? '<span class="badge pagada">enviado</span>' : '<span class="badge anulada" title="' + esc(m.error) + '">error</span><br><span class="small muted">' + esc(m.error) + '</span>'}</td></tr>`
+                <td>${m.status === 'ok' ? '<span class="badge pagada">enviado</span>' : '<span class="badge anulada">error</span><br><span class="small muted">' + esc(m.error) + '</span>'}</td></tr>`
             )
-            .join('')}</tbody></table></div>`
+            .join('')}</tbody></table></div></div>`
           : ''
       }`;
 
     $('#send').onclick = () => sendDialog(inv);
-    $('#preview')?.addEventListener('click', () =>
-      openDialog({
-        title: 'Factura ' + inv.numero,
-        wide: true,
-        body: `<iframe class="preview" src="/api/invoices/${inv.id}/pdf"></iframe>`,
-        buttons: [{ label: 'Cerrar', value: 'cancel' }],
-      })
-    );
+    $('#preview').onclick = (e) =>
+      busy(e.target, async () => {
+        const url = URL.createObjectURL(new Blob([await invoicePdf(inv)], { type: 'application/pdf' }));
+        // En móvil los PDF no se ven dentro de la página: se abren en otra pestaña
+        if (matchMedia('(max-width: 800px)').matches) return void window.open(url, '_blank');
+        const dlg = openDialog({
+          title: 'Factura ' + inv.numero,
+          wide: true,
+          body: `<iframe class="preview" src="${url}"></iframe>`,
+          buttons: [{ label: 'Cerrar', value: 'cancel' }],
+        });
+        dlg.addEventListener('close', () => URL.revokeObjectURL(url), { once: true });
+      });
+    $('#download').onclick = (e) =>
+      busy(e.target, async () => {
+        const url = URL.createObjectURL(new Blob([await invoicePdf(inv)], { type: 'application/pdf' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = pdfName(inv);
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      });
     $('#dup').onclick = (e) =>
       busy(e.target, async () => {
         const copy = await api(`/invoices/${inv.id}/duplicate`, { method: 'POST' });
@@ -658,29 +696,27 @@
   }
 
   async function sendDialog(inv) {
-    const p = await api(`/invoices/${inv.id}/email-preview`).catch((err) => toast(err.message, 'error'));
-    if (!p) return;
+    let p, me;
+    try {
+      [p, me] = await Promise.all([api(`/invoices/${inv.id}/email-preview`), api('/me')]);
+    } catch (err) {
+      return toast(err.message, 'error');
+    }
+    const conectado = (me.mail && me.microsoft) || me.brevo;
     openDialog({
       title: 'Enviar factura ' + inv.numero,
       body: `
+        ${conectado ? `<div class="small muted">Se enviará desde <strong>${esc(me.mail?.email || 'tu remitente de Brevo')}</strong> con la factura en PDF adjunta.</div>` : '<div class="alert warn">Aún no has conectado tu correo. Ve a <a href="#/ajustes">Ajustes → Correo</a> y pulsa "Conectar Outlook".</div>'}
         <label>Para <input name="to" type="text" value="${esc(p.to)}" placeholder="correo@cliente.com" required></label>
         <label>CC (opcional) <input name="cc" type="text" placeholder="otro@correo.com"></label>
         <label>Asunto <input name="subject" value="${esc(p.subject)}" required></label>
         <label>Mensaje <textarea name="body" rows="9">${esc(p.body)}</textarea></label>
-        <div class="row">
-          <label style="flex-direction:row;align-items:center;gap:8px">Adjuntar
-            <select name="adjunto" style="width:auto">
-              ${p.pdf ? `<option value="pdf" ${p.adjunto === 'pdf' ? 'selected' : ''}>PDF</option>` : ''}
-              <option value="xlsx" ${p.adjunto === 'xlsx' ? 'selected' : ''}>Excel (.xlsx)</option>
-              ${p.pdf ? `<option value="ambos" ${p.adjunto === 'ambos' ? 'selected' : ''}>PDF y Excel</option>` : ''}
-            </select>
-          </label>
-          <label class="check"><input type="checkbox" name="copia"> Enviarme una copia</label>
-        </div>
+        <label class="check"><input type="checkbox" name="copia"> Enviarme una copia</label>
         ${p.to ? '' : '<div class="alert warn">Este cliente no tiene email guardado. Escríbelo arriba y se guardará en su ficha.</div>'}`,
       buttons: [{ label: 'Cancelar', value: 'cancel' }, { label: '✉ Enviar', value: 'send', primary: true }],
       onSubmit: async (form) => {
-        await api(`/invoices/${inv.id}/send`, { method: 'POST', body: formData(form) });
+        const pdf = window.InvoicePdf.toBase64(await invoicePdf(inv));
+        await api(`/invoices/${inv.id}/send`, { method: 'POST', body: { ...formData(form), pdf } });
         toast('Factura enviada a ' + form.to.value, 'ok');
         setTimeout(router, 50);
         return true;
@@ -823,30 +859,86 @@
 
   // =============================================================== AJUSTES
 
+  function readFileAsDataUrl(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+  }
+
+  // Reduce una imagen (logo) a un tamaño razonable y la pasa a PNG
+  async function shrinkImage(file, max = 800) {
+    const url = await readFileAsDataUrl(file);
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error('No se pudo leer la imagen.'));
+      i.src = url;
+    });
+    const r = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * r);
+    c.height = Math.round(img.height * r);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/png');
+  }
+
   async function pageSettings() {
-    const [{ settings: s, pdf }, info, placeholders, me] = await Promise.all([
-      api('/settings'),
-      api('/template/info'),
-      api('/placeholders'),
-      api('/me'),
-    ]);
+    const [{ settings: s }, banks, me] = await Promise.all([api('/settings'), api('/banks'), api('/me')]);
     const v = (k) => esc(s[k] ?? '');
+    const images = { 'empresa.logo': s['empresa.logo'] || '', 'empresa.sello': s['empresa.sello'] || '' };
 
     app.innerHTML = `
       <div class="page-head"><h1>Ajustes</h1></div>
+
+      <div class="card">
+        <h2>Bancos</h2>
+        <p class="small muted" style="margin-top:-6px">Añade tus cuentas. Al hacer una factura eliges el banco y su número de cuenta se escribe solo en la factura (abajo, a la derecha del sello).</p>
+        <div class="table-wrap">
+          ${
+            banks.length
+              ? `<table><thead><tr><th>Banco</th><th>IBAN</th><th class="hide-sm">BIC/SWIFT</th><th></th></tr></thead><tbody>
+            ${banks
+              .map(
+                (b) => `<tr data-id="${b.id}"><td><strong>${esc(b.nombre)}</strong> ${b.predeterminado ? '<span class="badge emitida">predeterminado</span>' : ''}</td>
+                <td>${esc(b.iban)}</td><td class="hide-sm">${esc(b.swift || '')}</td><td class="num"><button class="btn sm" data-edit-bank>Editar</button></td></tr>`
+              )
+              .join('')}</tbody></table>`
+              : '<div class="empty" style="padding:16px">Todavía no hay bancos.</div>'
+          }
+        </div>
+        <div class="row" style="margin-top:10px"><button class="btn primary" id="new-bank">+ Añadir banco</button></div>
+      </div>
+
       <form id="settings-form">
         <div class="card">
-          <h2>Datos de tu empresa</h2>
+          <h2>Datos de tu empresa (cabecera de la factura)</h2>
           <div class="grid grid-3">
-            <label class="span-2">Nombre o razón social <input name="empresa.nombre" value="${v('empresa.nombre')}"></label>
-            <label>NIF / DNI <input name="empresa.nif" value="${v('empresa.nif')}"></label>
+            <label class="span-2">Actividad (debajo del logo) <input name="empresa.actividad" value="${v('empresa.actividad')}" placeholder="INSTALACIONES ELECTRICAS"></label>
+            <label>NIF <input name="empresa.nif" value="${v('empresa.nif')}"></label>
+            <label class="span-2">Nombre <input name="empresa.nombre" value="${v('empresa.nombre')}"></label>
+            <label>Teléfono <input name="empresa.telefono" value="${v('empresa.telefono')}"></label>
             <label class="span-2">Dirección <input name="empresa.direccion" value="${v('empresa.direccion')}"></label>
             <label>C.P. <input name="empresa.cp" value="${v('empresa.cp')}"></label>
             <label>Ciudad <input name="empresa.ciudad" value="${v('empresa.ciudad')}"></label>
-            <label>Provincia <input name="empresa.provincia" value="${v('empresa.provincia')}"></label>
-            <label>Teléfono <input name="empresa.telefono" value="${v('empresa.telefono')}"></label>
-            <label>Email <input name="empresa.email" value="${v('empresa.email') || esc(me.email)}"></label>
-            <label class="span-2">IBAN <input name="empresa.iban" value="${v('empresa.iban')}" placeholder="ES00 0000 0000 0000 0000 0000"></label>
+            <label class="span-2">Email (sale en vertical en el margen) <input name="empresa.email" value="${v('empresa.email')}"></label>
+          </div>
+          <div class="grid grid-2" style="margin-top:16px">
+            ${['empresa.logo', 'empresa.sello']
+              .map(
+                (k) => `<div>
+                <div class="small muted" style="font-weight:500;margin-bottom:6px">${k === 'empresa.logo' ? 'Logo' : 'Sello y firma (recuadro de abajo a la izquierda)'}</div>
+                <div class="img-box" id="img-${k.split('.')[1]}"></div>
+                <div class="row" style="margin-top:8px">
+                  <label class="btn sm" style="flex-direction:row">Subir imagen<input type="file" accept="image/png,image/jpeg" class="hidden" data-img="${k}"></label>
+                  <button type="button" class="btn sm danger" data-img-del="${k}">Quitar</button>
+                </div>
+                ${k === 'empresa.sello' ? '<p class="small muted" style="margin:6px 0 0">Puedes subir una captura: se quita el fondo blanco y las líneas negras de los bordes automáticamente.</p>' : ''}
+              </div>`
+              )
+              .join('')}
           </div>
         </div>
 
@@ -860,64 +952,93 @@
             <label>Retención IRPF por defecto (%) <input name="factura.irpf_pct" inputmode="decimal" value="${v('factura.irpf_pct')}"></label>
             <label>Días hasta vencimiento <input name="factura.dias_vencimiento" type="number" min="0" value="${v('factura.dias_vencimiento')}"></label>
             <label class="span-2">Forma de pago por defecto <input name="factura.forma_pago" value="${v('factura.forma_pago')}"></label>
-            <label style="grid-column:1/-1">Notas por defecto <textarea name="factura.notas" rows="2">${v('factura.notas')}</textarea></label>
+            <label style="grid-column:1/-1">Observaciones por defecto <textarea name="factura.notas" rows="2">${v('factura.notas')}</textarea></label>
           </div>
         </div>
 
         <div class="card">
           <h2>Correo</h2>
-          <p class="small muted" style="margin-top:-6px">Conectado como <strong>${esc(me.email)}</strong> (${me.method === 'microsoft' ? 'cuenta Microsoft' : 'SMTP ' + esc(me.smtp_host || '')}). Las facturas se envían desde esta cuenta.</p>
-          <div class="grid">
+          <div id="mail-status"></div>
+          <div class="grid" style="margin-top:14px">
             <label>Asunto <input name="correo.asunto" value="${v('correo.asunto')}"></label>
             <label>Mensaje <textarea name="correo.cuerpo" rows="8">${v('correo.cuerpo')}</textarea></label>
-            <label style="max-width:260px">Adjuntar por defecto
-              <select name="correo.adjunto">
-                <option value="pdf" ${s['correo.adjunto'] === 'pdf' ? 'selected' : ''}>PDF</option>
-                <option value="xlsx" ${s['correo.adjunto'] === 'xlsx' ? 'selected' : ''}>Excel (.xlsx)</option>
-                <option value="ambos" ${s['correo.adjunto'] === 'ambos' ? 'selected' : ''}>PDF y Excel</option>
-              </select>
-            </label>
-            ${pdf ? '' : '<div class="alert warn">LibreOffice no está instalado en el servidor, así que las facturas se adjuntarán en Excel. Instálalo para poder enviar PDF.</div>'}
-            <p class="small muted" style="margin:0">Puedes usar los mismos marcadores que en la plantilla, por ejemplo <code>{{numero}}</code>, <code>{{total}}</code> o <code>{{cliente.nombre}}</code>.</p>
+            <p class="small muted" style="margin:0">Marcadores: <code>{{numero}}</code> <code>{{fecha}}</code> <code>{{total}}</code> <code>{{cliente.nombre}}</code> <code>{{forma_pago}}</code> <code>{{banco.nombre}}</code> <code>{{banco.iban}}</code> <code>{{empresa.nombre}}</code> <code>{{empresa.telefono}}</code></p>
           </div>
+          <details style="margin-top:14px">
+            <summary class="small" style="cursor:pointer">Alternativa sin Microsoft: enviar con Brevo</summary>
+            <p class="small muted">Si no quieres registrar la app en Microsoft, crea una cuenta gratis en brevo.com, verifica tu correo como remitente y pega aquí la clave API.</p>
+            <div class="grid grid-3">
+              <label>Clave API de Brevo <input name="correo.brevo_key" type="password" placeholder="${me.brevo ? '•••••• (guardada)' : 'xkeysib-…'}" autocomplete="off"></label>
+              <label>Correo remitente <input name="correo.remitente_email" value="${v('correo.remitente_email')}"></label>
+              <label>Nombre remitente <input name="correo.remitente_nombre" value="${v('correo.remitente_nombre')}"></label>
+            </div>
+          </details>
         </div>
 
         <div class="row" style="margin-bottom:16px"><span class="spacer"></span><button class="btn primary" type="submit">Guardar ajustes</button></div>
       </form>
 
       <div class="card">
-        <h2>Plantilla Excel de la factura</h2>
-        <div id="tpl-status"></div>
-        <div class="row" style="margin:14px 0">
-          <label class="btn primary" style="flex-direction:row;color:#fff">Subir mi plantilla (.xlsx)
-            <input type="file" id="tpl-file" accept=".xlsx" class="hidden">
-          </label>
-          ${info.custom ? '<a class="btn" href="/api/template">Descargar mi plantilla</a>' : ''}
-          <a class="btn" href="/api/template?default=1">Descargar plantilla de ejemplo</a>
-          ${pdf ? '<button class="btn" id="tpl-preview">Vista previa</button>' : '<a class="btn" href="/api/template/preview?format=xlsx">Vista previa (Excel)</a>'}
-          ${info.custom ? '<button class="btn danger" id="tpl-reset">Volver a la plantilla de ejemplo</button>' : ''}
+        <h2>Seguridad y copia de seguridad</h2>
+        <div class="row">
+          <button class="btn" id="change-pass">Cambiar contraseña</button>
+          <a class="btn" href="/api/backup">Descargar copia de seguridad</a>
         </div>
-        <details>
-          <summary style="cursor:pointer"><strong>¿Cómo preparo mi plantilla?</strong></summary>
-          <ol class="small">
-            <li>Abre tu factura de Excel y, en cada celda donde va un dato, escribe el <strong>marcador</strong> correspondiente (lista abajo). Por ejemplo, en la celda del número de factura escribe <code>{{numero}}</code>. Puedes mezclar texto: <code>NIF: {{cliente.nif}}</code>.</li>
-            <li>En la <strong>primera fila</strong> de la tabla de productos escribe <code>{{linea.descripcion}}</code>, <code>{{linea.cantidad}}</code>, <code>{{linea.precio}}</code>, <code>{{linea.importe}}</code>… Esa fila se repetirá por cada producto (se usan las filas vacías de debajo y, si faltan, se añaden).</li>
-            <li>Para los totales usa <code>{{base}}</code>, <code>{{iva}}</code>, <code>{{total}}</code>… o deja tus propias fórmulas de Excel: se recalculan solas.</li>
-            <li>Guarda como <strong>.xlsx</strong> y súbela aquí. Pulsa "Vista previa" para comprobar cómo queda.</li>
-          </ol>
-        </details>
-        <h3>Marcadores disponibles <span class="small muted">(pulsa para copiar)</span></h3>
-        ${Object.entries(placeholders)
-          .map(([group, list]) => `<p class="small" style="margin:10px 0 4px"><strong>${esc(group)}</strong></p><div class="chips">${list.map(([k, d]) => `<code title="${esc(d)}" data-copy="{{${esc(k)}}}">{{${esc(k)}}}</code>`).join('')}</div>`)
-          .join('')}
-      </div>
-
-      <div class="card">
-        <h2>Copia de seguridad</h2>
-        <p class="small muted" style="margin-top:-6px">Descarga todos tus datos (facturas, clientes, productos). Guárdala de vez en cuando en un lugar seguro.</p>
-        <a class="btn" href="/api/backup">Descargar copia de seguridad</a>
       </div>`;
 
+    // --- Estado del correo
+    const ms = $('#mail-status');
+    if (me.mail) {
+      ms.innerHTML = `<div class="alert info">Conectado a <strong>${esc(me.mail.email)}</strong> (Outlook). Las facturas se envían desde esta cuenta y se guardan en tus Enviados.
+        <div class="row" style="margin-top:8px"><a class="btn sm" href="/auth/microsoft?modo=conectar">Cambiar de cuenta</a><button class="btn sm danger" id="mail-off">Desconectar</button></div></div>`;
+      $('#mail-off').onclick = async () => {
+        await api('/mail-account', { method: 'DELETE' });
+        router();
+      };
+    } else if (me.microsoft) {
+      ms.innerHTML = `<div class="alert warn">Tu correo no está conectado todavía.
+        <div class="row" style="margin-top:8px"><a class="btn primary sm" href="/auth/microsoft?modo=conectar">Conectar Outlook</a></div></div>`;
+    } else {
+      ms.innerHTML = `<div class="alert ${me.brevo ? 'info' : 'warn'}">${me.brevo ? 'Enviando con Brevo.' : 'Para enviar desde tu Outlook falta registrar la app en Microsoft (ver instrucciones del README). Mientras tanto puedes usar Brevo (abajo).'}</div>`;
+    }
+
+    // --- Imágenes (logo y sello)
+    const renderImg = (k) => {
+      const box = $('#img-' + k.split('.')[1]);
+      box.innerHTML = images[k] ? `<img src="${images[k]}" alt="">` : '<span class="small muted">Sin imagen</span>';
+    };
+    Object.keys(images).forEach(renderImg);
+    $$('[data-img]').forEach((input) =>
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file) return;
+        await busy(null, async () => {
+          const k = input.dataset.img;
+          images[k] = k === 'empresa.sello' ? await window.InvoicePdf.cleanStamp(file) : await shrinkImage(file);
+          if (images[k].length > 650000) throw new Error('La imagen es demasiado grande. Prueba con una más pequeña.');
+          await api('/settings', { method: 'PUT', body: { [k]: images[k] } });
+          renderImg(k);
+          toast('Imagen guardada', 'ok');
+        });
+        input.value = '';
+      })
+    );
+    $$('[data-img-del]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        const k = btn.dataset.imgDel;
+        images[k] = '';
+        await api('/settings', { method: 'PUT', body: { [k]: '' } });
+        renderImg(k);
+      })
+    );
+
+    // --- Bancos
+    $('#new-bank').onclick = () => bankDialog(null, banks.length === 0);
+    $$('[data-edit-bank]').forEach((btn) => {
+      btn.onclick = () => bankDialog(banks.find((b) => String(b.id) === btn.closest('tr').dataset.id));
+    });
+
+    // --- Formulario
     const form = $('#settings-form');
     const updateExample = () => {
       $('#num-example').textContent = `${form['factura.prefijo'].value}${new Date().getFullYear()}-${'1'.padStart(Number(form['factura.digitos'].value) || 4, '0')}`;
@@ -929,58 +1050,51 @@
     form.onsubmit = (e) => {
       e.preventDefault();
       busy(e.submitter, async () => {
-        await api('/settings', { method: 'PUT', body: formData(form) });
+        const data = formData(form);
+        if (!data['correo.brevo_key']) delete data['correo.brevo_key'];
+        await api('/settings', { method: 'PUT', body: data });
         toast('Ajustes guardados', 'ok');
       });
     };
 
-    const renderTplStatus = (i) => {
-      $('#tpl-status').innerHTML = `
-        <div class="alert ${i.hasLines ? 'info' : 'warn'}">
-          ${i.custom ? `Usando <strong>tu plantilla</strong>: ${esc(i.nombre)}` : 'Usando la <strong>plantilla de ejemplo</strong>. Sube la tuya para que las facturas salgan con tu diseño.'}<br>
-          <span class="small">Marcadores encontrados: ${i.found.length ? i.found.map((k) => `<code>${esc(k)}</code>`).join(' ') : 'ninguno'}</span>
-          ${i.unknown.length ? `<br><span class="small">⚠ No reconocidos (revisa cómo están escritos): ${i.unknown.map((k) => `<code>${esc(k)}</code>`).join(' ')}</span>` : ''}
-          ${i.hasLines ? '' : '<br><span class="small">⚠ No hay fila de productos: añade <code>{{linea.descripcion}}</code>, <code>{{linea.importe}}</code>… en la primera fila de la tabla.</span>'}
-        </div>`;
-    };
-    renderTplStatus(info);
-
-    $('#tpl-file').onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const fd = new FormData();
-      fd.append('plantilla', file);
-      await busy(null, async () => {
-        const res = await api('/template', { method: 'POST', body: fd });
-        toast('Plantilla subida', 'ok');
-        router();
-        return res;
-      });
-      e.target.value = '';
-    };
-    $('#tpl-reset')?.addEventListener('click', async () => {
-      if (!(await confirmDialog('Quitar plantilla', 'Se volverá a usar la plantilla de ejemplo. ¿Continuar?', 'Sí'))) return;
-      await api('/template', { method: 'DELETE' });
-      router();
-    });
-    $('#tpl-preview')?.addEventListener('click', () =>
+    $('#change-pass').onclick = () =>
       openDialog({
-        title: 'Vista previa con datos de ejemplo',
-        wide: true,
-        body: `<iframe class="preview" src="/api/template/preview?t=${Date.now()}"></iframe>`,
-        buttons: [{ label: 'Cerrar', value: 'cancel' }],
-      })
-    );
-    $$('[data-copy]').forEach((el) =>
-      el.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(el.dataset.copy);
-          toast('Copiado: ' + el.dataset.copy);
-        } catch {
-          toast(el.dataset.copy);
-        }
-      })
-    );
+        title: 'Cambiar contraseña',
+        body: '<label>Nueva contraseña (mínimo 8 caracteres) <input type="password" name="password" minlength="8" required autocomplete="new-password"></label>',
+        buttons: [{ label: 'Cancelar', value: 'cancel' }, { label: 'Guardar', value: 'save', primary: true }],
+        onSubmit: async (f) => {
+          await api('/me/password', { method: 'POST', body: { password: f.password.value } });
+          toast('Contraseña cambiada', 'ok');
+          return true;
+        },
+      });
+  }
+
+  function bankDialog(b, first = false) {
+    openDialog({
+      title: b ? 'Editar banco' : 'Añadir banco',
+      body: `<div class="grid grid-2">
+        <label class="span-2">Nombre del banco <input name="nombre" value="${esc(b?.nombre || '')}" placeholder="Ej.: Santander, BBVA, CaixaBank…" required></label>
+        <label class="span-2">Número de cuenta (IBAN) <input name="iban" value="${esc(b?.iban || '')}" placeholder="ES00 0000 0000 0000 0000 0000" required></label>
+        <label>BIC/SWIFT (opcional) <input name="swift" value="${esc(b?.swift || '')}"></label>
+        <label class="check" style="align-self:end"><input type="checkbox" name="predeterminado" ${b?.predeterminado || first ? 'checked' : ''}> Banco predeterminado</label>
+      </div>`,
+      buttons: [
+        ...(b ? [{ label: 'Borrar', value: 'delete', danger: true }] : []),
+        { label: 'Cancelar', value: 'cancel' },
+        { label: 'Guardar', value: 'save', primary: true },
+      ],
+      onSubmit: async (form, action) => {
+        if (action === 'delete') {
+          if (!confirm(`¿Borrar el banco ${b.nombre}? Las facturas ya hechas conservan su número de cuenta.`)) return false;
+          await api('/banks/' + b.id, { method: 'DELETE' });
+        } else if (b) await api('/banks/' + b.id, { method: 'PUT', body: formData(form) });
+        else await api('/banks', { method: 'POST', body: formData(form) });
+        toast('Banco guardado', 'ok');
+        router();
+        return true;
+      },
+    });
   }
 
   // ================================================================ Inicio
@@ -993,5 +1107,10 @@
   api('/me')
     .then((me) => ($('#user-email').textContent = me.email))
     .catch(() => {});
+  const urlError = new URLSearchParams(location.search).get('error');
+  if (urlError) {
+    toast(urlError, 'error');
+    history.replaceState(null, '', '/' + location.hash);
+  }
   router();
 })();

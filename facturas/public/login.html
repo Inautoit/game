@@ -18,29 +18,22 @@
       <div id="ms-block" class="hidden">
         <a class="btn" href="/auth/microsoft">
           <svg class="ms-logo" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
-          Iniciar sesión con Microsoft (Outlook / Hotmail)
+          Iniciar sesión con Microsoft (Outlook)
         </a>
-        <div class="divider">o con correo y contraseña</div>
+        <div class="divider">o con tu correo y contraseña</div>
       </div>
 
       <form id="form" class="grid">
+        <p id="setup-info" class="alert info hidden" style="margin:0">Primera vez: crea tu contraseña. Necesitas el <strong>código de activación</strong> que te dieron al instalar la app.</p>
         <label>Correo electrónico
           <input type="email" name="email" autocomplete="username" required placeholder="tu@correo.com">
         </label>
-        <label>Contraseña del correo
-          <input type="password" name="password" autocomplete="current-password" required>
+        <label>Contraseña
+          <input type="password" name="password" autocomplete="current-password" required minlength="8">
         </label>
-        <p id="hint" class="small muted hidden" style="margin:0"></p>
-
-        <details id="adv">
-          <summary class="small muted" style="cursor:pointer">Opciones avanzadas (servidor SMTP)</summary>
-          <div class="grid grid-3" style="margin-top:10px">
-            <label class="span-2">Servidor SMTP <input name="host" placeholder="smtp.tudominio.com"></label>
-            <label>Puerto <input name="port" type="number" value="587"></label>
-            <label class="check"><input type="checkbox" name="secure"> SSL (puerto 465)</label>
-          </div>
-        </details>
-
+        <label id="code-field" class="hidden">Código de activación
+          <input name="code" autocomplete="off">
+        </label>
         <button class="btn primary" type="submit">Entrar</button>
       </form>
     </div>

@@ -1,22 +1,19 @@
 {
   "name": "facturas-electricidad",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Web app para gestionar, generar (desde plantilla Excel) y enviar por correo las facturas de un autónomo.",
-  "main": "server.js",
+  "description": "Web app para crear, registrar y enviar por correo (en PDF) las facturas de un autónomo. Funciona en Cloudflare Workers + D1.",
   "scripts": {
-    "start": "node --no-warnings server.js",
-    "dev": "node --no-warnings --watch server.js",
-    "test": "node --no-warnings --test test/*.test.js"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply facturas-db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply facturas-db --local",
+    "vendor": "cp node_modules/pdf-lib/dist/pdf-lib.min.js public/vendor/pdf-lib.min.js",
+    "test": "node --test test/*.test.js"
   },
-  "engines": {
-    "node": ">=22.13"
+  "devDependencies": {
+    "pdf-lib": "^1.17.1",
+    "wrangler": "^4.143.0"
   },
-  "dependencies": {
-    "exceljs": "^4.4.0",
-    "express": "^5.2.1",
-    "express-session": "^1.18.1",
-    "multer": "^2.0.2",
-    "nodemailer": "^10.0.12"
-  }
+  "type": "module"
 }
