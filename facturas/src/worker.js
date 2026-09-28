@@ -50,7 +50,7 @@ const DEFAULT_SETTINGS = {
     'Te adjunto el presupuesto {{numero}} con fecha {{fecha}}.\n\n' +
     'Quedo a tu disposición para cualquier duda.\n\n' +
     'Un saludo,\n{{empresa.nombre}}\n{{empresa.telefono}}',
-  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te adjunto el presupuesto{{obra}}. Si tienes cualquier duda, contáctame. Un saludo, Cefe Rodríguez',
+  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te adjunto el presupuesto{{obra}}. Si tienes cualquier duda, contáctame. Un saludo, Cefe',
   'correo.remitente_nombre': '',
   'correo.remitente_email': '',
 };
