@@ -711,9 +711,10 @@
       const settings = (await api('/settings')).settings;
       const pdfReady = window.InvoicePdf.build(inv, settings);
       $('#wa').onclick = async (e) => {
+        const win = waPhone(inv.cliente_telefono) ? window.open('', '_blank') : null;
         e.target.disabled = true;
         try {
-          const r = await sharePdf(inv, await pdfReady, fillText(settings['whatsapp.mensaje'], inv, settings));
+          const r = await sendWhatsApp(inv, await pdfReady, settings, win);
           if (r) {
             await markShared(inv);
             toast('Enviado por WhatsApp', 'ok');
@@ -867,6 +868,7 @@
           : ` de la calle ${dir}`;
     const v = {
       obra,
+      enlace: inv.__enlace || '',
       'cliente.direccion': dir,
       numero: inv.numero,
       fecha: fdate(inv.fecha),
@@ -875,7 +877,32 @@
       'empresa.nombre': s['empresa.nombre'] || '',
       'empresa.telefono': s['empresa.telefono'] || '',
     };
+    // Sin enlace (PDF adjunto): "…presupuesto: {{enlace}}" queda en "…presupuesto."
+    if (!v.enlace) tpl = String(tpl || '').replace(/:?\s*\{\{\s*enlace\s*\}\}/g, '.');
     return String(tpl || '').replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (m, k) => (k in v ? v[k] : ''));
+  }
+
+  // WhatsApp directo al número del cliente: el PDF va como enlace en el mensaje.
+  // Sin teléfono: menú de compartir del móvil con el PDF adjunto.
+  // `win` es una pestaña abierta en el mismo toque (si no, el navegador bloquea la apertura).
+  async function sendWhatsApp(inv, pdfBytes, s, win) {
+    const tel = waPhone(inv.cliente_telefono);
+    if (!tel) {
+      win?.close();
+      return sharePdf(inv, pdfBytes, fillText(s['whatsapp.mensaje'], inv, s));
+    }
+    try {
+      const { url } = await api(`/invoices/${inv.id}/link`, { method: 'POST', body: { pdf: window.InvoicePdf.toBase64(pdfBytes) } });
+      let text = fillText(s['whatsapp.mensaje'], { ...inv, __enlace: url }, s);
+      if (!/\{\{\s*enlace\s*\}\}/.test(s['whatsapp.mensaje'] || '')) text += '\n' + url;
+      const wa = `https://wa.me/${tel}?text=${encodeURIComponent(text)}`;
+      if (win && !win.closed) win.location.href = wa;
+      else location.href = wa;
+      return 'direct';
+    } catch (err) {
+      win?.close();
+      throw err;
+    }
   }
 
   async function markShared(inv) {
@@ -905,24 +932,12 @@
         <a class="btn sm ghost" href="${inv ? `#/factura/${inv.id}/editar-completo` : '#/presupuestos/completo'}">Formulario completo</a>
       </div>
       <form id="q-form" class="quick" autocomplete="off">
-        <div class="card voice">
-          <div class="row">
-            <button type="button" class="btn mic" id="mic">🎤 Dictar presupuesto</button>
-            <button type="button" class="btn ghost sm" id="voice-help">¿Qué tengo que decir?</button>
-          </div>
-          <div id="voice-live" class="voice-live hidden"></div>
-          <details id="voice-type" class="small" style="margin-top:8px">
-            <summary class="muted" style="cursor:pointer">…o escríbelo / díctalo con el micrófono del teclado</summary>
-            <textarea id="voice-text" rows="3" style="margin-top:6px" placeholder="Cliente Juan García. Teléfono 611 22 33 44. Concepto cambiar enchufe 35 euros. Concepto 2 puntos de luz a 28 euros. Descuento 10 por ciento."></textarea>
-            <button type="button" class="btn sm" id="voice-apply" style="margin-top:6px">Rellenar el presupuesto</button>
-          </details>
-        </div>
         <div class="card">
           <div class="grid grid-2">
             <label>Cliente
               <input name="cliente_nombre" list="q-clients" value="${esc(inv?.cliente_nombre || '')}" placeholder="Nombre" required>
             </label>
-            <label>Teléfono (WhatsApp)
+            <label>Teléfono (se abre WhatsApp con este número)
               <div class="row" style="flex-wrap:nowrap">
                 <input name="cliente_telefono" type="tel" inputmode="tel" value="${esc(inv?.cliente_telefono || '')}" placeholder="600 000 000">
                 ${canPick ? '<button type="button" class="btn" id="pick" title="Elegir de mis contactos">📇</button>' : ''}
@@ -1072,15 +1087,21 @@
       try {
         const save = inv ? api('/invoices/' + inv.id, { method: 'PUT', body: doc }) : api('/invoices', { method: 'POST', body: doc });
         if (action === 'wa') {
-          // El PDF y el mensaje se preparan aquí mismo (sin esperar al servidor)
-          // para que WhatsApp se abra al momento de pulsar.
+          // Se abre la pestaña ya (en el mismo toque) para que el navegador no la bloquee
+          const win = waPhone(doc.cliente_telefono) ? window.open('', '_blank') : null;
           const pdfBytes = await window.InvoicePdf.build(doc, s);
-          const text = fillText(s['whatsapp.mensaje'], doc, s);
-          const r = await sharePdf(doc, pdfBytes, text);
+          if (!waPhone(doc.cliente_telefono)) {
+            // Sin teléfono: menú de compartir (elige el contacto en WhatsApp)
+            const r = await sharePdf(doc, pdfBytes, fillText(s['whatsapp.mensaje'], doc, s));
+            const saved = await save;
+            dirty = false;
+            if (r) await markShared(saved);
+            return go('#/factura/' + saved.id);
+          }
           const saved = await save;
           dirty = false;
-          if (r) await markShared(saved);
-          else toast('Presupuesto guardado (no se envió)', 'ok');
+          await sendWhatsApp(saved, pdfBytes, s, win);
+          await markShared(saved);
           go('#/factura/' + saved.id);
         } else {
           const saved = await save;
@@ -1095,106 +1116,8 @@
       }
     };
 
-    // --- Dictado por voz
-    const V = window.VoiceQuote;
-    const applyVoice = (text) => {
-      const r = V.parse(text);
-      let n = 0;
-      if (r.cliente) {
-        form.cliente_nombre.value = r.cliente;
-        form.cliente_nombre.dispatchEvent(new Event('input'));
-        n++;
-      }
-      if (r.telefono) (form.cliente_telefono.value = r.telefono), n++;
-      if (r.direccion) {
-        form.cliente_direccion.value = r.direccion;
-        form.cliente_direccion.closest('details').open = true;
-        n++;
-      }
-      if (r.descuento) {
-        form.dto_valor.value = r.descuento.valor;
-        form.querySelector(`input[name=dto_tipo][value="${r.descuento.tipo}"]`).checked = true;
-        n++;
-      }
-      if (r.nota) {
-        form.notas.value = r.nota;
-        form.notas.closest('details').open = true;
-        n++;
-      }
-      if (r.lines.length) {
-        lines = lines.filter((l) => String(l.descripcion).trim() || parseNum(l.precio));
-        for (const l of r.lines) {
-          lines.push({ ...l });
-        }
-        n += r.lines.length;
-      }
-      renderLines();
-      dirty = true;
-      const sinPrecio = lines.filter((l) => String(l.descripcion).trim() && !parseNum(l.precio)).length;
-      if (!n) toast('No he entendido nada. Empieza con "Cliente…" o "Concepto…". Pulsa "¿Qué tengo que decir?".', 'error');
-      else toast(sinPrecio ? `Falta el precio en ${sinPrecio} concepto(s). Revísalo y pulsa WhatsApp.` : 'Listo. Revisa los datos y pulsa WhatsApp.', sinPrecio ? 'error' : 'ok');
-    };
-
-    const live = $('#voice-live');
-    let session = null;
-    if (!V.supported()) {
-      $('#mic').classList.add('hidden');
-      $('#voice-type').open = true;
-      $('#voice-type summary').textContent = 'Dicta con el micrófono del teclado o escríbelo aquí:';
-    }
-    $('#mic').onclick = () => {
-      if (session) return session.stop();
-      live.classList.remove('hidden');
-      live.innerHTML = '<span class="muted">Escuchando… habla y pulsa "Terminar" al acabar.</span>';
-      $('#mic').textContent = '⏹ Terminar';
-      $('#mic').classList.add('rec');
-      session = V.listen(
-        (final, interim) => {
-          live.innerHTML = `${esc(final)} <span class="muted">${esc(interim)}</span>`;
-        },
-        (final, error) => {
-          session = null;
-          $('#mic').textContent = '🎤 Dictar presupuesto';
-          $('#mic').classList.remove('rec');
-          if (error) return toast(error, 'error');
-          if (!final.trim()) {
-            live.classList.add('hidden');
-            return toast('No se ha oído nada. Vuelve a intentarlo.', 'error');
-          }
-          live.innerHTML = `<span class="small muted">Has dicho:</span> ${esc(final)}`;
-          applyVoice(final);
-        }
-      );
-    };
-    $('#voice-apply').onclick = () => {
-      if ($('#voice-text').value.trim()) applyVoice($('#voice-text').value);
-      $('#voice-text').value = '';
-    };
-    $('#voice-help').onclick = () => voiceHelp();
-
     renderLines();
-    if (!inv && !V.supported()) form.cliente_nombre.focus();
-  }
-
-  function voiceHelp() {
-    openDialog({
-      title: 'Cómo dictar un presupuesto',
-      body: `<p style="margin:0">Pulsa <strong>🎤 Dictar</strong>, habla con estas <strong>palabras clave</strong> y pulsa <strong>Terminar</strong>. Puedes decirlo todo seguido o por partes (dictar, terminar y volver a dictar para añadir más).</p>
-        <table class="small"><tbody>
-          <tr><td><strong>Cliente</strong> …</td><td>Cliente <em>Juan García</em></td></tr>
-          <tr><td><strong>Teléfono</strong> …</td><td>Teléfono <em>611 22 33 44</em></td></tr>
-          <tr><td><strong>Dirección</strong> … <span class="muted">(opcional)</span></td><td>Dirección <em>calle Mayor 5</em></td></tr>
-          <tr><td><strong>Concepto</strong> … <strong>precio</strong></td><td>Concepto <em>cambiar enchufe de la cocina 35 euros</em></td></tr>
-          <tr><td>Con cantidad</td><td>Concepto <em>2 puntos de luz a 28 euros</em><br>Concepto <em>3 horas de mano de obra a 25 euros</em><br>Concepto <em>4 enchufes por 15 euros</em></td></tr>
-          <tr><td>Precio total de varios</td><td>Concepto <em>3 focos 90 euros en total</em></td></tr>
-          <tr><td>Céntimos</td><td><em>… 12 con 50</em> o <em>12,50 euros</em></td></tr>
-          <tr><td><strong>Descuento</strong> … <span class="muted">(opcional)</span></td><td>Descuento <em>10 por ciento</em> · Descuento <em>20 euros</em></td></tr>
-          <tr><td><strong>Nota</strong> … <span class="muted">(opcional)</span></td><td>Nota <em>material incluido</em></td></tr>
-        </tbody></table>
-        <div class="alert info"><strong>Ejemplo completo:</strong><br>"Cliente Juan García. Teléfono 611 22 33 44. Concepto cambiar enchufe de la cocina 35 euros. Concepto 2 puntos de luz a 28 euros. Descuento 10 por ciento."</div>
-        <p class="small muted" style="margin:0">Consejos: di "Concepto" delante de cada trabajo y el precio al final. Si el cliente ya está guardado, basta con su nombre (el teléfono se pone solo). Los presupuestos van sin IVA y válidos 30 días. Después revisa y pulsa WhatsApp.</p>`,
-      buttons: [{ label: 'Entendido', value: 'cancel' }],
-    });
+    if (!inv) form.cliente_nombre.focus();
   }
 
   // ============================================================= CLIENTES
@@ -1384,7 +1307,7 @@
             <div></div>
             <label style="grid-column:1/-1">Observaciones por defecto <textarea name="presupuesto.notas" rows="2">${v('presupuesto.notas')}</textarea></label>
             <label style="grid-column:1/-1">Mensaje de WhatsApp <textarea name="whatsapp.mensaje" rows="2">${v('whatsapp.mensaje')}</textarea></label>
-            <p class="small muted" style="grid-column:1/-1;margin:0"><code>{{obra}}</code> pone "de la calle …" con la dirección del formulario (si no hay dirección, no pone nada). También: <code>{{cliente.nombre}}</code> <code>{{fecha}}</code> <code>{{total}}</code></p>
+            <p class="small muted" style="grid-column:1/-1;margin:0"><code>{{obra}}</code> pone "de la calle …" con la dirección del formulario (si no hay, no pone nada) y <code>{{enlace}}</code> el enlace al PDF. También: <code>{{cliente.nombre}}</code> <code>{{fecha}}</code> <code>{{total}}</code></p>
           </div>
         </div>
 

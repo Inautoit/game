@@ -34,25 +34,14 @@ Funciona en **Cloudflare Workers** (plan gratuito) con base de datos **D1**.
   (*Ajustes → Correo → Conectar Gmail*, con una contraseña de aplicación de
   Google), desde Outlook (con Microsoft) o con Brevo.
 
-## Presupuestos por voz y WhatsApp
+## Presupuestos por WhatsApp
 
-En *+ Nuevo presupuesto* pulsa **🎤 Dictar presupuesto**, habla y pulsa
-**Terminar**. Palabras clave (en cualquier orden, todo seguido o por partes):
-
-| Di… | Ejemplo |
-|-----|---------|
-| **Cliente** … | Cliente Juan García |
-| **Teléfono** … | Teléfono 611 22 33 44 |
-| **Dirección** … (opcional) | Dirección calle Mayor 5 |
-| **Concepto** … precio | Concepto cambiar enchufe de la cocina 35 euros |
-| Con cantidad | Concepto 2 puntos de luz a 28 euros · Concepto 4 enchufes por 15 euros |
-| Precio total de varios | Concepto 3 focos 90 euros en total |
-| **Descuento** … (opcional) | Descuento 10 por ciento · Descuento 20 euros |
-| **Nota** … (opcional) | Nota material incluido |
-
-Después revisa y pulsa **WhatsApp**: se crea el PDF (con logo, sin firma) y se
-abre WhatsApp para elegir el contacto. Los presupuestos van **sin IVA** ("IVA no
-incluido") y son **válidos 30 días**. Al convertirlos en factura se añade el IVA.
+En *+ Nuevo presupuesto* rellenas cliente, teléfono, (dirección), conceptos y
+descuento, y pulsas **WhatsApp**: se abre el chat de WhatsApp **con el número que
+has puesto** y el mensaje escrito, con el enlace al PDF del presupuesto (con logo,
+sin firma). Si no pones teléfono, se abre el menú de compartir con el PDF adjunto
+para elegir el contacto. Los presupuestos van **sin IVA** ("IVA no incluido") y
+son **válidos 30 días**. Al convertirlos en factura se añade el IVA.
 
 ## Primer acceso
 
