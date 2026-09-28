@@ -873,11 +873,9 @@ route('PATCH', '/api/invoices/:id/estado', async (req, env, { params }) => {
 
 route('DELETE', '/api/invoices/:id', async (req, env, { params }) => {
   const inv = await getInvoice(env, params.id);
-  if (inv.tipo === 'factura' && inv.estado !== 'borrador') {
-    throw new HttpError(400, 'Solo se pueden borrar borradores. Las facturas enviadas se anulan para conservar la numeración.');
-  }
   await env.DB.batch([
     env.DB.prepare('UPDATE invoices SET factura_id = NULL WHERE factura_id = ?').bind(inv.id),
+    env.DB.prepare('UPDATE invoices SET presupuesto_id = NULL WHERE presupuesto_id = ?').bind(inv.id),
     env.DB.prepare('DELETE FROM invoice_lines WHERE invoice_id = ?').bind(inv.id),
     env.DB.prepare('DELETE FROM email_log WHERE invoice_id = ?').bind(inv.id),
     env.DB.prepare('DELETE FROM invoices WHERE id = ?').bind(inv.id),

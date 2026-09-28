@@ -272,7 +272,7 @@
       }
       $('#list').innerHTML = `
         <table>
-          <thead><tr><th>Nº</th><th class="hide-sm">Fecha</th><th>Cliente</th><th class="num hide-sm">Base</th><th class="num">Total</th><th>Estado</th><th class="hide-sm">${T.enviada}</th></tr></thead>
+          <thead><tr><th>Nº</th><th class="hide-sm">Fecha</th><th>Cliente</th><th class="num hide-sm">Base</th><th class="num">Total</th><th>Estado</th><th class="hide-sm">${T.enviada}</th><th></th></tr></thead>
           <tbody>
             ${rows
               .map(
@@ -284,13 +284,28 @@
                 <td class="num"><strong>${eur(r.total)}</strong></td>
                 <td>${badge(r.estado)}</td>
                 <td class="hide-sm small muted">${r.sent_at ? fdate(r.sent_at) + (r.sent_to ? '<br>' + esc(r.sent_to) : '') : '—'}</td>
+                <td class="num"><button class="btn ghost sm del-row" data-del="${r.id}" title="Eliminar" aria-label="Eliminar ${esc(r.numero)}">🗑</button></td>
               </tr>`
               )
               .join('')}
           </tbody>
-          <tfoot><tr><td colspan="7" class="small muted">${rows.length} ${rows.length === 1 ? T.uno : T.titulo.toLowerCase()} · ${rows.filter((r) => r.estado === 'borrador').length} guardado(s) sin enviar · ${rows.filter((r) => r.sent_at).length} enviado(s)</td></tr></tfoot>
+          <tfoot><tr><td colspan="8" class="small muted">${rows.length} ${rows.length === 1 ? T.uno : T.titulo.toLowerCase()} · ${rows.filter((r) => r.estado === 'borrador').length} guardado(s) sin enviar · ${rows.filter((r) => r.sent_at).length} enviado(s)</td></tr></tfoot>
         </table>`;
-      $$('#list tr.link').forEach((tr) => tr.addEventListener('click', () => go('#/factura/' + tr.dataset.id)));
+      $$('#list tr.link').forEach((tr) =>
+        tr.addEventListener('click', async (e) => {
+          const del = e.target.closest('[data-del]');
+          if (!del) return go('#/factura/' + tr.dataset.id);
+          e.stopPropagation();
+          const r = rows.find((x) => String(x.id) === del.dataset.del);
+          const quien = `${tipo === 'presupuesto' ? 'el presupuesto' : 'la factura'} ${esc(r.numero)} de ${esc(r.cliente_nombre)} (${eur(r.total)})`;
+          if (!(await confirmDialog('Eliminar', `¿Eliminar ${quien}? No se puede deshacer.`, 'Eliminar', true))) return;
+          await busy(null, async () => {
+            await api('/invoices/' + r.id, { method: 'DELETE' });
+            toast('Eliminado', 'ok');
+            load();
+          });
+        })
+      );
     };
 
     let t;
@@ -608,7 +623,7 @@
           <label style="flex-direction:row;align-items:center;gap:8px">Estado
             <select id="estado" style="width:auto">${T.estados.map((e) => `<option value="${e}" ${e === inv.estado ? 'selected' : ''}>${e === 'borrador' ? 'guardado (borrador)' : e}</option>`).join('')}</select>
           </label>
-          ${esPres || inv.estado === 'borrador' ? '<button class="btn danger" id="del">Eliminar</button>' : ''}
+          <button class="btn danger" id="del">Eliminar</button>
         </div>
       </div>
 

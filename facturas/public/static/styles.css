@@ -240,3 +240,6 @@ code { background: #eef1f5; padding: 1px 6px; border-radius: 5px; font-size: 0.8
   .quick-total { font-size: 1.3rem; }
   .quick-actions .btn { flex: 1; padding: 13px 6px; font-size: 1rem; }
 }
+
+.del-row { color: var(--muted); font-size: 1rem; padding: 4px 8px; }
+.del-row:hover { color: var(--danger); background: var(--danger-soft); }
