@@ -980,7 +980,9 @@
 
       <div class="card">
         <h2>Seguridad y copia de seguridad</h2>
+        <p class="small muted" style="margin-top:-6px">Entras con <strong>${esc(me.email)}</strong>.</p>
         <div class="row">
+          <button class="btn" id="change-email">Cambiar correo de acceso</button>
           <button class="btn" id="change-pass">Cambiar contraseña</button>
           <a class="btn" href="/api/backup">Descargar copia de seguridad</a>
         </div>
@@ -1056,6 +1058,22 @@
         toast('Ajustes guardados', 'ok');
       });
     };
+
+    $('#change-email').onclick = () =>
+      openDialog({
+        title: 'Cambiar correo de acceso',
+        body: `<p class="small muted" style="margin:0">Ahora entras con <strong>${esc(me.email)}</strong>. Tus facturas y datos se mantienen.</p>
+          <label>Nuevo correo <input type="email" name="email" required autocomplete="off"></label>
+          <label>Contraseña actual <input type="password" name="password" required autocomplete="current-password"></label>`,
+        buttons: [{ label: 'Cancelar', value: 'cancel' }, { label: 'Cambiar', value: 'save', primary: true }],
+        onSubmit: async (f) => {
+          const r = await api('/me/email', { method: 'POST', body: { email: f.email.value, password: f.password.value } });
+          $('#user-email').textContent = r.email;
+          toast('Ahora entras con ' + r.email, 'ok');
+          setTimeout(router, 50);
+          return true;
+        },
+      });
 
     $('#change-pass').onclick = () =>
       openDialog({

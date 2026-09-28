@@ -517,6 +517,28 @@ route('POST', '/api/me/password', async (req, env, { user }) => {
   return json({ ok: true });
 });
 
+// Cambiar el correo con el que se entra (pide la contraseña actual)
+route('POST', '/api/me/email', async (req, env, { user }) => {
+  await rateLimit(env, req);
+  const b = await body(req);
+  const email = str(b.email, 254).toLowerCase();
+  if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Escribe un correo válido.');
+  if (env.OWNER_EMAIL) throw new HttpError(400, 'El correo de acceso está fijado en la configuración (OWNER_EMAIL).');
+  const u = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(user.email).first();
+  if (!u?.password_hash || !(await verifyPassword(String(b.password || ''), u.password_hash))) {
+    throw new HttpError(401, 'La contraseña actual no es correcta.');
+  }
+  if (email === user.email) return json({ ok: true, email });
+  if (await env.DB.prepare('SELECT 1 FROM users WHERE email = ?').bind(email).first()) {
+    throw new HttpError(409, 'Ese correo ya está en uso.');
+  }
+  await env.DB.batch([
+    env.DB.prepare('UPDATE users SET email = ? WHERE email = ?').bind(email, user.email),
+    env.DB.prepare('UPDATE sessions SET email = ? WHERE email = ?').bind(email, user.email),
+  ]);
+  return json({ ok: true, email });
+});
+
 route('DELETE', '/api/mail-account', async (req, env) => {
   await env.DB.prepare('DELETE FROM mail_account WHERE id = 1').run();
   return json({ ok: true });
