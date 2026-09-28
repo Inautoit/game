@@ -888,12 +888,12 @@
               </div>
             </label>
           </div>
-          <label style="margin-top:10px">Email (para enviarlo por correo)
-            <input name="cliente_email" type="email" value="${esc(inv?.cliente_email || '')}" placeholder="cliente@correo.com">
-          </label>
           <datalist id="q-clients">${clients.map((c) => `<option value="${esc(c.nombre)}">${esc(c.telefono || c.direccion || '')}</option>`).join('')}</datalist>
-          <details class="small" style="margin-top:8px" ${inv?.cliente_direccion ? 'open' : ''}><summary class="muted" style="cursor:pointer">Dirección de la obra (opcional)</summary>
-            <input name="cliente_direccion" value="${esc(inv?.cliente_direccion || '')}" placeholder="C/ … nº …" style="margin-top:6px">
+          <label style="margin-top:12px">Dirección de la obra
+            <input name="cliente_direccion" value="${esc(inv?.cliente_direccion || '')}" placeholder="C/ … nº …">
+          </label>
+          <details id="q-email" class="small" style="margin-top:10px" ${inv?.cliente_email ? 'open' : ''}><summary class="muted" style="cursor:pointer">Email (solo si lo vas a enviar por correo)</summary>
+            <input name="cliente_email" type="email" value="${esc(inv?.cliente_email || '')}" placeholder="cliente@correo.com" style="margin-top:6px">
           </details>
         </div>
 
@@ -976,7 +976,10 @@
       clientId = c ? c.id : '';
       if (c && c.telefono && !form.cliente_telefono.value) form.cliente_telefono.value = c.telefono;
       if (c && c.direccion && !form.cliente_direccion.value) form.cliente_direccion.value = c.direccion;
-      if (c && c.email && !form.cliente_email.value) form.cliente_email.value = c.email;
+      if (c && c.email && !form.cliente_email.value) {
+        form.cliente_email.value = c.email;
+        $('#q-email').open = true;
+      }
     });
     $('#pick')?.addEventListener('click', async () => {
       try {
