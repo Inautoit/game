@@ -1,10 +1,13 @@
 // Facturas — API en Cloudflare Workers + base de datos D1.
 // La interfaz (carpeta public/) la sirve Cloudflare como archivos estáticos.
 // El PDF de la factura se genera en el navegador y se envía aquí solo para mandarlo por correo.
-import { WorkerMailer } from 'worker-mailer';
 import { randomToken, sha256, safeEqual, hashPassword, verifyPassword, encrypt, decrypt } from './crypto.js';
 
-const ESTADOS = ['borrador', 'emitida', 'enviada', 'pagada', 'anulada'];
+const ESTADOS_FACTURA = ['borrador', 'emitida', 'enviada', 'pagada', 'anulada'];
+const ESTADOS_PRESUPUESTO = ['borrador', 'enviado', 'aceptado', 'rechazado'];
+const ESTADOS = [...new Set([...ESTADOS_FACTURA, ...ESTADOS_PRESUPUESTO])];
+const tipoOf = (v) => (v === 'presupuesto' ? 'presupuesto' : 'factura');
+const estadosDe = (tipo) => (tipo === 'presupuesto' ? ESTADOS_PRESUPUESTO : ESTADOS_FACTURA);
 const SESSION_DAYS = 30;
 const COOKIE = 'facturas_sid';
 
@@ -33,8 +36,17 @@ const DEFAULT_SETTINGS = {
   'correo.asunto': 'Factura {{numero}} - {{empresa.nombre}}',
   'correo.cuerpo':
     'Hola {{cliente.nombre}},\n\n' +
-    'Te adjunto la factura {{numero}} con fecha {{fecha}} por un importe total de {{total}}.\n\n' +
-    'Forma de pago: {{forma_pago}}\n{{banco.nombre}} - IBAN: {{banco.iban}}\n\n' +
+    'Te adjunto la factura {{numero}} con fecha {{fecha}}.\n\n' +
+    'El número de cuenta al que se tiene que realizar el pago está al final de la factura.\n\n' +
+    'Un saludo,\n{{empresa.nombre}}\n{{empresa.telefono}}',
+  'presupuesto.prefijo': 'P',
+  'presupuesto.dias_validez': '30',
+  'presupuesto.notas': '',
+  'correo.presupuesto_asunto': 'Presupuesto {{numero}} - {{empresa.nombre}}',
+  'correo.presupuesto_cuerpo':
+    'Hola {{cliente.nombre}},\n\n' +
+    'Te adjunto el presupuesto {{numero}} con fecha {{fecha}}.\n\n' +
+    'Quedo a tu disposición para cualquier duda.\n\n' +
     'Un saludo,\n{{empresa.nombre}}\n{{empresa.telefono}}',
   'correo.remitente_nombre': '',
   'correo.remitente_email': '',
@@ -200,6 +212,9 @@ function smtpPreset(email) {
   return SMTP_PRESETS.find((p) => p.re.test(domain)) || null;
 }
 
+// Se carga solo al enviar (usa sockets TCP de Cloudflare)
+const loadMailer = async () => (await import('worker-mailer')).WorkerMailer;
+
 function smtpOptions(cfg) {
   return {
     host: cfg.host,
@@ -223,7 +238,7 @@ async function sendMail(env, { to, cc, bcc, subject, text, attachment }) {
   const account = await env.DB.prepare('SELECT * FROM mail_account WHERE id = 1').first();
   if (account?.provider === 'smtp') {
     const s = await getSettings(env);
-    await WorkerMailer.send(
+    await (await loadMailer()).send(
       smtpOptions({ host: account.smtp_host, port: account.smtp_port, secure: account.smtp_secure, user: account.email, pass: await decrypt(env.ENC_KEY, account.secret_enc) }),
       {
         from: { name: account.name || s['empresa.nombre'] || account.email, email: account.email },
@@ -296,10 +311,10 @@ async function sendMail(env, { to, cc, bcc, subject, text, attachment }) {
 
 // ------------------------------------------------------------------ Facturas
 
-async function nextNumber(env, fecha) {
+async function nextNumber(env, fecha, tipo = 'factura') {
   const s = await getSettings(env);
   const year = (isoDate(fecha) || today()).slice(0, 4);
-  const prefix = `${s['factura.prefijo'] || ''}${year}-`;
+  const prefix = `${s[tipo === 'presupuesto' ? 'presupuesto.prefijo' : 'factura.prefijo'] || ''}${year}-`;
   const digits = Math.min(Math.max(num(s['factura.digitos'], 4), 1), 8);
   const { results } = await env.DB.prepare('SELECT numero FROM invoices WHERE substr(numero, 1, ?) = ?').bind(prefix.length, prefix).all();
   let max = 0;
@@ -329,7 +344,7 @@ export function computeInvoice(b) {
     }))
     .filter((l) => l.descripcion)
     .map((l) => ({ ...l, importe: round2(l.cantidad * l.precio * (1 - l.descuento / 100)) }));
-  if (!lines.length) throw new HttpError(400, 'Añade al menos un producto o servicio a la factura.');
+  if (!lines.length) throw new HttpError(400, 'Añade al menos un producto o servicio.');
 
   const iva_pct = num(b.iva_pct, 21);
   const irpf_pct = num(b.irpf_pct, 0);
@@ -358,9 +373,11 @@ export function computeInvoice(b) {
     iva,
     irpf,
     total: round2(base + iva - irpf),
-    estado: ESTADOS.includes(b.estado) ? b.estado : 'borrador',
+    tipo: tipoOf(b.tipo),
+    estado: 'borrador',
   };
-  if (!inv.cliente_nombre) throw new HttpError(400, 'Indica el cliente de la factura.');
+  inv.estado = estadosDe(inv.tipo).includes(b.estado) ? b.estado : 'borrador';
+  if (!inv.cliente_nombre) throw new HttpError(400, 'Indica el cliente.');
   return { inv, lines };
 }
 
@@ -368,12 +385,13 @@ const INV_FIELDS = [
   'numero', 'fecha', 'vencimiento', 'client_id', 'cliente_nombre', 'cliente_nif', 'cliente_direccion', 'cliente_cp',
   'cliente_ciudad', 'cliente_provincia', 'cliente_email', 'cliente_telefono', 'forma_pago', 'notas', 'bank_id',
   'banco_nombre', 'banco_iban', 'banco_swift', 'iva_pct', 'irpf_pct', 'base', 'iva', 'irpf', 'total', 'estado',
+  'tipo', 'presupuesto_id',
 ];
 const CLIENT_FIELDS = ['nombre', 'nif', 'direccion', 'cp', 'ciudad', 'provincia', 'email', 'telefono', 'notas'];
 
 async function getInvoice(env, id) {
   const inv = await env.DB.prepare('SELECT * FROM invoices WHERE id = ?').bind(Number(id)).first();
-  if (!inv) throw new HttpError(404, 'Factura no encontrada.');
+  if (!inv) throw new HttpError(404, 'No encontrado.');
   inv.lines = (await env.DB.prepare('SELECT * FROM invoice_lines WHERE invoice_id = ? ORDER BY pos').bind(inv.id).all()).results;
   inv.emails = (await env.DB.prepare('SELECT * FROM email_log WHERE invoice_id = ? ORDER BY id DESC').bind(inv.id).all()).results;
   return inv;
@@ -381,8 +399,9 @@ async function getInvoice(env, id) {
 
 // Rellena número, vencimiento, banco y cliente antes de guardar.
 async function prepareInvoice(env, b, existing) {
-  const { inv, lines } = computeInvoice({ ...b, estado: b.estado || existing?.estado });
-  if (!inv.numero) inv.numero = await nextNumber(env, inv.fecha);
+  const { inv, lines } = computeInvoice({ ...b, tipo: existing?.tipo || b.tipo, estado: b.estado || existing?.estado });
+  inv.presupuesto_id = existing?.presupuesto_id || null;
+  if (!inv.numero) inv.numero = await nextNumber(env, inv.fecha, inv.tipo);
 
   const bank = inv.bank_id
     ? await env.DB.prepare('SELECT * FROM banks WHERE id = ?').bind(inv.bank_id).first()
@@ -421,7 +440,7 @@ function linesStatements(env, invoiceId, lines) {
 }
 
 function duplicateError(err) {
-  if (/UNIQUE constraint failed: invoices.numero/.test(err.message)) throw new HttpError(409, 'Ya existe una factura con ese número.');
+  if (/UNIQUE constraint failed: invoices.numero/.test(err.message)) throw new HttpError(409, 'Ya existe un documento con ese número.');
   throw err;
 }
 
@@ -594,7 +613,7 @@ route('POST', '/api/mail-account/smtp', async (req, env) => {
     : preset;
   if (!cfg) throw new HttpError(400, 'No conozco el servidor de ese correo: indica el servidor SMTP.');
   try {
-    const m = await WorkerMailer.connect(smtpOptions({ ...cfg, user: email, pass }));
+    const m = await (await loadMailer()).connect(smtpOptions({ ...cfg, user: email, pass }));
     await m.close();
   } catch (err) {
     const msg = String(err?.message || err);
@@ -681,7 +700,7 @@ route('GET', '/api/clients', async (req, env) =>
   json(
     (
       await env.DB.prepare(
-        `SELECT c.*, COUNT(i.id) AS facturas, COALESCE(SUM(CASE WHEN i.estado NOT IN ('anulada', 'borrador') THEN i.total END), 0) AS facturado
+        `SELECT c.*, COUNT(CASE WHEN i.tipo = 'factura' THEN 1 END) AS facturas, COALESCE(SUM(CASE WHEN i.tipo = 'factura' AND i.estado NOT IN ('anulada', 'borrador') THEN i.total END), 0) AS facturado
          FROM clients c LEFT JOIN invoices i ON i.client_id = c.id GROUP BY c.id ORDER BY c.nombre COLLATE NOCASE`
       ).all()
     ).results
@@ -739,6 +758,8 @@ route('GET', '/api/invoices', async (req, env) => {
     where.push('substr(fecha, 1, 4) = ?');
     params.push(q.get('year'));
   }
+  where.push('tipo = ?');
+  params.push(tipoOf(q.get('tipo')));
   if (ESTADOS.includes(q.get('estado'))) {
     where.push('estado = ?');
     params.push(q.get('estado'));
@@ -748,18 +769,23 @@ route('GET', '/api/invoices', async (req, env) => {
     const like = `%${q.get('q')}%`;
     params.push(like, like, like);
   }
-  const sql = `SELECT id, numero, fecha, vencimiento, client_id, cliente_nombre, cliente_email, base, iva, irpf, total, estado, sent_at, sent_to, paid_at
-    FROM invoices ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY fecha DESC, numero DESC`;
+  const limit = Math.min(num(q.get('limit'), 0), 500);
+  const sql = `SELECT id, tipo, numero, fecha, vencimiento, client_id, cliente_nombre, cliente_email, base, iva, irpf, total, estado, sent_at, sent_to, paid_at, factura_id
+    FROM invoices ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY fecha DESC, numero DESC${limit ? ' LIMIT ' + limit : ''}`;
   return json((await env.DB.prepare(sql).bind(...params).all()).results);
 });
 
 route('GET', '/api/invoices/years', async (req, env) => {
-  const years = (await env.DB.prepare('SELECT DISTINCT substr(fecha, 1, 4) AS y FROM invoices ORDER BY y DESC').all()).results.map((r) => r.y);
+  const tipo = tipoOf(new URL(req.url).searchParams.get('tipo'));
+  const years = (await env.DB.prepare('SELECT DISTINCT substr(fecha, 1, 4) AS y FROM invoices WHERE tipo = ? ORDER BY y DESC').bind(tipo).all()).results.map((r) => r.y);
   if (!years.includes(today().slice(0, 4))) years.unshift(today().slice(0, 4));
   return json(years);
 });
 
-route('GET', '/api/invoices/next-number', async (req, env) => json({ numero: await nextNumber(env, new URL(req.url).searchParams.get('fecha')) }));
+route('GET', '/api/invoices/next-number', async (req, env) => {
+  const q = new URL(req.url).searchParams;
+  return json({ numero: await nextNumber(env, q.get('fecha'), tipoOf(q.get('tipo'))) });
+});
 
 route('POST', '/api/invoices', async (req, env) => {
   const { inv, lines } = await prepareInvoice(env, await body(req));
@@ -798,7 +824,7 @@ route('PUT', '/api/invoices/:id', async (req, env, { params }) => {
 route('PATCH', '/api/invoices/:id/estado', async (req, env, { params }) => {
   const inv = await getInvoice(env, params.id);
   const { estado } = await body(req);
-  if (!ESTADOS.includes(estado)) throw new HttpError(400, 'Estado no válido.');
+  if (!estadosDe(inv.tipo).includes(estado)) throw new HttpError(400, 'Estado no válido.');
   await env.DB.prepare(
     `UPDATE invoices SET estado = ?, paid_at = CASE WHEN ? = 'pagada' THEN COALESCE(paid_at, date('now')) ELSE NULL END, updated_at = datetime('now') WHERE id = ?`
   )
@@ -809,8 +835,11 @@ route('PATCH', '/api/invoices/:id/estado', async (req, env, { params }) => {
 
 route('DELETE', '/api/invoices/:id', async (req, env, { params }) => {
   const inv = await getInvoice(env, params.id);
-  if (inv.estado !== 'borrador') throw new HttpError(400, 'Solo se pueden borrar borradores. Las facturas emitidas se anulan para conservar la numeración.');
+  if (inv.tipo === 'factura' && inv.estado !== 'borrador') {
+    throw new HttpError(400, 'Solo se pueden borrar borradores. Las facturas enviadas se anulan para conservar la numeración.');
+  }
   await env.DB.batch([
+    env.DB.prepare('UPDATE invoices SET factura_id = NULL WHERE factura_id = ?').bind(inv.id),
     env.DB.prepare('DELETE FROM invoice_lines WHERE invoice_id = ?').bind(inv.id),
     env.DB.prepare('DELETE FROM email_log WHERE invoice_id = ?').bind(inv.id),
     env.DB.prepare('DELETE FROM invoices WHERE id = ?').bind(inv.id),
@@ -822,7 +851,8 @@ route('POST', '/api/invoices/:id/duplicate', async (req, env, { params }) => {
   const src = await getInvoice(env, params.id);
   const s = await getSettings(env);
   const fecha = today();
-  const copy = { ...src, numero: await nextNumber(env, fecha), fecha, vencimiento: dueDate(fecha, s['factura.dias_vencimiento']), estado: 'borrador' };
+  const dias = s[src.tipo === 'presupuesto' ? 'presupuesto.dias_validez' : 'factura.dias_vencimiento'];
+  const copy = { ...src, numero: await nextNumber(env, fecha, src.tipo), fecha, vencimiento: dueDate(fecha, dias), estado: 'borrador', presupuesto_id: null };
   const r = await env.DB.prepare(`INSERT INTO invoices (${INV_FIELDS.join(',')}) VALUES (${INV_FIELDS.map(() => '?').join(',')})`)
     .bind(...INV_FIELDS.map((f) => copy[f] ?? null))
     .run();
@@ -830,10 +860,41 @@ route('POST', '/api/invoices/:id/duplicate', async (req, env, { params }) => {
   return json(await getInvoice(env, r.meta.last_row_id));
 });
 
+// Convierte un presupuesto en factura (queda en borrador para revisarla)
+route('POST', '/api/invoices/:id/convert', async (req, env, { params }) => {
+  const src = await getInvoice(env, params.id);
+  if (src.tipo !== 'presupuesto') throw new HttpError(400, 'Solo se pueden convertir presupuestos.');
+  if (src.factura_id && (await env.DB.prepare('SELECT id FROM invoices WHERE id = ?').bind(src.factura_id).first())) {
+    return json(await getInvoice(env, src.factura_id));
+  }
+  const s = await getSettings(env);
+  const fecha = today();
+  const f = {
+    ...src,
+    tipo: 'factura',
+    numero: await nextNumber(env, fecha, 'factura'),
+    fecha,
+    vencimiento: dueDate(fecha, s['factura.dias_vencimiento']),
+    estado: 'borrador',
+    presupuesto_id: src.id,
+    notas: src.notas || s['factura.notas'] || '',
+  };
+  const r = await env.DB.prepare(`INSERT INTO invoices (${INV_FIELDS.join(',')}) VALUES (${INV_FIELDS.map(() => '?').join(',')})`)
+    .bind(...INV_FIELDS.map((k) => f[k] ?? null))
+    .run();
+  const id = r.meta.last_row_id;
+  await env.DB.batch([
+    ...linesStatements(env, id, src.lines),
+    env.DB.prepare("UPDATE invoices SET factura_id = ?, estado = 'aceptado', updated_at = datetime('now') WHERE id = ?").bind(id, src.id),
+  ]);
+  return json(await getInvoice(env, id));
+});
+
 route('GET', '/api/invoices/:id/email-preview', async (req, env, { params }) => {
   const inv = await getInvoice(env, params.id);
   const s = await getSettings(env);
-  return json({ to: inv.cliente_email || '', subject: renderText(s['correo.asunto'], inv, s), body: renderText(s['correo.cuerpo'], inv, s) });
+  const p = inv.tipo === 'presupuesto' ? 'correo.presupuesto_' : 'correo.';
+  return json({ to: inv.cliente_email || '', subject: renderText(s[p + 'asunto'], inv, s), body: renderText(s[p + 'cuerpo'], inv, s) });
 });
 
 // El navegador genera el PDF y lo manda aquí en base64 para enviarlo.
@@ -842,9 +903,10 @@ route('POST', '/api/invoices/:id/send', async (req, env, { params, user }) => {
   const b = await body(req);
   const to = str(b.to, 1000);
   const cc = str(b.cc, 1000);
-  const subject = str(b.subject, 500) || `Factura ${inv.numero}`;
+  const Nombre = inv.tipo === 'presupuesto' ? 'Presupuesto' : 'Factura';
+  const subject = str(b.subject, 500) || `${Nombre} ${inv.numero}`;
   const pdf = String(b.pdf || '');
-  if (!/^[A-Za-z0-9+/=]+$/.test(pdf) || pdf.length < 100) throw new HttpError(400, 'No se ha podido generar el PDF de la factura.');
+  if (!/^[A-Za-z0-9+/=]+$/.test(pdf) || pdf.length < 100) throw new HttpError(400, 'No se ha podido generar el PDF.');
   const log = env.DB.prepare('INSERT INTO email_log (invoice_id, to_addr, cc_addr, subject, status, error) VALUES (?, ?, ?, ?, ?, ?)');
   try {
     const account = await env.DB.prepare('SELECT email FROM mail_account WHERE id = 1').first();
@@ -854,7 +916,7 @@ route('POST', '/api/invoices/:id/send', async (req, env, { params, user }) => {
       bcc: b.copia ? account?.email || user.email : '',
       subject,
       text: str(b.body, 20000),
-      attachment: { name: `Factura_${inv.numero.replace(/[^\w.-]+/g, '_')}.pdf`, base64: pdf },
+      attachment: { name: `${Nombre}_${inv.numero.replace(/[^\w.-]+/g, '_')}.pdf`, base64: pdf },
     });
   } catch (err) {
     await log.bind(inv.id, to, cc, subject, 'error', err.message).run();
@@ -864,7 +926,9 @@ route('POST', '/api/invoices/:id/send', async (req, env, { params, user }) => {
   await env.DB.batch([
     log.bind(inv.id, to, cc, subject, 'ok', null),
     env.DB.prepare(
-      `UPDATE invoices SET sent_at = datetime('now'), sent_to = ?, estado = CASE WHEN estado IN ('borrador', 'emitida') THEN 'enviada' ELSE estado END,
+      `UPDATE invoices SET sent_at = datetime('now'), sent_to = ?,
+       estado = CASE WHEN tipo = 'presupuesto' AND estado = 'borrador' THEN 'enviado'
+                     WHEN tipo = 'factura' AND estado IN ('borrador', 'emitida') THEN 'enviada' ELSE estado END,
        updated_at = datetime('now') WHERE id = ?`
     ).bind(to, inv.id),
     env.DB.prepare("UPDATE clients SET email = ? WHERE id = ? AND (email IS NULL OR email = '')").bind(parseAddresses(to)[0] || '', inv.client_id),
@@ -879,24 +943,29 @@ route('GET', '/api/stats', async (req, env) => {
   const rows = (
     await env.DB.prepare(
       `SELECT substr(fecha, 6, 2) AS mes, COUNT(*) AS n, SUM(base) AS base, SUM(iva) AS iva, SUM(irpf) AS irpf, SUM(total) AS total
-       FROM invoices WHERE substr(fecha, 1, 4) = ? AND estado NOT IN ('anulada', 'borrador') GROUP BY mes ORDER BY mes`
+       FROM invoices WHERE tipo = 'factura' AND substr(fecha, 1, 4) = ? AND estado NOT IN ('anulada', 'borrador') GROUP BY mes ORDER BY mes`
     )
       .bind(year)
       .all()
   ).results;
-  const pendiente = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM invoices WHERE estado IN ('emitida', 'enviada')").first();
+  const pendiente = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM invoices WHERE tipo = 'factura' AND estado IN ('emitida', 'enviada')").first();
+  const borradores = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM invoices WHERE tipo = 'factura' AND estado = 'borrador'").first();
+  const cobrado = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM invoices WHERE tipo = 'factura' AND estado = 'pagada' AND substr(fecha, 1, 4) = ?").bind(year).first();
+  const presupuestos = (
+    await env.DB.prepare("SELECT estado, COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM invoices WHERE tipo = 'presupuesto' AND substr(fecha, 1, 4) = ? GROUP BY estado").bind(year).all()
+  ).results;
   const trimestres = [1, 2, 3, 4].map((t) => {
     const r = rows.filter((x) => Math.ceil(Number(x.mes) / 3) === t);
     const sum = (k) => round2(r.reduce((s, x) => s + (x[k] || 0), 0));
     return { t, n: r.reduce((s, x) => s + x.n, 0), base: sum('base'), iva: sum('iva'), irpf: sum('irpf'), total: sum('total') };
   });
-  return json({ year, meses: rows, trimestres, pendiente });
+  return json({ year, meses: rows, trimestres, pendiente, borradores, cobrado, presupuestos });
 });
 
 // Libro de facturas emitidas en CSV (se abre directamente con Excel)
 route('GET', '/api/export.csv', async (req, env) => {
   const year = new URL(req.url).searchParams.get('year') || today().slice(0, 4);
-  const rows = (await env.DB.prepare('SELECT * FROM invoices WHERE substr(fecha, 1, 4) = ? ORDER BY fecha, numero').bind(year).all()).results;
+  const rows = (await env.DB.prepare("SELECT * FROM invoices WHERE tipo = 'factura' AND substr(fecha, 1, 4) = ? ORDER BY fecha, numero").bind(year).all()).results;
   const n = (v) => (Number(v) || 0).toFixed(2).replace('.', ',');
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const head = ['Número', 'Fecha', 'Cliente', 'NIF', 'Base imponible', '% IVA', 'Cuota IVA', '% IRPF', 'Retención IRPF', 'Total', 'Estado', 'Banco', 'Enviada a', 'Fecha pago'];

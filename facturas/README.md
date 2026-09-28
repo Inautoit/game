@@ -7,6 +7,14 @@ Funciona en **Cloudflare Workers** (plan gratuito) con base de datos **D1**.
 
 ## Qué hace
 
+- **Inicio**: resumen del dinero (facturado, cobrado, pendiente de cobro, IVA
+  del trimestre), gráfico por meses, resumen por trimestres, facturas
+  pendientes y últimos presupuestos.
+- **Facturas** y **Presupuestos**: registro de todos (guardados y enviados),
+  con filtros. Un presupuesto se convierte en factura con un botón.
+- **Corregir y reenviar**: cualquier factura, aunque ya esté enviada, se puede
+  editar y volver a enviar (queda el historial de envíos).
+
 - **Factura con el diseño de tu plantilla** (`plantilla_en_blanco`): logo C&M,
   datos de la empresa, cliente, nº de factura, fecha, tabla Cantidad /
   Descripción / Precio unitario / TOTAL, subtotal, IVA y total. El PDF se genera

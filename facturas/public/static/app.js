@@ -114,14 +114,18 @@
     return out;
   };
 
-  const ESTADOS = ['borrador', 'emitida', 'enviada', 'pagada', 'anulada'];
-  const badge = (estado) => `<span class="badge ${esc(estado)}">${esc(estado)}</span>`;
+  const ESTADOS_FACTURA = ['borrador', 'emitida', 'enviada', 'pagada', 'anulada'];
+  const ESTADOS_PRESUPUESTO = ['borrador', 'enviado', 'aceptado', 'rechazado'];
+  const badge = (estado) => `<span class="badge ${esc(estado)}">${estado === 'borrador' ? 'guardado' : esc(estado)}</span>`;
 
   // --------------------------------------------------------------- Router
 
   const routes = [
-    [/^#?\/?$/, pageInvoices, 'facturas'],
-    [/^#\/nueva$/, () => pageInvoiceForm(null), 'nueva'],
+    [/^#?\/?$/, pageHome, 'inicio'],
+    [/^#\/facturas$/, () => pageList('factura'), 'facturas'],
+    [/^#\/presupuestos$/, () => pageList('presupuesto'), 'presupuestos'],
+    [/^#\/nueva$/, () => pageInvoiceForm(null, 'factura'), 'facturas'],
+    [/^#\/presupuestos\/nuevo$/, () => pageInvoiceForm(null, 'presupuesto'), 'presupuestos'],
     [/^#\/factura\/(\d+)(?:\?enviar)?$/, (id) => pageInvoiceView(id), 'facturas'],
     [/^#\/factura\/(\d+)\/editar$/, (id) => pageInvoiceForm(id), 'facturas'],
     [/^#\/clientes$/, pageClients, 'clientes'],
@@ -168,60 +172,133 @@
     location.hash = hash;
   };
 
-  // ============================================================ FACTURAS
+  // ============================================================ INICIO
 
-  const listState = { year: String(new Date().getFullYear()), estado: '', q: '' };
+  async function pageHome() {
+    const year = String(new Date().getFullYear());
+    const [stats, pendientes, borradores, presupuestos] = await Promise.all([
+      api('/stats?year=' + year),
+      api('/invoices?tipo=factura&estado=enviada&limit=8'),
+      api('/invoices?tipo=factura&estado=borrador&limit=8'),
+      api('/invoices?tipo=presupuesto&limit=6'),
+    ]);
+    const tot = stats.trimestres.reduce((a, t) => ({ base: a.base + t.base, iva: a.iva + t.iva, irpf: a.irpf + t.irpf, total: a.total + t.total }), { base: 0, iva: 0, irpf: 0, total: 0 });
+    const q = Math.ceil((new Date().getMonth() + 1) / 3);
+    const pres = Object.fromEntries(stats.presupuestos.map((p) => [p.estado, p]));
+    const presPend = ['borrador', 'enviado'].reduce((a, e) => ({ n: a.n + (pres[e]?.n || 0), total: a.total + (pres[e]?.total || 0) }), { n: 0, total: 0 });
+    const maxMes = Math.max(1, ...stats.meses.map((m) => m.base));
+    const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-  async function pageInvoices() {
-    const years = await api('/invoices/years');
-    if (!years.includes(listState.year) && listState.year) listState.year = years[0];
+    const miniList = (rows, empty) =>
+      rows.length
+        ? `<table><tbody>${rows
+            .map(
+              (r) => `<tr class="link" data-id="${r.id}"><td><strong>${esc(r.numero)}</strong><br><span class="small muted">${fdate(r.fecha)}</span></td>
+                <td>${esc(r.cliente_nombre)}</td><td class="num"><strong>${eur(r.total)}</strong></td><td>${badge(r.estado)}</td></tr>`
+            )
+            .join('')}</tbody></table>`
+        : `<div class="empty" style="padding:18px">${empty}</div>`;
 
     app.innerHTML = `
       <div class="page-head">
-        <h1>Registro de facturas</h1>
-        <a class="btn" id="export" href="#">Exportar libro (Excel)</a>
+        <h1>Inicio</h1>
+        <a class="btn" href="#/presupuestos/nuevo">+ Nuevo presupuesto</a>
         <a class="btn primary" href="#/nueva">+ Nueva factura</a>
       </div>
-      <div class="stats" id="stats"></div>
+      <div class="stats">
+        <div class="stat"><div class="label">Facturado ${year} (sin IVA)</div><div class="value">${eur(tot.base)}</div></div>
+        <div class="stat"><div class="label">Total facturado ${year} (con IVA)</div><div class="value">${eur(tot.total)}</div></div>
+        <div class="stat"><div class="label">Cobrado ${year}</div><div class="value">${eur(stats.cobrado.total)}</div></div>
+        <div class="stat"><div class="label">Pendiente de cobro (${stats.pendiente.n})</div><div class="value">${eur(stats.pendiente.total)}</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="label">IVA a declarar ${q}º trimestre</div><div class="value">${eur(stats.trimestres[q - 1].iva)}</div></div>
+        <div class="stat"><div class="label">IVA repercutido ${year}</div><div class="value">${eur(tot.iva)}</div></div>
+        <div class="stat"><div class="label">Facturas guardadas sin enviar</div><div class="value">${stats.borradores.n} · ${eur(stats.borradores.total)}</div></div>
+        <div class="stat"><div class="label">Presupuestos pendientes</div><div class="value">${presPend.n} · ${eur(presPend.total)}</div></div>
+      </div>
+
+      <div class="grid grid-2" style="align-items:start">
+        <div class="card">
+          <h2>Facturación por mes (${year}, sin IVA)</h2>
+          <div class="bars">
+            ${MESES.map((m, i) => {
+              const d = stats.meses.find((x) => Number(x.mes) === i + 1);
+              const v = d ? d.base : 0;
+              return `<div class="bar" title="${m}: ${eur(v)}"><div class="bar-fill" style="height:${Math.round((v / maxMes) * 100)}%"></div><span>${m}</span></div>`;
+            }).join('')}
+          </div>
+        </div>
+        <div class="card">
+          <h2>Resumen por trimestre (${year})</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Trim.</th><th class="num">Nº</th><th class="num">Base</th><th class="num">IVA</th><th class="num hide-sm">IRPF</th><th class="num">Total</th></tr></thead>
+            <tbody>${stats.trimestres
+              .map((t) => `<tr${t.t === q ? ' style="font-weight:600"' : ''}><td>${t.t}º</td><td class="num">${t.n}</td><td class="num">${eur(t.base)}</td><td class="num">${eur(t.iva)}</td><td class="num hide-sm">${eur(t.irpf)}</td><td class="num">${eur(t.total)}</td></tr>`)
+              .join('')}</tbody>
+            <tfoot><tr><td>Año</td><td></td><td class="num">${eur(tot.base)}</td><td class="num">${eur(tot.iva)}</td><td class="num hide-sm">${eur(tot.irpf)}</td><td class="num">${eur(tot.total)}</td></tr></tfoot>
+          </table></div>
+          <p class="small muted" style="margin:8px 0 0">No cuenta borradores ni anuladas. <a href="/api/export.csv?year=${year}">Descargar libro de facturas ${year}</a></p>
+        </div>
+      </div>
+
+      <div class="grid grid-2" style="align-items:start">
+        <div class="card"><h2>Pendientes de cobro</h2><div class="table-wrap">${miniList(pendientes, 'No hay facturas pendientes de cobro.')}</div></div>
+        <div class="card"><h2>Facturas guardadas sin enviar</h2><div class="table-wrap">${miniList(borradores, 'No hay borradores.')}</div></div>
+      </div>
+      <div class="card"><h2>Últimos presupuestos</h2><div class="table-wrap">${miniList(presupuestos, 'Aún no hay presupuestos.')}</div></div>`;
+
+    $$('tr.link').forEach((tr) => tr.addEventListener('click', () => go('#/factura/' + tr.dataset.id)));
+  }
+
+  // ============================================================ LISTADOS (facturas y presupuestos)
+
+  const TXT = {
+    factura: { uno: 'factura', titulo: 'Facturas', nueva: '#/nueva', nuevaTxt: '+ Nueva factura', estados: ESTADOS_FACTURA, enviada: 'Enviada' },
+    presupuesto: { uno: 'presupuesto', titulo: 'Presupuestos', nueva: '#/presupuestos/nuevo', nuevaTxt: '+ Nuevo presupuesto', estados: ESTADOS_PRESUPUESTO, enviada: 'Enviado' },
+  };
+  const listState = {
+    factura: { year: String(new Date().getFullYear()), estado: '', q: '' },
+    presupuesto: { year: String(new Date().getFullYear()), estado: '', q: '' },
+  };
+
+  async function pageList(tipo) {
+    const T = TXT[tipo];
+    const st = listState[tipo];
+    const years = await api('/invoices/years?tipo=' + tipo);
+    if (!years.includes(st.year) && st.year) st.year = years[0];
+
+    app.innerHTML = `
+      <div class="page-head">
+        <h1>${T.titulo}</h1>
+        ${tipo === 'factura' ? '<a class="btn" id="export" href="#">Exportar libro (Excel)</a>' : ''}
+        <a class="btn primary" href="${T.nueva}">${T.nuevaTxt}</a>
+      </div>
       <div class="card">
         <div class="row" style="margin-bottom:12px">
           <select id="f-year" style="width:auto">
             <option value="">Todos los años</option>
-            ${years.map((y) => `<option ${y === listState.year ? 'selected' : ''}>${esc(y)}</option>`).join('')}
+            ${years.map((y) => `<option ${y === st.year ? 'selected' : ''}>${esc(y)}</option>`).join('')}
           </select>
           <select id="f-estado" style="width:auto">
             <option value="">Todos los estados</option>
-            ${ESTADOS.map((e) => `<option value="${e}" ${e === listState.estado ? 'selected' : ''}>${e}</option>`).join('')}
+            ${T.estados.map((e) => `<option value="${e}" ${e === st.estado ? 'selected' : ''}>${e === 'borrador' ? 'guardado (borrador)' : e}</option>`).join('')}
           </select>
-          <input id="f-q" type="search" placeholder="Buscar por nº, cliente o NIF…" value="${esc(listState.q)}" style="flex:1;min-width:200px">
+          <input id="f-q" type="search" placeholder="Buscar por nº, cliente o NIF…" value="${esc(st.q)}" style="flex:1;min-width:200px">
         </div>
         <div class="table-wrap" id="list"></div>
       </div>`;
 
     const load = async () => {
-      const params = new URLSearchParams({ year: listState.year, estado: listState.estado, q: listState.q });
-      const [rows, stats] = await Promise.all([
-        api('/invoices?' + params),
-        api('/stats?year=' + (listState.year || new Date().getFullYear())),
-      ]);
-      $('#export').href = '/api/export.csv?year=' + encodeURIComponent(listState.year || stats.year);
-      const tot = stats.trimestres.reduce((a, t) => ({ base: a.base + t.base, iva: a.iva + t.iva, total: a.total + t.total }), { base: 0, iva: 0, total: 0 });
-      const q = Math.ceil((new Date().getMonth() + 1) / 3);
-      const tq = stats.trimestres[q - 1];
-      $('#stats').innerHTML = `
-        <div class="stat"><div class="label">Facturado ${esc(stats.year)} (base)</div><div class="value">${eur(tot.base)}</div></div>
-        <div class="stat"><div class="label">Total con IVA ${esc(stats.year)}</div><div class="value">${eur(tot.total)}</div></div>
-        <div class="stat"><div class="label">IVA ${q}º trimestre</div><div class="value">${eur(tq.iva)}</div></div>
-        <div class="stat"><div class="label">Pendiente de cobro (${stats.pendiente.n})</div><div class="value">${eur(stats.pendiente.total)}</div></div>`;
-
+      const rows = await api('/invoices?' + new URLSearchParams({ tipo, year: st.year, estado: st.estado, q: st.q }));
+      if ($('#export')) $('#export').href = '/api/export.csv?year=' + encodeURIComponent(st.year || new Date().getFullYear());
       if (!rows.length) {
-        $('#list').innerHTML = `<div class="empty">No hay facturas${listState.q || listState.estado ? ' con estos filtros' : ''}.<br><br><a class="btn primary" href="#/nueva">Crear la primera factura</a></div>`;
+        $('#list').innerHTML = `<div class="empty">No hay ${T.titulo.toLowerCase()}${st.q || st.estado ? ' con estos filtros' : ''}.<br><br><a class="btn primary" href="${T.nueva}">${T.nuevaTxt}</a></div>`;
         return;
       }
-      const sum = (k) => rows.filter((r) => r.estado !== 'anulada' && r.estado !== 'borrador').reduce((s, r) => s + r[k], 0);
       $('#list').innerHTML = `
         <table>
-          <thead><tr><th>Nº</th><th class="hide-sm">Fecha</th><th>Cliente</th><th class="num hide-sm">Base</th><th class="num hide-sm">IVA</th><th class="num">Total</th><th>Estado</th><th class="hide-sm">Enviada</th></tr></thead>
+          <thead><tr><th>Nº</th><th class="hide-sm">Fecha</th><th>Cliente</th><th class="num hide-sm">Base</th><th class="num">Total</th><th>Estado</th><th class="hide-sm">${T.enviada}</th></tr></thead>
           <tbody>
             ${rows
               .map(
@@ -230,33 +307,33 @@
                 <td class="hide-sm">${fdate(r.fecha)}</td>
                 <td>${esc(r.cliente_nombre)}</td>
                 <td class="num hide-sm">${eur(r.base)}</td>
-                <td class="num hide-sm">${eur(r.iva)}</td>
                 <td class="num"><strong>${eur(r.total)}</strong></td>
                 <td>${badge(r.estado)}</td>
-                <td class="hide-sm small muted">${r.sent_at ? fdate(r.sent_at) : '—'}</td>
+                <td class="hide-sm small muted">${r.sent_at ? fdate(r.sent_at) + (r.sent_to ? '<br>' + esc(r.sent_to) : '') : '—'}</td>
               </tr>`
               )
               .join('')}
           </tbody>
-          <tfoot><tr><td colspan="3" class="small">${rows.length} factura(s) · totales sin borradores ni anuladas</td>
-            <td class="num hide-sm">${eur(sum('base'))}</td><td class="num hide-sm">${eur(sum('iva'))}</td><td class="num">${eur(sum('total'))}</td><td colspan="2" class="hide-sm"></td></tr></tfoot>
+          <tfoot><tr><td colspan="7" class="small muted">${rows.length} ${rows.length === 1 ? T.uno : T.titulo.toLowerCase()} · ${rows.filter((r) => r.estado === 'borrador').length} guardado(s) sin enviar · ${rows.filter((r) => r.sent_at).length} enviado(s)</td></tr></tfoot>
         </table>`;
       $$('#list tr.link').forEach((tr) => tr.addEventListener('click', () => go('#/factura/' + tr.dataset.id)));
     };
 
     let t;
-    $('#f-year').onchange = (e) => ((listState.year = e.target.value), load());
-    $('#f-estado').onchange = (e) => ((listState.estado = e.target.value), load());
+    $('#f-year').onchange = (e) => ((st.year = e.target.value), load());
+    $('#f-estado').onchange = (e) => ((st.estado = e.target.value), load());
     $('#f-q').oninput = (e) => {
       clearTimeout(t);
-      t = setTimeout(() => ((listState.q = e.target.value.trim()), load()), 250);
+      t = setTimeout(() => ((st.q = e.target.value.trim()), load()), 250);
     };
     await load();
   }
 
   // ------------------------------------------------------- Formulario factura
 
-  async function pageInvoiceForm(id) {
+  const setNav = (nav) => $$('nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
+
+  async function pageInvoiceForm(id, tipoNuevo = 'factura') {
     const [settingsRes, clients, products, inv, banks] = await Promise.all([
       api('/settings'),
       api('/clients'),
@@ -265,17 +342,21 @@
       api('/banks'),
     ]);
     const s = settingsRes.settings;
+    const tipo = inv?.tipo || tipoNuevo;
+    const esPres = tipo === 'presupuesto';
+    const T = TXT[tipo];
+    setNav(esPres ? 'presupuestos' : 'facturas');
     const defaultBank = banks.find((b) => b.predeterminado) || banks[0];
     const fecha = inv?.fecha || today();
-    const dias = parseNum(s['factura.dias_vencimiento']);
+    const dias = parseNum(s[esPres ? 'presupuesto.dias_validez' : 'factura.dias_vencimiento']);
     const data = inv || {
-      numero: (await api('/invoices/next-number?fecha=' + fecha)).numero,
+      numero: (await api(`/invoices/next-number?tipo=${tipo}&fecha=` + fecha)).numero,
       fecha,
       vencimiento: dias ? addDays(fecha, dias) : '',
       iva_pct: s['factura.iva_pct'],
       irpf_pct: s['factura.irpf_pct'],
       forma_pago: s['factura.forma_pago'],
-      notas: s['factura.notas'],
+      notas: s[esPres ? 'presupuesto.notas' : 'factura.notas'],
       lines: [],
       estado: 'borrador',
       bank_id: defaultBank?.id || '',
@@ -285,24 +366,23 @@
     let dirty = false;
     leaveGuard = () => dirty;
 
-    const warnIssued = inv && inv.estado !== 'borrador';
 
     app.innerHTML = `
       <div class="page-head">
-        <h1>${inv ? 'Editar factura ' + esc(inv.numero) : 'Nueva factura'}</h1>
-        <a class="btn" href="${inv ? '#/factura/' + inv.id : '#/'}">Cancelar</a>
+        <h1>${inv ? `Editar ${T.uno} ` + esc(inv.numero) : esPres ? 'Nuevo presupuesto' : 'Nueva factura'}</h1>
+        <a class="btn" href="${inv ? '#/factura/' + inv.id : esPres ? '#/presupuestos' : '#/facturas'}">Cancelar</a>
       </div>
-      ${warnIssued ? '<div class="alert warn" style="margin-bottom:16px">Esta factura ya está ' + esc(inv.estado) + '. Normalmente una factura emitida no se modifica: si hay un error, lo correcto es anularla y hacer otra (o una rectificativa).</div>' : ''}
+      ${inv && inv.sent_at ? `<div class="alert info" style="margin-bottom:16px">${esPres ? 'Este presupuesto' : 'Esta factura'} ya se envió el ${fdate(inv.sent_at)} a ${esc(inv.sent_to || '')}. Puedes corregir lo que necesites y pulsar <strong>"Guardar y enviar por correo"</strong> para mandarle la versión corregida.</div>` : ''}
       ${!s['empresa.nombre'] ? '<div class="alert info" style="margin-bottom:16px">Aún no has rellenado los datos de tu empresa (nombre, NIF, dirección, IBAN…). <a href="#/ajustes">Hazlo en Ajustes</a> para que salgan en las facturas.</div>' : ''}
       <form id="inv-form" autocomplete="off">
         <div class="card">
-          <h2>Datos de la factura</h2>
+          <h2>Datos ${esPres ? 'del presupuesto' : 'de la factura'}</h2>
           <div class="grid grid-4">
-            <label>Nº de factura <input name="numero" value="${esc(data.numero)}" required></label>
+            <label>Nº de ${T.uno} <input name="numero" value="${esc(data.numero)}" required></label>
             <label>Fecha <input type="date" name="fecha" value="${esc(data.fecha)}" required></label>
-            <label>Vencimiento <input type="date" name="vencimiento" value="${esc(data.vencimiento || '')}"></label>
+            <label>${esPres ? 'Válido hasta' : 'Vencimiento'} <input type="date" name="vencimiento" value="${esc(data.vencimiento || '')}"></label>
             <label>Forma de pago <input name="forma_pago" value="${esc(data.forma_pago || '')}" list="formas-pago"></label>
-            <label class="span-2">Banco (sale en la factura con su nº de cuenta)
+            <label class="span-2">Banco (sale en ${esPres ? 'el presupuesto' : 'la factura'} con su nº de cuenta)
               <select name="bank_id">
                 ${banks.length ? '' : '<option value="">— Añade tus bancos en Ajustes —</option>'}
                 ${banks.map((b) => `<option value="${b.id}" ${String(b.id) === String(data.bank_id) ? 'selected' : ''}>${esc(b.nombre)}</option>`).join('')}
@@ -327,7 +407,7 @@
           <div class="grid grid-4">
             <label class="span-2">Nombre / Razón social <input name="cliente_nombre" value="${esc(data.cliente_nombre || '')}" required></label>
             <label>NIF / CIF <input name="cliente_nif" value="${esc(data.cliente_nif || '')}"></label>
-            <label>Email <input type="email" name="cliente_email" value="${esc(data.cliente_email || '')}" placeholder="para enviarle la factura"></label>
+            <label>Email <input type="email" name="cliente_email" value="${esc(data.cliente_email || '')}" placeholder="para enviárselo por correo"></label>
             <label class="span-2">Dirección <input name="cliente_direccion" value="${esc(data.cliente_direccion || '')}"></label>
             <label>C.P. <input name="cliente_cp" value="${esc(data.cliente_cp || '')}"></label>
             <label>Ciudad <input name="cliente_ciudad" value="${esc(data.cliente_ciudad || '')}"></label>
@@ -362,7 +442,7 @@
                   ${['0', '7', '15'].map((v) => `<option ${String(parseNum(data.irpf_pct)) === v ? 'selected' : ''}>${v}</option>`).join('')}
                 </select>
               </label>
-              <label class="span-2">Notas (salen en la factura) <textarea name="notas" rows="3">${esc(data.notas || '')}</textarea></label>
+              <label class="span-2">Observaciones (salen en ${esPres ? 'el presupuesto' : 'la factura'}) <textarea name="notas" rows="3">${esc(data.notas || '')}</textarea></label>
             </div>
             <div class="totals" id="totals"></div>
           </div>
@@ -371,7 +451,7 @@
         <div class="row no-print">
           <span class="spacer"></span>
           <button type="submit" class="btn" value="save">Guardar</button>
-          <button type="submit" class="btn primary" value="send">Guardar y enviar por correo</button>
+          <button type="submit" class="btn primary" value="send">${inv && inv.sent_at ? 'Guardar y volver a enviar' : 'Guardar y enviar por correo'}</button>
         </div>
       </form>`;
 
@@ -511,7 +591,7 @@
       let autoNumber = data.numero;
       form.fecha.onchange = async () => {
         if (form.numero.value === autoNumber) {
-          autoNumber = (await api('/invoices/next-number?fecha=' + form.fecha.value)).numero;
+          autoNumber = (await api(`/invoices/next-number?tipo=${tipo}&fecha=` + form.fecha.value)).numero;
           form.numero.value = autoNumber;
         }
         if (dias) form.vencimiento.value = addDays(form.fecha.value, dias);
@@ -521,7 +601,7 @@
     form.onsubmit = async (e) => {
       e.preventDefault();
       const action = e.submitter?.value;
-      const body = { ...formData(form), lines: lines.filter((l) => String(l.descripcion).trim()) };
+      const body = { ...formData(form), tipo, lines: lines.filter((l) => String(l.descripcion).trim()) };
       if (!body.lines.length) return toast('Añade al menos un producto o servicio.', 'error');
       await busy(e.submitter, async () => {
         // Guarda los productos nuevos en el catálogo
@@ -535,7 +615,7 @@
           ? await api('/invoices/' + inv.id, { method: 'PUT', body })
           : await api('/invoices', { method: 'POST', body });
         dirty = false;
-        toast('Factura guardada', 'ok');
+        toast(esPres ? 'Presupuesto guardado' : 'Factura guardada', 'ok');
         go('#/factura/' + saved.id + (action === 'send' ? '?enviar' : ''));
       });
     };
@@ -554,20 +634,24 @@
 
   // ------------------------------------------------------------ Ver factura
 
-  // Genera el PDF de una factura (en el navegador)
+  // Genera el PDF (en el navegador)
   async function invoicePdf(inv) {
     const { settings } = await api('/settings');
     return window.InvoicePdf.build(inv, settings);
   }
-  const pdfName = (inv) => `Factura_${String(inv.numero).replace(/[^\w.-]+/g, '_')}.pdf`;
+  const pdfName = (inv) => `${inv.tipo === 'presupuesto' ? 'Presupuesto' : 'Factura'}_${String(inv.numero).replace(/[^\w.-]+/g, '_')}.pdf`;
 
   async function pageInvoiceView(id) {
     const inv = await api('/invoices/' + id);
+    const esPres = inv.tipo === 'presupuesto';
+    const T = TXT[inv.tipo];
+    setNav(esPres ? 'presupuestos' : 'facturas');
+    const ligado = esPres && inv.factura_id ? inv.factura_id : !esPres && inv.presupuesto_id ? inv.presupuesto_id : null;
 
     app.innerHTML = `
       <div class="page-head">
-        <h1>Factura ${esc(inv.numero)} ${badge(inv.estado)}</h1>
-        <a class="btn" href="#/">← Volver</a>
+        <h1>${esPres ? 'Presupuesto' : 'Factura'} ${esc(inv.numero)} ${badge(inv.estado)}</h1>
+        <a class="btn" href="${esPres ? '#/presupuestos' : '#/facturas'}">← Volver</a>
       </div>
       <div class="card no-print">
         <div class="row">
@@ -576,11 +660,13 @@
           <button class="btn" id="download">Descargar PDF</button>
           <a class="btn" href="#/factura/${inv.id}/editar">Editar</a>
           <button class="btn" id="dup">Duplicar</button>
+          ${esPres ? `<button class="btn" id="convert">${inv.factura_id ? 'Ver factura' : '→ Convertir en factura'}</button>` : ''}
+          ${!esPres && ligado ? `<a class="btn ghost" href="#/factura/${ligado}">Ver presupuesto de origen</a>` : ''}
           <span class="spacer"></span>
           <label style="flex-direction:row;align-items:center;gap:8px">Estado
-            <select id="estado" style="width:auto">${ESTADOS.map((e) => `<option ${e === inv.estado ? 'selected' : ''}>${e}</option>`).join('')}</select>
+            <select id="estado" style="width:auto">${T.estados.map((e) => `<option value="${e}" ${e === inv.estado ? 'selected' : ''}>${e === 'borrador' ? 'guardado (borrador)' : e}</option>`).join('')}</select>
           </label>
-          ${inv.estado === 'borrador' ? '<button class="btn danger" id="del">Borrar</button>' : ''}
+          ${esPres || inv.estado === 'borrador' ? '<button class="btn danger" id="del">Eliminar</button>' : ''}
         </div>
       </div>
 
@@ -646,7 +732,7 @@
         // En móvil los PDF no se ven dentro de la página: se abren en otra pestaña
         if (matchMedia('(max-width: 800px)').matches) return void window.open(url, '_blank');
         const dlg = openDialog({
-          title: 'Factura ' + inv.numero,
+          title: (esPres ? 'Presupuesto ' : 'Factura ') + inv.numero,
           wide: true,
           body: `<iframe class="preview" src="${url}"></iframe>`,
           buttons: [{ label: 'Cerrar', value: 'cancel' }],
@@ -665,7 +751,7 @@
     $('#dup').onclick = (e) =>
       busy(e.target, async () => {
         const copy = await api(`/invoices/${inv.id}/duplicate`, { method: 'POST' });
-        toast('Factura duplicada como ' + copy.numero, 'ok');
+        toast('Copia creada: ' + copy.numero, 'ok');
         go('#/factura/' + copy.id + '/editar');
       });
     $('#estado').onchange = async (e) => {
@@ -681,13 +767,23 @@
       });
     };
     $('#del')?.addEventListener('click', async () => {
-      if (!(await confirmDialog('Borrar borrador', `¿Borrar la factura ${esc(inv.numero)}? No se puede deshacer.`, 'Borrar', true))) return;
+      if (!(await confirmDialog('Eliminar', `¿Eliminar ${esPres ? 'el presupuesto' : 'la factura'} ${esc(inv.numero)}? No se puede deshacer.`, 'Eliminar', true))) return;
       await busy(null, async () => {
         await api('/invoices/' + inv.id, { method: 'DELETE' });
-        toast('Factura borrada', 'ok');
-        go('#/');
+        toast('Eliminado', 'ok');
+        go(esPres ? '#/presupuestos' : '#/facturas');
       });
     });
+
+    $('#convert')?.addEventListener('click', (e) =>
+      busy(e.target, async () => {
+        if (inv.factura_id) return go('#/factura/' + inv.factura_id);
+        if (!(await confirmDialog('Convertir en factura', `Se creará una factura nueva con los datos del presupuesto ${esc(inv.numero)}. Quedará guardada para que la revises antes de enviarla.`, 'Crear factura'))) return;
+        const f = await api(`/invoices/${inv.id}/convert`, { method: 'POST' });
+        toast('Factura ' + f.numero + ' creada', 'ok');
+        go('#/factura/' + f.id + '/editar');
+      })
+    );
 
     if (location.hash.endsWith('?enviar')) {
       history.replaceState(null, '', '#/factura/' + inv.id);
@@ -704,9 +800,9 @@
     }
     const conectado = (me.mail && (me.mail.provider === 'smtp' || me.microsoft)) || me.brevo;
     openDialog({
-      title: 'Enviar factura ' + inv.numero,
+      title: (inv.tipo === 'presupuesto' ? 'Enviar presupuesto ' : 'Enviar factura ') + inv.numero,
       body: `
-        ${conectado ? `<div class="small muted">Se enviará desde <strong>${esc(me.mail?.email || 'tu remitente de Brevo')}</strong> con la factura en PDF adjunta.</div>` : '<div class="alert warn">Aún no has conectado tu correo. Ve a <a href="#/ajustes">Ajustes → Correo</a> y pulsa "Conectar Gmail".</div>'}
+        ${conectado ? `<div class="small muted">Se enviará desde <strong>${esc(me.mail?.email || 'tu remitente de Brevo')}</strong> con el PDF adjunto.</div>` : '<div class="alert warn">Aún no has conectado tu correo. Ve a <a href="#/ajustes">Ajustes → Correo</a> y pulsa "Conectar Gmail".</div>'}
         <label>Para <input name="to" type="text" value="${esc(p.to)}" placeholder="correo@cliente.com" required></label>
         <label>CC (opcional) <input name="cc" type="text" placeholder="otro@correo.com"></label>
         <label>Asunto <input name="subject" value="${esc(p.subject)}" required></label>
@@ -957,12 +1053,24 @@
         </div>
 
         <div class="card">
+          <h2>Presupuestos</h2>
+          <div class="grid grid-3">
+            <label>Prefijo de numeración <input name="presupuesto.prefijo" value="${v('presupuesto.prefijo')}"></label>
+            <label>Días de validez <input name="presupuesto.dias_validez" type="number" min="0" value="${v('presupuesto.dias_validez')}"></label>
+            <div></div>
+            <label style="grid-column:1/-1">Observaciones por defecto <textarea name="presupuesto.notas" rows="2">${v('presupuesto.notas')}</textarea></label>
+          </div>
+        </div>
+
+        <div class="card">
           <h2>Correo</h2>
           <div id="mail-status"></div>
           <div class="grid" style="margin-top:14px">
-            <label>Asunto <input name="correo.asunto" value="${v('correo.asunto')}"></label>
-            <label>Mensaje <textarea name="correo.cuerpo" rows="8">${v('correo.cuerpo')}</textarea></label>
-            <p class="small muted" style="margin:0">Marcadores: <code>{{numero}}</code> <code>{{fecha}}</code> <code>{{total}}</code> <code>{{cliente.nombre}}</code> <code>{{forma_pago}}</code> <code>{{banco.nombre}}</code> <code>{{banco.iban}}</code> <code>{{empresa.nombre}}</code> <code>{{empresa.telefono}}</code></p>
+            <label>Asunto (facturas) <input name="correo.asunto" value="${v('correo.asunto')}"></label>
+            <label>Mensaje (facturas) <textarea name="correo.cuerpo" rows="8">${v('correo.cuerpo')}</textarea></label>
+            <label>Asunto (presupuestos) <input name="correo.presupuesto_asunto" value="${v('correo.presupuesto_asunto')}"></label>
+            <label>Mensaje (presupuestos) <textarea name="correo.presupuesto_cuerpo" rows="6">${v('correo.presupuesto_cuerpo')}</textarea></label>
+            <p class="small muted" style="margin:0">Marcadores: <code>{{numero}}</code> <code>{{fecha}}</code> <code>{{cliente.nombre}}</code> <code>{{forma_pago}}</code> <code>{{empresa.nombre}}</code> <code>{{empresa.telefono}}</code> (y si algún día los quieres: <code>{{total}}</code> <code>{{banco.iban}}</code>)</p>
           </div>
           <details style="margin-top:14px">
             <summary class="small" style="cursor:pointer">Otra alternativa: enviar con Brevo</summary>

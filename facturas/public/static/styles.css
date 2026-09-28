@@ -117,6 +117,9 @@ tfoot td { font-weight: 700; border-bottom: none; }
 .badge.emitida { background: var(--accent-soft); color: var(--accent); }
 .badge.enviada { background: var(--warn-soft); color: var(--warn); }
 .badge.pagada { background: var(--ok-soft); color: var(--ok); }
+.badge.enviado { background: var(--warn-soft); color: var(--warn); }
+.badge.aceptado { background: var(--ok-soft); color: var(--ok); }
+.badge.rechazado { background: var(--danger-soft); color: var(--danger); }
 .badge.anulada { background: var(--danger-soft); color: var(--danger); text-decoration: line-through; }
 
 /* Tarjetas resumen */
@@ -189,3 +192,8 @@ code { background: #eef1f5; padding: 1px 6px; border-radius: 5px; font-size: 0.8
 
 .img-box { height: 110px; border: 1px dashed #cfd6e0; border-radius: 8px; display: grid; place-items: center; background: #fafbfc; overflow: hidden; }
 .img-box img { max-width: 100%; max-height: 100px; object-fit: contain; }
+
+.bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; align-items: end; height: 170px; }
+.bar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; gap: 4px; }
+.bar-fill { width: 100%; max-width: 28px; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; }
+.bar span { font-size: 0.7rem; color: var(--muted); }

@@ -33,7 +33,9 @@
 
   async function buildInvoicePdf(inv, s) {
     const pdf = await PDFDocument.create();
-    pdf.setTitle(`Factura ${inv.numero}`);
+    const esPres = inv.tipo === 'presupuesto';
+    const TITULO = esPres ? 'PRESUPUESTO' : 'FACTURA';
+    pdf.setTitle(`${esPres ? 'Presupuesto' : 'Factura'} ${inv.numero}`);
     pdf.setAuthor(s['empresa.nombre'] || '');
     pdf.setCreator('Facturas');
 
@@ -125,7 +127,7 @@
         page.drawLine({ start: { x: 42.5, y: Y(mid) - w / 2 }, end: { x: 42.5, y: Y(mid) + w / 2 }, thickness: 0.4, color: linkBlue });
       }
 
-      text('FACTURA', 455, 128, { size: 15, f: helvB, align: 'center' });
+      text(TITULO, 455, 128, { size: 15, f: helvB, align: 'center' });
       text('Cliente', 274, 152, { size: 11, f: helvB });
 
       const campos = [
@@ -142,12 +144,18 @@
         text(v || '', 291, top, { size: 9, maxWidth: 265 });
       });
 
-      text('Nº DE FACTURA', 46, 241, { size: 8.5, f: helvB });
-      hline(122, 189, 243, 0.5);
-      text(inv.numero, 124, 240.5, { size: 9.5, f: helvB, maxWidth: 110 });
+      const nLabel = `Nº DE ${TITULO}`;
+      const vx = Math.max(122, 46 + helvB.widthOfTextAtSize(nLabel, 8.5) + 6);
+      text(nLabel, 46, 241, { size: 8.5, f: helvB });
+      hline(vx, vx + 67, 243, 0.5);
+      text(inv.numero, vx + 2, 240.5, { size: 9.5, f: helvB, maxWidth: 110 });
       text('FECHA', 46, 265, { size: 8.5, f: helvB });
-      hline(122, 246, 267, 0.5);
-      text(fdate(inv.fecha), 124, 264.5, { size: 9.5 });
+      hline(vx, vx + 124, 267, 0.5);
+      text(fdate(inv.fecha), vx + 2, 264.5, { size: 9.5 });
+      if (esPres && inv.vencimiento) {
+        text('VÁLIDO HASTA', 288, 265, { size: 8.5, f: helvB });
+        text(fdate(inv.vencimiento), 358, 264.5, { size: 9.5 });
+      }
       if (pages > 1) text(`Página ${pageNum} de ${pages}`, 558, 265, { size: 7.5, align: 'right' });
 
       // Tabla
