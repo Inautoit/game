@@ -340,7 +340,12 @@
     newPage();
     text('Presupuesto', M, top, { size: 26, font: fb });
     text(`Nº ${inv.numero}  ·  ${fdate(inv.fecha)}`, M, top + 20, { size: 10, color: grey });
-    if (inv.vencimiento) text(`Válido hasta el ${fdate(inv.vencimiento)}`, R, top + 20, { size: 10, color: grey, align: 'right' });
+    const valido = inv.vencimiento || (() => {
+      const d = new Date(String(inv.fecha).slice(0, 10) + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() + 30);
+      return d.toISOString().slice(0, 10);
+    })();
+    text(`Válido hasta el ${fdate(valido)}`, R, top + 20, { size: 10, color: grey, align: 'right' });
     top += 42;
 
     // Cliente
@@ -387,14 +392,16 @@
       text(v, R, top, { size: 10, align: 'right' });
       top += 16;
     };
-    fila('Base', eur(inv.base));
-    fila(`IVA ${numES(inv.iva_pct)}%`, eur(inv.iva));
-    if (Number(inv.irpf_pct)) fila(`IRPF ${numES(inv.irpf_pct)}%`, '-' + eur(inv.irpf));
+    if (Number(inv.dto_importe)) {
+      fila('Subtotal', eur(Number(inv.base) + Number(inv.dto_importe)));
+      fila(`Descuento${inv.dto_tipo === 'pct' ? ` (${numES(inv.dto_valor)}%)` : ''}`, '-' + eur(inv.dto_importe));
+    }
     top += 4;
     page.drawRectangle({ x: tx - 12, y: Y(top + 30), width: R - tx + 12, height: 34, color: orange });
     text('TOTAL', tx, top + 20, { size: 12, font: fb, color: rgb(1, 1, 1) });
     text(eur(inv.total), R - 10, top + 21, { size: 16, font: fb, color: rgb(1, 1, 1), align: 'right' });
-    top += 56;
+    text('IVA no incluido', R, top + 46, { size: 10, font: fb, color: dark, align: 'right' });
+    top += 70;
 
     if (inv.notas) {
       for (const n of wrap(inv.notas, R - M, 10).slice(0, 8)) {
@@ -404,7 +411,9 @@
       top += 6;
     }
     const tel = s['empresa.telefono'];
-    text(tel ? `¿Te encaja? Contesta a este mensaje o llámame al ${tel}.` : '¿Te encaja? Contesta a este mensaje.', M, Math.max(top, PH - 70), { size: 10, color: grey });
+    const pie = Math.max(top, PH - 84);
+    text('Presupuesto válido durante 30 días. IVA no incluido.', M, pie, { size: 10, color: grey });
+    text(tel ? `Si tienes cualquier duda, contáctame en el ${tel}.` : 'Si tienes cualquier duda, contáctame.', M, pie + 15, { size: 10, color: grey });
 
     return pdf.save();
   }

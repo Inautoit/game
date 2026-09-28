@@ -118,6 +118,7 @@
     { re: /\b(direcci[oó]n|obra en|domicilio)\b/, k: 'direccion' },
     { re: /\b(calle|avenida|plaza|paseo|camino|carretera)\b/, k: 'calle' },
     { re: /\b(concepto|partida|a[nñ]ade|a[nñ]adir|otro concepto|siguiente)\b/, k: 'concepto' },
+    { re: /\bdescuento\b/, k: 'descuento' },
     { re: /\bsin iva\b/, k: 'siniva' },
     { re: /\biva\b/, k: 'iva' },
     { re: /\b(nota|notas|observaci[oó]n|observaciones)\b/, k: 'nota' },
@@ -242,6 +243,13 @@
         case 'iva': {
           const n = wordsToDigits(v).match(/\d+/);
           if (n) out.iva = Number(n[0]);
+          break;
+        }
+        case 'descuento': {
+          // "descuento 10 por ciento" / "10%" / "de 20 euros"
+          const dv = wordsToDigits(v).replace(/%/g, ' por ciento');
+          const m = dv.match(new RegExp(String.raw`(${NUM})\s*(por ciento|porciento|euros?|eur)?`, 'i'));
+          if (m) out.descuento = { valor: toNum(m[1]), tipo: /euro|eur/i.test(m[2] || '') ? 'eur' : 'pct' };
           break;
         }
         case 'nota':

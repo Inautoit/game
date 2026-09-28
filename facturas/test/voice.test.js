@@ -58,3 +58,10 @@ test('dictado por partes y sin palabras clave', () => {
   assert.equal(r.lines.length, 2);
   assert.equal(r.lines[1].precio, 40);
 });
+
+test('descuento', () => {
+  assert.deepEqual(V.parse('concepto cuadro 200 euros descuento 10 por ciento').descuento, { valor: 10, tipo: 'pct' });
+  assert.deepEqual(V.parse('descuento del 15%').descuento, { valor: 15, tipo: 'pct' });
+  assert.deepEqual(V.parse('descuento de veinte euros').descuento, { valor: 20, tipo: 'eur' });
+  assert.equal(V.parse('concepto cuadro 200 euros descuento 10 por ciento').lines[0].precio, 200);
+});

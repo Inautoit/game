@@ -25,7 +25,7 @@ Funciona en **Cloudflare Workers** (plan gratuito) con base de datos **D1**.
 - **Bancos**: en *Ajustes → Bancos* guardas tus cuentas (nombre + IBAN). En cada
   factura eliges el banco en un desplegable y su número de cuenta se escribe
   solo en la factura, **a la derecha del sello**.
-- Productos con precio (autocompletado), clientes, numeración automática por
+- Clientes, numeración automática por
   año, IVA e IRPF, estados (borrador, enviada, pagada, anulada), historial de
   envíos, resumen por trimestre y libro de facturas en CSV (para abrir en Excel).
 - **Borradores**: pulsa *Guardar* y la factura queda como borrador. Puedes verla
@@ -47,11 +47,12 @@ En *+ Nuevo presupuesto* pulsa **🎤 Dictar presupuesto**, habla y pulsa
 | **Concepto** … precio | Concepto cambiar enchufe de la cocina 35 euros |
 | Con cantidad | Concepto 2 puntos de luz a 28 euros · Concepto 4 enchufes por 15 euros |
 | Precio total de varios | Concepto 3 focos 90 euros en total |
-| **IVA** … (si no es 21) | IVA 10 · Sin IVA |
+| **Descuento** … (opcional) | Descuento 10 por ciento · Descuento 20 euros |
 | **Nota** … (opcional) | Nota material incluido |
 
 Después revisa y pulsa **WhatsApp**: se crea el PDF (con logo, sin firma) y se
-abre WhatsApp para elegir el contacto.
+abre WhatsApp para elegir el contacto. Los presupuestos van **sin IVA** ("IVA no
+incluido") y son **válidos 30 días**. Al convertirlos en factura se añade el IVA.
 
 ## Primer acceso
 

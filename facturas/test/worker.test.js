@@ -29,3 +29,13 @@ test('contraseñas y cifrado', async () => {
   assert.ok(!(await verifyPassword('otra', h)));
   assert.equal(await decrypt('k', await encrypt('k', 'token')), 'token');
 });
+
+test('presupuesto: sin IVA y con descuento', () => {
+  const lines = [{ descripcion: 'Cuadro', cantidad: 1, precio: 200 }];
+  const pct = computeInvoice({ tipo: 'presupuesto', cliente_nombre: 'X', iva_pct: 21, dto_tipo: 'pct', dto_valor: 10, lines }).inv;
+  assert.deepEqual([pct.iva_pct, pct.iva, pct.dto_importe, pct.base, pct.total], [0, 0, 20, 180, 180]);
+  const eur = computeInvoice({ tipo: 'presupuesto', cliente_nombre: 'X', dto_tipo: 'eur', dto_valor: 25, lines }).inv;
+  assert.deepEqual([eur.dto_importe, eur.total], [25, 175]);
+  const fac = computeInvoice({ cliente_nombre: 'X', iva_pct: 21, lines }).inv;
+  assert.deepEqual([fac.iva, fac.total], [42, 242]);
+});

@@ -50,7 +50,7 @@ const DEFAULT_SETTINGS = {
     'Te adjunto el presupuesto {{numero}} con fecha {{fecha}}.\n\n' +
     'Quedo a tu disposición para cualquier duda.\n\n' +
     'Un saludo,\n{{empresa.nombre}}\n{{empresa.telefono}}',
-  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te paso el presupuesto {{numero}}. Cualquier duda me dices. Un saludo, {{empresa.nombre}}',
+  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te paso el presupuesto. Si tienes cualquier duda, contáctame. Un saludo, {{empresa.nombre}}',
   'correo.remitente_nombre': '',
   'correo.remitente_email': '',
 };
@@ -354,9 +354,16 @@ export function computeInvoice(b) {
     .map((l) => ({ ...l, importe: round2(l.cantidad * l.precio * (1 - l.descuento / 100)) }));
   if (!lines.length) throw new HttpError(400, 'Añade al menos un producto o servicio.');
 
-  const iva_pct = num(b.iva_pct, 21);
-  const irpf_pct = num(b.irpf_pct, 0);
-  const base = round2(lines.reduce((s, l) => s + l.importe, 0));
+  const tipo = tipoOf(b.tipo);
+  // Los presupuestos van sin IVA ("IVA no incluido")
+  const iva_pct = tipo === 'presupuesto' ? 0 : num(b.iva_pct, 21);
+  const irpf_pct = tipo === 'presupuesto' ? 0 : num(b.irpf_pct, 0);
+  const bruto = round2(lines.reduce((s, l) => s + l.importe, 0));
+  // Descuento general: porcentaje o cantidad fija en euros
+  const dto_tipo = b.dto_tipo === 'eur' ? 'eur' : 'pct';
+  const dto_valor = Math.max(0, num(b.dto_valor, 0));
+  const dto_importe = Math.min(bruto, round2(dto_tipo === 'pct' ? (bruto * Math.min(dto_valor, 100)) / 100 : dto_valor));
+  const base = round2(bruto - dto_importe);
   const iva = round2((base * iva_pct) / 100);
   const irpf = round2((base * irpf_pct) / 100);
   const inv = {
@@ -381,7 +388,10 @@ export function computeInvoice(b) {
     iva,
     irpf,
     total: round2(base + iva - irpf),
-    tipo: tipoOf(b.tipo),
+    dto_tipo: dto_valor ? dto_tipo : null,
+    dto_valor,
+    dto_importe,
+    tipo,
     estado: 'borrador',
   };
   inv.estado = estadosDe(inv.tipo).includes(b.estado) ? b.estado : 'borrador';
@@ -393,7 +403,7 @@ const INV_FIELDS = [
   'numero', 'fecha', 'vencimiento', 'client_id', 'cliente_nombre', 'cliente_nif', 'cliente_direccion', 'cliente_cp',
   'cliente_ciudad', 'cliente_provincia', 'cliente_email', 'cliente_telefono', 'forma_pago', 'notas', 'bank_id',
   'banco_nombre', 'banco_iban', 'banco_swift', 'iva_pct', 'irpf_pct', 'base', 'iva', 'irpf', 'total', 'estado',
-  'tipo', 'presupuesto_id',
+  'tipo', 'presupuesto_id', 'dto_tipo', 'dto_valor', 'dto_importe',
 ];
 const CLIENT_FIELDS = ['nombre', 'nif', 'direccion', 'cp', 'ciudad', 'provincia', 'email', 'telefono', 'notas'];
 
@@ -410,6 +420,10 @@ async function prepareInvoice(env, b, existing) {
   const { inv, lines } = computeInvoice({ ...b, tipo: existing?.tipo || b.tipo, estado: b.estado || existing?.estado });
   inv.presupuesto_id = existing?.presupuesto_id || null;
   if (!inv.numero) inv.numero = await nextNumber(env, inv.fecha, inv.tipo);
+  if (inv.tipo === 'presupuesto') {
+    const s = await getSettings(env);
+    inv.vencimiento = dueDate(inv.fecha, s['presupuesto.dias_validez'] || 30);
+  }
 
   const bank = inv.bank_id
     ? await env.DB.prepare('SELECT * FROM banks WHERE id = ?').bind(inv.bank_id).first()
@@ -885,22 +899,45 @@ route('POST', '/api/invoices/:id/convert', async (req, env, { params }) => {
   }
   const s = await getSettings(env);
   const fecha = today();
-  const f = {
+  // El presupuesto va sin IVA: la factura lleva el IVA por defecto y el descuento como una línea más
+  const lines = src.lines.map((l) => ({ ...l }));
+  if (src.dto_importe) {
+    lines.push({
+      descripcion: `Descuento${src.dto_tipo === 'pct' ? ` (${src.dto_valor}%)` : ''}`,
+      cantidad: 1,
+      unidad: '',
+      precio: -src.dto_importe,
+      descuento: 0,
+    });
+  }
+  const { inv: calc, lines: fLines } = computeInvoice({
     ...src,
     tipo: 'factura',
+    iva_pct: s['factura.iva_pct'],
+    irpf_pct: s['factura.irpf_pct'],
+    dto_valor: 0,
+    lines,
+  });
+  const f = {
+    ...calc,
+    bank_id: src.bank_id,
+    banco_nombre: src.banco_nombre,
+    banco_iban: src.banco_iban,
+    banco_swift: src.banco_swift,
     numero: await nextNumber(env, fecha, 'factura'),
     fecha,
     vencimiento: dueDate(fecha, s['factura.dias_vencimiento']),
     estado: 'borrador',
     presupuesto_id: src.id,
-    notas: src.notas || s['factura.notas'] || '',
+    forma_pago: src.forma_pago || s['factura.forma_pago'] || '',
+    notas: s['factura.notas'] || '',
   };
   const r = await env.DB.prepare(`INSERT INTO invoices (${INV_FIELDS.join(',')}) VALUES (${INV_FIELDS.map(() => '?').join(',')})`)
     .bind(...INV_FIELDS.map((k) => f[k] ?? null))
     .run();
   const id = r.meta.last_row_id;
   await env.DB.batch([
-    ...linesStatements(env, id, src.lines),
+    ...linesStatements(env, id, fLines),
     env.DB.prepare("UPDATE invoices SET factura_id = ?, estado = 'aceptado', updated_at = datetime('now') WHERE id = ?").bind(id, src.id),
   ]);
   return json(await getInvoice(env, id));

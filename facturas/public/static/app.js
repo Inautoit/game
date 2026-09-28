@@ -18,6 +18,11 @@
     const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.'));
     return Number.isFinite(n) ? n : 0;
   };
+  // Descuento general: porcentaje o euros
+  const calcDto = (bruto, tipo, valor) => {
+    const v = Math.max(0, parseNum(valor));
+    return Math.min(bruto, round2(tipo === 'eur' ? v : (bruto * Math.min(v, 100)) / 100));
+  };
   const addDays = (iso, days) => {
     const d = new Date(iso + 'T12:00:00Z');
     d.setUTCDate(d.getUTCDate() + days);
@@ -131,7 +136,6 @@
     [/^#\/factura\/(\d+)\/editar-completo$/, (id) => pageInvoiceForm(id, 'factura', true), 'facturas'],
     [/^#\/presupuestos\/completo$/, () => pageInvoiceForm(null, 'presupuesto', true), 'presupuestos'],
     [/^#\/clientes$/, pageClients, 'clientes'],
-    [/^#\/productos$/, pageProducts, 'productos'],
     [/^#\/ajustes$/, pageSettings, 'ajustes'],
   ];
 
@@ -341,10 +345,9 @@
       const doc = await api('/invoices/' + id);
       if (doc.tipo === 'presupuesto') return pageQuoteForm(id);
     }
-    const [settingsRes, clients, products, inv, banks] = await Promise.all([
+    const [settingsRes, clients, inv, banks] = await Promise.all([
       api('/settings'),
       api('/clients'),
-      api('/products'),
       id ? api('/invoices/' + id) : null,
       api('/banks'),
     ]);
@@ -425,8 +428,7 @@
         </div>
 
         <div class="card">
-          <h2>Productos y servicios</h2>
-          <p class="small muted" style="margin-top:-6px">Empieza a escribir para elegir de tu catálogo de productos, o escribe uno nuevo.</p>
+          <h2>Conceptos</h2>
           <div class="table-wrap">
             <table class="lines">
               <thead><tr><th class="c-desc">Descripción</th><th class="c-qty num">Cantidad</th><th class="c-ud">Ud.</th><th class="c-price num">Precio €</th><th class="c-dto num">Dto %</th><th class="c-imp num">Importe</th><th class="c-del"></th></tr></thead>
@@ -439,7 +441,11 @@
 
           <div class="grid grid-2" style="margin-top:18px;align-items:start">
             <div class="grid grid-2">
-              <label>IVA %
+              ${
+                esPres
+                  ? `<label>Descuento <input name="dto_valor" inputmode="decimal" value="${esc(data.dto_valor || '')}" placeholder="0"></label>
+                     <label>&nbsp;<select name="dto_tipo"><option value="pct" ${data.dto_tipo !== 'eur' ? 'selected' : ''}>%</option><option value="eur" ${data.dto_tipo === 'eur' ? 'selected' : ''}>€</option></select></label>`
+                  : `<label>IVA %
                 <select name="iva_pct">
                   ${['21', '10', '4', '0'].map((v) => `<option ${String(parseNum(data.iva_pct)) === v ? 'selected' : ''}>${v}</option>`).join('')}
                 </select>
@@ -448,7 +454,8 @@
                 <select name="irpf_pct">
                   ${['0', '7', '15'].map((v) => `<option ${String(parseNum(data.irpf_pct)) === v ? 'selected' : ''}>${v}</option>`).join('')}
                 </select>
-              </label>
+              </label>`
+              }
               <label class="span-2">Observaciones (salen en ${esPres ? 'el presupuesto' : 'la factura'}) <textarea name="notas" rows="3">${esc(data.notas || '')}</textarea></label>
             </div>
             <div class="totals" id="totals"></div>
@@ -492,7 +499,16 @@
     const lineImporte = (l) => round2(parseNum(l.cantidad) * parseNum(l.precio) * (1 - parseNum(l.descuento) / 100));
 
     function renderTotals() {
-      const base = round2(lines.reduce((sum, l) => sum + (l.descripcion ? lineImporte(l) : 0), 0));
+      const bruto = round2(lines.reduce((sum, l) => sum + (l.descripcion ? lineImporte(l) : 0), 0));
+      if (esPres) {
+        const dto = calcDto(bruto, form.dto_tipo.value, form.dto_valor.value);
+        $('#totals').innerHTML = `
+          ${dto ? `<div><span>Subtotal</span><span class="num">${eur(bruto)}</span></div><div><span>Descuento</span><span class="num">-${eur(dto)}</span></div>` : ''}
+          <div class="grand"><span>TOTAL</span><span class="num">${eur(bruto - dto)}</span></div>
+          <div class="small muted" style="justify-content:flex-end">IVA no incluido</div>`;
+        return;
+      }
+      const base = bruto;
       const ivaPct = parseNum(form.iva_pct.value);
       const irpfPct = parseNum(form.irpf_pct.value);
       const iva = round2((base * ivaPct) / 100);
@@ -528,7 +544,6 @@
       $('[data-imp]', tr).textContent = eur(lineImporte(lines[i]));
       renderTotals();
       dirty = true;
-      if (e.target.dataset.f === 'descripcion') showSuggestions(e.target, i);
     });
     tbody.addEventListener('click', (e) => {
       if (!e.target.closest('[data-del]')) return;
@@ -543,55 +558,14 @@
       renderLines();
       $$('input[data-f=descripcion]', tbody).at(-1).focus();
     };
-    form.iva_pct.onchange = renderTotals;
-    form.irpf_pct.onchange = renderTotals;
-    form.addEventListener('input', () => (dirty = true));
-
-    // --- Autocompletado de productos del catálogo
-    let acBox = null;
-    let acSel = -1;
-    const closeAc = () => {
-      acBox?.remove();
-      acBox = null;
-      acSel = -1;
-    };
-    function showSuggestions(input, i) {
-      closeAc();
-      const q = input.value.trim().toLowerCase();
-      if (!q) return;
-      const matches = products.filter((p) => p.nombre.toLowerCase().includes(q)).slice(0, 8);
-      if (!matches.length) return;
-      acBox = document.createElement('div');
-      acBox.className = 'ac-list';
-      acBox.innerHTML = matches.map((p, k) => `<div data-k="${k}"><span>${esc(p.nombre)}</span><span class="muted">${eur(p.precio)} / ${esc(p.unidad)}</span></div>`).join('');
-      input.parentElement.appendChild(acBox);
-      const pick = (p) => {
-        Object.assign(lines[i], { descripcion: p.nombre, precio: p.precio, unidad: p.unidad });
-        closeAc();
-        renderLines();
-        $(`tr[data-i="${i}"] input[data-f=cantidad]`, tbody).select();
-      };
-      acBox.onmousedown = (e) => {
-        const d = e.target.closest('[data-k]');
-        if (d) {
-          e.preventDefault();
-          pick(matches[Number(d.dataset.k)]);
-        }
-      };
-      input.onkeydown = (e) => {
-        if (!acBox) return;
-        const items = $$('[data-k]', acBox);
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-          e.preventDefault();
-          acSel = (acSel + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-          items.forEach((el, k) => el.classList.toggle('sel', k === acSel));
-        } else if (e.key === 'Enter' && acSel >= 0) {
-          e.preventDefault();
-          pick(matches[acSel]);
-        } else if (e.key === 'Escape') closeAc();
-      };
-      input.onblur = () => setTimeout(closeAc, 150);
+    if (esPres) {
+      form.dto_valor.oninput = renderTotals;
+      form.dto_tipo.onchange = renderTotals;
+    } else {
+      form.iva_pct.onchange = renderTotals;
+      form.irpf_pct.onchange = renderTotals;
     }
+    form.addEventListener('input', () => (dirty = true));
 
     // Número automático al cambiar la fecha (solo facturas nuevas)
     if (!inv) {
@@ -611,13 +585,6 @@
       const body = { ...formData(form), tipo, lines: lines.filter((l) => String(l.descripcion).trim()) };
       if (!body.lines.length) return toast('Añade al menos un producto o servicio.', 'error');
       await busy(e.submitter, async () => {
-        // Guarda los productos nuevos en el catálogo
-        const nuevos = body.lines.filter((l) => !products.some((p) => p.nombre.toLowerCase() === String(l.descripcion).trim().toLowerCase()));
-        if (nuevos.length && (await confirmDialog('¿Guardar productos nuevos?', `Hay ${nuevos.length} producto(s) que no están en tu catálogo:<br><br>${nuevos.map((l) => '• ' + esc(l.descripcion) + ' — ' + eur(parseNum(l.precio))).join('<br>')}<br><br>¿Los guardo para usarlos en próximas facturas?`, 'Sí, guardarlos'))) {
-          for (const l of nuevos) {
-            products.push(await api('/products', { method: 'POST', body: { nombre: l.descripcion, precio: parseNum(l.precio), unidad: l.unidad || 'ud' } }));
-          }
-        }
         const saved = inv
           ? await api('/invoices/' + inv.id, { method: 'PUT', body })
           : await api('/invoices', { method: 'POST', body });
@@ -712,10 +679,16 @@
           </table>
         </div>
         <div class="totals" style="margin-top:14px">
-          <div><span>Subtotal</span><span class="num">${eur(inv.base)}</span></div>
+          ${
+            esPres
+              ? `${inv.dto_importe ? `<div><span>Subtotal</span><span class="num">${eur(inv.base + inv.dto_importe)}</span></div><div><span>Descuento${inv.dto_tipo === 'pct' ? ` (${inv.dto_valor}%)` : ''}</span><span class="num">-${eur(inv.dto_importe)}</span></div>` : ''}
+                 <div class="grand"><span>TOTAL</span><span class="num">${eur(inv.total)}</span></div>
+                 <div class="small muted" style="justify-content:flex-end">IVA no incluido · válido hasta el ${fdate(inv.vencimiento)}</div>`
+              : `<div><span>Subtotal</span><span class="num">${eur(inv.base)}</span></div>
           <div><span>IVA (${inv.iva_pct}%)</span><span class="num">${eur(inv.iva)}</span></div>
           ${inv.irpf_pct ? `<div><span>Retención IRPF (${inv.irpf_pct}%)</span><span class="num">-${eur(inv.irpf)}</span></div>` : ''}
-          <div class="grand"><span>TOTAL</span><span class="num">${eur(inv.total)}</span></div>
+          <div class="grand"><span>TOTAL</span><span class="num">${eur(inv.total)}</span></div>`
+          }
         </div>
         ${inv.notas ? `<p class="small"><strong>Observaciones:</strong> ${esc(inv.notas)}</p>` : ''}
       </div>
@@ -900,10 +873,9 @@
   }
 
   async function pageQuoteForm(id) {
-    const [{ settings: s }, clients, products, inv] = await Promise.all([
+    const [{ settings: s }, clients, inv] = await Promise.all([
       api('/settings'),
       api('/clients'),
-      api('/products'),
       id ? api('/invoices/' + id) : null,
     ]);
     setNav('presupuestos');
@@ -931,7 +903,7 @@
           <div id="voice-live" class="voice-live hidden"></div>
           <details id="voice-type" class="small" style="margin-top:8px">
             <summary class="muted" style="cursor:pointer">…o escríbelo / díctalo con el micrófono del teclado</summary>
-            <textarea id="voice-text" rows="3" style="margin-top:6px" placeholder="Cliente Juan García. Teléfono 611 22 33 44. Concepto cambiar enchufe 35 euros. Concepto 2 puntos de luz a 28 euros."></textarea>
+            <textarea id="voice-text" rows="3" style="margin-top:6px" placeholder="Cliente Juan García. Teléfono 611 22 33 44. Concepto cambiar enchufe 35 euros. Concepto 2 puntos de luz a 28 euros. Descuento 10 por ciento."></textarea>
             <button type="button" class="btn sm" id="voice-apply" style="margin-top:6px">Rellenar el presupuesto</button>
           </details>
         </div>
@@ -955,19 +927,20 @@
 
         <div class="card">
           <div id="q-lines"></div>
-          <datalist id="q-products">${products.map((p) => `<option value="${esc(p.nombre)}">${eur(p.precio)}</option>`).join('')}</datalist>
           <button type="button" class="btn" id="q-add" style="margin-top:8px">+ Añadir concepto</button>
           <div class="row" style="margin-top:14px">
-            <span class="small muted">IVA</span>
-            ${['21', '10', '0'].map((v) => `<label class="chip"><input type="radio" name="iva_pct" value="${v}" ${String(parseNum(inv?.iva_pct ?? s['factura.iva_pct'])) === v ? 'checked' : ''}><span>${v}%</span></label>`).join('')}
+            <span class="small muted">Descuento</span>
+            <input name="dto_valor" inputmode="decimal" value="${esc(inv?.dto_valor || '')}" placeholder="0" class="num" style="width:90px">
+            ${['pct', 'eur'].map((v) => `<label class="chip"><input type="radio" name="dto_tipo" value="${v}" ${(inv?.dto_tipo || 'pct') === v ? 'checked' : ''}><span>${v === 'pct' ? '%' : '€'}</span></label>`).join('')}
           </div>
+          <div class="small muted" id="q-sub" style="margin-top:8px"></div>
           <details class="small" style="margin-top:10px" ${inv?.notas ? 'open' : ''}><summary class="muted" style="cursor:pointer">Nota (opcional)</summary>
             <textarea name="notas" rows="2" style="margin-top:6px" placeholder="Ej.: material incluido, plazo 2 días…">${esc(inv?.notas ?? s['presupuesto.notas'] ?? '')}</textarea>
           </details>
         </div>
 
         <div class="quick-bar">
-          <div><div class="small muted">Total (IVA incl.)</div><div class="quick-total" id="q-total"></div></div>
+          <div><div class="small muted">Total (IVA no incluido)</div><div class="quick-total" id="q-total"></div></div>
           <button type="submit" class="btn" value="save">Guardar</button>
           <button type="submit" class="btn wa" value="wa">WhatsApp</button>
         </div>
@@ -976,16 +949,20 @@
     const form = $('#q-form');
     const imp = (l) => round2(parseNum(l.cantidad || 1) * parseNum(l.precio));
     const totals = () => {
-      const base = round2(lines.reduce((a, l) => a + (String(l.descripcion).trim() ? imp(l) : 0), 0));
-      const ivaPct = parseNum(form.iva_pct.value);
-      return { base, total: round2(base + round2((base * ivaPct) / 100)) };
+      const bruto = round2(lines.reduce((a, l) => a + (String(l.descripcion).trim() ? imp(l) : 0), 0));
+      const dto = calcDto(bruto, form.dto_tipo.value, form.dto_valor.value);
+      return { bruto, dto, total: round2(bruto - dto) };
     };
-    const renderTotal = () => ($('#q-total').textContent = eur(totals().total));
+    const renderTotal = () => {
+      const t = totals();
+      $('#q-total').textContent = eur(t.total);
+      $('#q-sub').textContent = t.dto ? `Subtotal ${eur(t.bruto)} − descuento ${eur(t.dto)}` : '';
+    };
     const renderLines = () => {
       $('#q-lines').innerHTML = lines
         .map(
           (l, i) => `<div class="q-line" data-i="${i}">
-            <input data-f="descripcion" list="q-products" value="${esc(l.descripcion)}" placeholder="Concepto (ej.: cambiar enchufe)">
+            <input data-f="descripcion" value="${esc(l.descripcion)}" placeholder="Concepto (ej.: cambiar enchufe)">
             <input data-f="cantidad" inputmode="decimal" value="${esc(l.cantidad ?? 1)}" title="Cantidad" class="num">
             <input data-f="precio" inputmode="decimal" value="${esc(l.precio)}" placeholder="€" class="num">
             <button type="button" class="btn ghost sm" data-del aria-label="Quitar">✕</button>
@@ -998,13 +975,6 @@
       const i = Number(e.target.closest('.q-line').dataset.i);
       const f = e.target.dataset.f;
       lines[i][f] = e.target.value;
-      if (f === 'descripcion') {
-        const p = products.find((x) => x.nombre.toLowerCase() === e.target.value.trim().toLowerCase());
-        if (p && !parseNum(lines[i].precio)) {
-          lines[i].precio = p.precio;
-          e.target.closest('.q-line').querySelector('[data-f=precio]').value = p.precio;
-        }
-      }
       dirty = true;
       renderTotal();
     });
@@ -1019,8 +989,11 @@
       renderLines();
       $$('#q-lines [data-f=descripcion]').at(-1).focus();
     };
+    form.addEventListener('input', (e) => {
+      if (e.target.name === 'dto_valor') renderTotal();
+    });
     form.addEventListener('change', (e) => {
-      if (e.target.name === 'iva_pct') renderTotal();
+      if (e.target.name === 'dto_tipo') renderTotal();
     });
     form.cliente_nombre.addEventListener('input', () => {
       dirty = true;
@@ -1047,15 +1020,17 @@
       const good = lines
         .filter((l) => String(l.descripcion).trim())
         .map((l) => ({ ...l, cantidad: parseNum(l.cantidad || 1) || 1, precio: round2(parseNum(l.precio)), descuento: parseNum(l.descuento), importe: imp(l) }));
-      const ivaPct = parseNum(form.iva_pct.value);
-      const base = round2(good.reduce((a, l) => a + l.importe, 0));
-      const iva = round2((base * ivaPct) / 100);
+      const bruto = round2(good.reduce((a, l) => a + l.importe, 0));
+      const dtoTipo = form.dto_tipo.value;
+      const dtoValor = parseNum(form.dto_valor.value);
+      const dto = calcDto(bruto, dtoTipo, dtoValor);
+      const base = round2(bruto - dto);
       return {
         ...(inv || {}),
         tipo: 'presupuesto',
         numero,
         fecha,
-        vencimiento: inv?.vencimiento || (dias ? addDays(fecha, dias) : ''),
+        vencimiento: addDays(fecha, dias || 30),
         client_id: clientId,
         guardar_cliente: true,
         cliente_nombre: f.cliente_nombre.trim(),
@@ -1063,12 +1038,15 @@
         cliente_direccion: f.cliente_direccion.trim(),
         forma_pago: inv?.forma_pago || s['factura.forma_pago'],
         notas: f.notas,
-        iva_pct: ivaPct,
-        irpf_pct: inv?.irpf_pct || 0,
+        iva_pct: 0,
+        irpf_pct: 0,
+        dto_tipo: dtoValor ? dtoTipo : null,
+        dto_valor: dtoValor,
+        dto_importe: dto,
         base,
-        iva,
+        iva: 0,
         irpf: 0,
-        total: round2(base + iva),
+        total: base,
         lines: good,
       };
     };
@@ -1123,9 +1101,9 @@
         form.cliente_direccion.closest('details').open = true;
         n++;
       }
-      if (r.iva !== undefined) {
-        const radio = form.querySelector(`input[name=iva_pct][value="${r.iva}"]`);
-        if (radio) radio.checked = true;
+      if (r.descuento) {
+        form.dto_valor.value = r.descuento.valor;
+        form.querySelector(`input[name=dto_tipo][value="${r.descuento.tipo}"]`).checked = true;
         n++;
       }
       if (r.nota) {
@@ -1136,8 +1114,7 @@
       if (r.lines.length) {
         lines = lines.filter((l) => String(l.descripcion).trim() || parseNum(l.precio));
         for (const l of r.lines) {
-          const p = products.find((x) => x.nombre.toLowerCase() === l.descripcion.toLowerCase());
-          lines.push({ ...l, precio: l.precio === '' && p ? p.precio : l.precio });
+          lines.push({ ...l });
         }
         n += r.lines.length;
       }
@@ -1201,11 +1178,11 @@
           <tr><td>Con cantidad</td><td>Concepto <em>2 puntos de luz a 28 euros</em><br>Concepto <em>3 horas de mano de obra a 25 euros</em><br>Concepto <em>4 enchufes por 15 euros</em></td></tr>
           <tr><td>Precio total de varios</td><td>Concepto <em>3 focos 90 euros en total</em></td></tr>
           <tr><td>Céntimos</td><td><em>… 12 con 50</em> o <em>12,50 euros</em></td></tr>
-          <tr><td><strong>IVA</strong> … <span class="muted">(si no es 21)</span></td><td>IVA <em>10</em> · <em>Sin IVA</em></td></tr>
+          <tr><td><strong>Descuento</strong> … <span class="muted">(opcional)</span></td><td>Descuento <em>10 por ciento</em> · Descuento <em>20 euros</em></td></tr>
           <tr><td><strong>Nota</strong> … <span class="muted">(opcional)</span></td><td>Nota <em>material incluido</em></td></tr>
         </tbody></table>
-        <div class="alert info"><strong>Ejemplo completo:</strong><br>"Cliente Juan García. Teléfono 611 22 33 44. Concepto cambiar enchufe de la cocina 35 euros. Concepto 2 puntos de luz a 28 euros. IVA 10."</div>
-        <p class="small muted" style="margin:0">Consejos: di "Concepto" delante de cada trabajo y el precio al final. Si el cliente ya está guardado, basta con su nombre (el teléfono se pone solo). Después revisa y pulsa WhatsApp.</p>`,
+        <div class="alert info"><strong>Ejemplo completo:</strong><br>"Cliente Juan García. Teléfono 611 22 33 44. Concepto cambiar enchufe de la cocina 35 euros. Concepto 2 puntos de luz a 28 euros. Descuento 10 por ciento."</div>
+        <p class="small muted" style="margin:0">Consejos: di "Concepto" delante de cada trabajo y el precio al final. Si el cliente ya está guardado, basta con su nombre (el teléfono se pone solo). Los presupuestos van sin IVA y válidos 30 días. Después revisa y pulsa WhatsApp.</p>`,
       buttons: [{ label: 'Entendido', value: 'cancel' }],
     });
   }
@@ -1279,65 +1256,6 @@
         } else if (c) await api('/clients/' + c.id, { method: 'PUT', body: formData(form) });
         else await api('/clients', { method: 'POST', body: formData(form) });
         toast('Cliente guardado', 'ok');
-        router();
-        return true;
-      },
-    });
-  }
-
-  // ============================================================ PRODUCTOS
-
-  async function pageProducts() {
-    const products = await api('/products');
-    app.innerHTML = `
-      <div class="page-head"><h1>Productos y servicios</h1><button class="btn primary" id="new">+ Nuevo producto</button></div>
-      <p class="muted" style="margin-top:-8px">Tu catálogo con precios. Al hacer una factura, escribe y elige: el precio se rellena solo.</p>
-      <div class="card">
-        <input id="q" type="search" placeholder="Buscar producto…" style="margin-bottom:12px">
-        <div class="table-wrap">
-        ${
-          products.length
-            ? `<table><thead><tr><th>Producto / servicio</th><th>Unidad</th><th class="num">Precio (sin IVA)</th><th></th></tr></thead>
-          <tbody>${products
-            .map(
-              (p) => `<tr data-id="${p.id}" data-s="${esc(p.nombre.toLowerCase())}"><td>${esc(p.nombre)}</td><td>${esc(p.unidad)}</td><td class="num">${eur(p.precio)}</td>
-              <td class="num"><button class="btn sm" data-edit>Editar</button></td></tr>`
-            )
-            .join('')}</tbody></table>`
-            : '<div class="empty">Aún no hay productos. Añade los materiales y servicios que más usas (p.ej. "Punto de luz", "Cable 2,5 mm²", "Hora de mano de obra").</div>'
-        }
-        </div>
-      </div>`;
-    $('#new').onclick = () => productDialog(null);
-    $('#q').oninput = (e) => {
-      const q = e.target.value.toLowerCase();
-      $$('tbody tr[data-s]').forEach((tr) => tr.classList.toggle('hidden', !tr.dataset.s.includes(q)));
-    };
-    $$('tbody tr[data-id]').forEach((tr) => {
-      $('[data-edit]', tr).onclick = () => productDialog(products.find((p) => String(p.id) === tr.dataset.id));
-    });
-  }
-
-  function productDialog(p) {
-    openDialog({
-      title: p ? 'Editar producto' : 'Nuevo producto',
-      body: `<div class="grid grid-3">
-        <label class="span-2" style="grid-column:1/-1">Nombre / descripción <input name="nombre" value="${esc(p?.nombre || '')}" required></label>
-        <label>Precio sin IVA (€) <input name="precio" inputmode="decimal" value="${esc(p?.precio ?? '')}" required></label>
-        <label>Unidad <input name="unidad" value="${esc(p?.unidad || 'ud')}" list="unidades"></label>
-        <datalist id="unidades"><option>ud</option><option>m</option><option>h</option><option>m²</option><option>kg</option><option>rollo</option></datalist>
-      </div>`,
-      buttons: [
-        ...(p ? [{ label: 'Borrar', value: 'delete', danger: true }] : []),
-        { label: 'Cancelar', value: 'cancel' },
-        { label: 'Guardar', value: 'save', primary: true },
-      ],
-      onSubmit: async (form, action) => {
-        const body = { ...formData(form), precio: parseNum(form.precio.value) };
-        if (action === 'delete') await api('/products/' + p.id, { method: 'DELETE' });
-        else if (p) await api('/products/' + p.id, { method: 'PUT', body });
-        else await api('/products', { method: 'POST', body });
-        toast('Producto guardado', 'ok');
         router();
         return true;
       },
