@@ -50,7 +50,7 @@ const DEFAULT_SETTINGS = {
     'Te adjunto el presupuesto {{numero}} con fecha {{fecha}}.\n\n' +
     'Quedo a tu disposición para cualquier duda.\n\n' +
     'Un saludo,\n{{empresa.nombre}}\n{{empresa.telefono}}',
-  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te paso el presupuesto. Si tienes cualquier duda, contáctame. Un saludo, {{empresa.nombre}}',
+  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te adjunto el presupuesto{{obra}}. Si tienes cualquier duda, contáctame. Un saludo, Cefe Rodríguez',
   'correo.remitente_nombre': '',
   'correo.remitente_email': '',
 };
@@ -468,7 +468,17 @@ function duplicateError(err) {
 
 // Texto del correo con marcadores {{...}}
 function renderText(template, inv, s) {
+  const dir = String(inv.cliente_direccion || '').trim().replace(/^c\/\s*/i, 'calle ').replace(/^avda\.?\s*/i, 'avenida ');
+  const obra = !dir
+    ? ''
+    : /^(paseo|camino|pasaje|callejón|callejon)\b/i.test(dir)
+      ? ` del ${dir.charAt(0).toLowerCase() + dir.slice(1)}`
+      : /^(calle|avenida|plaza|pza|ronda|travesía|travesia|glorieta|carretera|ctra|urbanización|urb)\b/i.test(dir)
+        ? ` de la ${dir.charAt(0).toLowerCase() + dir.slice(1)}`
+        : ` de la calle ${dir}`;
   const v = {
+    obra,
+    'cliente.direccion': dir,
     numero: inv.numero,
     fecha: fmtDate(inv.fecha),
     vencimiento: fmtDate(inv.vencimiento),

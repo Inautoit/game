@@ -857,7 +857,17 @@
 
   // Rellena {{marcadores}} del mensaje en el navegador
   function fillText(tpl, inv, s) {
+    const dir = String(inv.cliente_direccion || '').trim().replace(/^c\/\s*/i, 'calle ').replace(/^avda\.?\s*/i, 'avenida ');
+    const obra = !dir
+      ? ''
+      : /^(paseo|camino|pasaje|callejón|callejon)\b/i.test(dir)
+        ? ` del ${dir.charAt(0).toLowerCase() + dir.slice(1)}`
+        : /^(calle|avenida|plaza|pza|ronda|travesía|travesia|glorieta|carretera|ctra|urbanización|urb)\b/i.test(dir)
+          ? ` de la ${dir.charAt(0).toLowerCase() + dir.slice(1)}`
+          : ` de la calle ${dir}`;
     const v = {
+      obra,
+      'cliente.direccion': dir,
       numero: inv.numero,
       fecha: fdate(inv.fecha),
       total: eur(inv.total),
@@ -1374,6 +1384,7 @@
             <div></div>
             <label style="grid-column:1/-1">Observaciones por defecto <textarea name="presupuesto.notas" rows="2">${v('presupuesto.notas')}</textarea></label>
             <label style="grid-column:1/-1">Mensaje de WhatsApp <textarea name="whatsapp.mensaje" rows="2">${v('whatsapp.mensaje')}</textarea></label>
+            <p class="small muted" style="grid-column:1/-1;margin:0"><code>{{obra}}</code> pone "de la calle …" con la dirección del formulario (si no hay dirección, no pone nada). También: <code>{{cliente.nombre}}</code> <code>{{fecha}}</code> <code>{{total}}</code></p>
           </div>
         </div>
 
