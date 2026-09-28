@@ -912,10 +912,12 @@
         </div>
 
         <div class="quick-bar">
-          <div><div class="small muted">Total (IVA no incluido)</div><div class="quick-total" id="q-total"></div></div>
-          <button type="submit" class="btn" value="save">Guardar</button>
-          <button type="submit" class="btn mail" value="mail">Correo</button>
-          <button type="submit" class="btn wa" value="wa">WhatsApp</button>
+          <div class="quick-sum"><span class="small muted">Total <span class="nowrap">(IVA no incluido)</span></span><span class="quick-total" id="q-total"></span></div>
+          <div class="quick-actions">
+            <button type="submit" class="btn" value="save">Guardar</button>
+            <button type="submit" class="btn mail" value="mail">Correo</button>
+            <button type="submit" class="btn wa" value="wa">WhatsApp</button>
+          </div>
         </div>
       </form>`;
 
