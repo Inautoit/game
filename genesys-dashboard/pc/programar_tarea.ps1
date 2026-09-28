@@ -22,7 +22,8 @@ $accion = New-ScheduledTaskAction -Execute "powershell.exe" -WorkingDirectory $P
 $disparador = New-ScheduledTaskTrigger -Daily -At "07:00"
 $disparador.Repetition = (New-ScheduledTaskTrigger -Once -At "07:00" -RepetitionInterval (New-TimeSpan -Minutes 20) -RepetitionDuration (New-TimeSpan -Hours 16)).Repetition
 # Si una ejecucion todavia no ha terminado, la siguiente no se lanza (no se solapan)
-$ajustes = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 60) -StartWhenAvailable
+$ajustes = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 60) -StartWhenAvailable `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries   # portatil: que funcione tambien con bateria
 
 Register-ScheduledTask -TaskName "Dashboard Genesys" -Action $accion -Trigger $disparador -Settings $ajustes `
     -Description "Descarga los informes de BusinessObjects y los sube al dashboard" -Force | Out-Null
