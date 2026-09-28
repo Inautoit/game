@@ -182,28 +182,11 @@
 
   async function pageHome() {
     const year = String(new Date().getFullYear());
-    const [stats, pendientes, borradores, presupuestos] = await Promise.all([
-      api('/stats?year=' + year),
-      api('/invoices?tipo=factura&estado=enviada&limit=8'),
-      api('/invoices?tipo=factura&estado=borrador&limit=8'),
-      api('/invoices?tipo=presupuesto&limit=6'),
-    ]);
-    const tot = stats.trimestres.reduce((a, t) => ({ base: a.base + t.base, iva: a.iva + t.iva, irpf: a.irpf + t.irpf, total: a.total + t.total }), { base: 0, iva: 0, irpf: 0, total: 0 });
+    const stats = await api('/stats?year=' + year);
+    const tot = stats.trimestres.reduce((a, t) => ({ base: a.base + t.base, total: a.total + t.total, n: a.n + t.n }), { base: 0, total: 0, n: 0 });
     const q = Math.ceil((new Date().getMonth() + 1) / 3);
-    const pres = Object.fromEntries(stats.presupuestos.map((p) => [p.estado, p]));
-    const presPend = ['borrador', 'enviado'].reduce((a, e) => ({ n: a.n + (pres[e]?.n || 0), total: a.total + (pres[e]?.total || 0) }), { n: 0, total: 0 });
-    const maxMes = Math.max(1, ...stats.meses.map((m) => m.base));
+    const maxMes = Math.max(1, ...stats.meses.map((m) => m.total));
     const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
-    const miniList = (rows, empty) =>
-      rows.length
-        ? `<table><tbody>${rows
-            .map(
-              (r) => `<tr class="link" data-id="${r.id}"><td><strong>${esc(r.numero)}</strong><br><span class="small muted">${fdate(r.fecha)}</span></td>
-                <td>${esc(r.cliente_nombre)}</td><td class="num"><strong>${eur(r.total)}</strong></td><td>${badge(r.estado)}</td></tr>`
-            )
-            .join('')}</tbody></table>`
-        : `<div class="empty" style="padding:18px">${empty}</div>`;
 
     app.innerHTML = `
       <div class="page-head">
@@ -211,50 +194,35 @@
         <a class="btn" href="#/presupuestos/nuevo">+ Nuevo presupuesto</a>
         <a class="btn primary" href="#/nueva">+ Nueva factura</a>
       </div>
-      <div class="stats">
-        <div class="stat"><div class="label">Facturado ${year} (sin IVA)</div><div class="value">${eur(tot.base)}</div></div>
-        <div class="stat"><div class="label">Total facturado ${year} (con IVA)</div><div class="value">${eur(tot.total)}</div></div>
-        <div class="stat"><div class="label">Cobrado ${year}</div><div class="value">${eur(stats.cobrado.total)}</div></div>
-        <div class="stat"><div class="label">Pendiente de cobro (${stats.pendiente.n})</div><div class="value">${eur(stats.pendiente.total)}</div></div>
-      </div>
-      <div class="stats">
-        <div class="stat"><div class="label">IVA a declarar ${q}º trimestre</div><div class="value">${eur(stats.trimestres[q - 1].iva)}</div></div>
-        <div class="stat"><div class="label">IVA repercutido ${year}</div><div class="value">${eur(tot.iva)}</div></div>
-        <div class="stat"><div class="label">Facturas guardadas sin enviar</div><div class="value">${stats.borradores.n} · ${eur(stats.borradores.total)}</div></div>
-        <div class="stat"><div class="label">Presupuestos pendientes</div><div class="value">${presPend.n} · ${eur(presPend.total)}</div></div>
+      <div class="stat stat-big">
+        <div class="label">Facturado ${year}</div>
+        <div class="value">${eur(tot.total)}</div>
+        <div class="small muted">${tot.n} factura${tot.n === 1 ? '' : 's'} · ${eur(tot.base)} sin IVA</div>
       </div>
 
-      <div class="grid grid-2" style="align-items:start">
+      <div class="grid grid-2" style="align-items:start;margin-top:16px">
         <div class="card">
-          <h2>Facturación por mes (${year}, sin IVA)</h2>
+          <h2>Facturado por mes (${year})</h2>
           <div class="bars">
             ${MESES.map((m, i) => {
               const d = stats.meses.find((x) => Number(x.mes) === i + 1);
-              const v = d ? d.base : 0;
+              const v = d ? d.total : 0;
               return `<div class="bar" title="${m}: ${eur(v)}"><div class="bar-fill" style="height:${Math.round((v / maxMes) * 100)}%"></div><span>${m}</span></div>`;
             }).join('')}
           </div>
         </div>
         <div class="card">
-          <h2>Resumen por trimestre (${year})</h2>
+          <h2>Facturado por trimestre (${year})</h2>
           <div class="table-wrap"><table>
-            <thead><tr><th>Trim.</th><th class="num">Nº</th><th class="num">Base</th><th class="num">IVA</th><th class="num hide-sm">IRPF</th><th class="num">Total</th></tr></thead>
+            <thead><tr><th>Trimestre</th><th class="num">Facturas</th><th class="num">Facturado</th></tr></thead>
             <tbody>${stats.trimestres
-              .map((t) => `<tr${t.t === q ? ' style="font-weight:600"' : ''}><td>${t.t}º</td><td class="num">${t.n}</td><td class="num">${eur(t.base)}</td><td class="num">${eur(t.iva)}</td><td class="num hide-sm">${eur(t.irpf)}</td><td class="num">${eur(t.total)}</td></tr>`)
+              .map((t) => `<tr${t.t === q ? ' style="font-weight:600"' : ''}><td>${t.t}º</td><td class="num">${t.n}</td><td class="num">${eur(t.total)}</td></tr>`)
               .join('')}</tbody>
-            <tfoot><tr><td>Año</td><td></td><td class="num">${eur(tot.base)}</td><td class="num">${eur(tot.iva)}</td><td class="num hide-sm">${eur(tot.irpf)}</td><td class="num">${eur(tot.total)}</td></tr></tfoot>
+            <tfoot><tr><td>Total ${year}</td><td class="num">${tot.n}</td><td class="num">${eur(tot.total)}</td></tr></tfoot>
           </table></div>
-          <p class="small muted" style="margin:8px 0 0">No cuenta borradores ni anuladas. <a href="/api/export.csv?year=${year}">Descargar libro de facturas ${year}</a></p>
+          <p class="small muted" style="margin:8px 0 0"><a href="/api/export.csv?year=${year}">Descargar libro de facturas ${year}</a></p>
         </div>
-      </div>
-
-      <div class="grid grid-2" style="align-items:start">
-        <div class="card"><h2>Pendientes de cobro</h2><div class="table-wrap">${miniList(pendientes, 'No hay facturas pendientes de cobro.')}</div></div>
-        <div class="card"><h2>Facturas guardadas sin enviar</h2><div class="table-wrap">${miniList(borradores, 'No hay borradores.')}</div></div>
-      </div>
-      <div class="card"><h2>Últimos presupuestos</h2><div class="table-wrap">${miniList(presupuestos, 'Aún no hay presupuestos.')}</div></div>`;
-
-    $$('tr.link').forEach((tr) => tr.addEventListener('click', () => go('#/factura/' + tr.dataset.id)));
+      </div>`;
   }
 
   // ============================================================ LISTADOS (facturas y presupuestos)

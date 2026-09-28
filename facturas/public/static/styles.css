@@ -230,3 +230,6 @@ code { background: #eef1f5; padding: 1px 6px; border-radius: 5px; font-size: 0.8
 .btn.mic.rec { background: var(--danger); border-color: var(--danger); animation: pulse 1.2s infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(192, 57, 43, 0.15); } }
 .voice-live { margin-top: 10px; padding: 10px 12px; background: var(--accent-soft); border-radius: 8px; min-height: 42px; }
+
+.stat-big { max-width: 420px; }
+.stat-big .value { font-size: 2.2rem; }
