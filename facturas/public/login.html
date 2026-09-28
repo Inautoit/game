@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar · Facturas</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M13 2 3 14h9l-1 8 10-12h-9l1-8z%22 fill=%22%231f5fae%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="card login">
+      <h1>Facturas</h1>
+      <p class="muted" style="margin-top:0">Entra con tu cuenta de correo. Las facturas se enviarán desde ella.</p>
+
+      <div id="error" class="alert error hidden"></div>
+
+      <div id="ms-block" class="hidden">
+        <a class="btn" href="/auth/microsoft">
+          <svg class="ms-logo" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+          Iniciar sesión con Microsoft (Outlook / Hotmail)
+        </a>
+        <div class="divider">o con correo y contraseña</div>
+      </div>
+
+      <form id="form" class="grid">
+        <label>Correo electrónico
+          <input type="email" name="email" autocomplete="username" required placeholder="tu@correo.com">
+        </label>
+        <label>Contraseña del correo
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <p id="hint" class="small muted hidden" style="margin:0"></p>
+
+        <details id="adv">
+          <summary class="small muted" style="cursor:pointer">Opciones avanzadas (servidor SMTP)</summary>
+          <div class="grid grid-3" style="margin-top:10px">
+            <label class="span-2">Servidor SMTP <input name="host" placeholder="smtp.tudominio.com"></label>
+            <label>Puerto <input name="port" type="number" value="587"></label>
+            <label class="check"><input type="checkbox" name="secure"> SSL (puerto 465)</label>
+          </div>
+        </details>
+
+        <button class="btn primary" type="submit">Entrar</button>
+      </form>
+    </div>
+  </div>
+  <script src="/static/login.js"></script>
+</body>
+</html>

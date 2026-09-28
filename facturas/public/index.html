@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Facturas</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22M13 2 3 14h9l-1 8 10-12h-9l1-8z%22 fill=%22%231f5fae%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      Facturas
+    </div>
+    <nav>
+      <a href="#/" data-nav="facturas">Facturas</a>
+      <a href="#/nueva" data-nav="nueva">+ Nueva factura</a>
+      <a href="#/clientes" data-nav="clientes">Clientes</a>
+      <a href="#/productos" data-nav="productos">Productos</a>
+      <a href="#/ajustes" data-nav="ajustes">Ajustes</a>
+    </nav>
+    <div class="user">
+      <span id="user-email" class="hide-sm"></span>
+      <button class="btn sm" id="logout">Salir</button>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <!-- Diálogo genérico -->
+  <dialog id="dialog">
+    <form method="dialog" id="dialog-form">
+      <div class="d-head"><h2 id="dialog-title"></h2><button class="btn ghost sm" value="cancel" formnovalidate aria-label="Cerrar">✕</button></div>
+      <div class="d-body" id="dialog-body"></div>
+      <div class="d-foot" id="dialog-foot"></div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

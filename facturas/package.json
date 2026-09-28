@@ -1,0 +1,22 @@
+{
+  "name": "facturas-electricidad",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web app para gestionar, generar (desde plantilla Excel) y enviar por correo las facturas de un autónomo.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings --watch server.js",
+    "test": "node --no-warnings --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "express-session": "^1.18.1",
+    "multer": "^2.0.2",
+    "nodemailer": "^10.0.12"
+  }
+}

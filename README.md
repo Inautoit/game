@@ -1,3 +1,6 @@
+> 📄 **¿Buscas la app de facturas?** Está en la carpeta [`facturas/`](facturas/README.md):
+> web para crear facturas desde tu plantilla Excel, llevar el registro y enviarlas por correo.
+
 # Open Drive 3D 🏎️
 
 Juego de coches **3D de mundo abierto** para navegador (PC y móvil).
