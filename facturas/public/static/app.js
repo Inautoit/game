@@ -1044,6 +1044,11 @@
             <label>Prefijo de numeración <input name="factura.prefijo" value="${v('factura.prefijo')}"></label>
             <label>Dígitos del número <input name="factura.digitos" type="number" min="1" max="8" value="${v('factura.digitos')}"></label>
             <div class="small muted" style="align-self:end">Ejemplo: <code id="num-example"></code><br>La numeración se reinicia cada año.</div>
+            <label>Empezar las facturas de ${new Date().getFullYear()} en el número
+              <input name="factura.numero_inicial" type="number" min="1" value="${String(s['factura.numero_inicial_anio']) === String(new Date().getFullYear()) ? v('factura.numero_inicial') : ''}" placeholder="1">
+            </label>
+            <input type="hidden" name="factura.numero_inicial_anio" value="${new Date().getFullYear()}">
+            <div class="small muted" style="align-self:end;grid-column:span 2">Úsalo si ya tienes facturas hechas fuera de la app este año. Ej.: pon 33 y la próxima factura será la nº 33.</div>
             <label>IVA por defecto (%) <input name="factura.iva_pct" inputmode="decimal" value="${v('factura.iva_pct')}"></label>
             <label>Retención IRPF por defecto (%) <input name="factura.irpf_pct" inputmode="decimal" value="${v('factura.irpf_pct')}"></label>
             <label>Días hasta vencimiento <input name="factura.dias_vencimiento" type="number" min="0" value="${v('factura.dias_vencimiento')}"></label>
@@ -1154,10 +1159,12 @@
     // --- Formulario
     const form = $('#settings-form');
     const updateExample = () => {
-      $('#num-example').textContent = `${form['factura.prefijo'].value}${new Date().getFullYear()}-${'1'.padStart(Number(form['factura.digitos'].value) || 4, '0')}`;
+      const n = String(Number(form['factura.numero_inicial'].value) || 1);
+      $('#num-example').textContent = `${form['factura.prefijo'].value}${new Date().getFullYear()}-${n.padStart(Number(form['factura.digitos'].value) || 4, '0')}`;
     };
     form['factura.prefijo'].oninput = updateExample;
     form['factura.digitos'].oninput = updateExample;
+    form['factura.numero_inicial'].oninput = updateExample;
     updateExample();
 
     form.onsubmit = (e) => {

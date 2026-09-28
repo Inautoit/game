@@ -26,6 +26,8 @@ const DEFAULT_SETTINGS = {
   'empresa.sello': '', // imagen del sello/firma en data URL (opcional)
   'factura.prefijo': 'F',
   'factura.digitos': '4',
+  'factura.numero_inicial': '', // la numeración de ese año empieza en este número
+  'factura.numero_inicial_anio': '',
   'factura.iva_pct': '21',
   'factura.irpf_pct': '0',
   'factura.dias_vencimiento': '30',
@@ -322,7 +324,12 @@ async function nextNumber(env, fecha, tipo = 'factura') {
     const n = parseInt(numero.slice(prefix.length), 10);
     if (Number.isFinite(n) && n > max) max = n;
   }
-  return prefix + String(max + 1).padStart(digits, '0');
+  let next = max + 1;
+  // Número inicial (p. ej. 33 si las anteriores se hicieron fuera de la app)
+  if (tipo === 'factura' && String(s['factura.numero_inicial_anio']) === year) {
+    next = Math.max(next, Math.floor(num(s['factura.numero_inicial'], 1)));
+  }
+  return prefix + String(next).padStart(digits, '0');
 }
 
 function dueDate(fecha, days) {
