@@ -233,3 +233,10 @@ code { background: #eef1f5; padding: 1px 6px; border-radius: 5px; font-size: 0.8
 
 .stat-big { max-width: 420px; }
 .stat-big .value { font-size: 2.2rem; }
+
+.btn.mail { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (max-width: 800px) {
+  .quick-bar { gap: 6px; padding-left: 10px; padding-right: 10px; }
+  .quick-bar .btn, .quick-bar .btn.wa { padding: 12px 11px; font-size: 0.95rem; }
+  .quick-total { font-size: 1.15rem; }
+}

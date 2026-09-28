@@ -37,10 +37,9 @@ Funciona en **Cloudflare Workers** (plan gratuito) con base de datos **D1**.
 ## Presupuestos por WhatsApp
 
 En *+ Nuevo presupuesto* rellenas cliente, teléfono, (dirección), conceptos y
-descuento, y pulsas **WhatsApp**: se abre el chat de WhatsApp **con el número que
-has puesto** y el mensaje escrito, con el enlace al PDF del presupuesto (con logo,
-sin firma). Si no pones teléfono, se abre el menú de compartir con el PDF adjunto
-para elegir el contacto. Los presupuestos van **sin IVA** ("IVA no incluido") y
+descuento, y pulsas **WhatsApp** (se abre el menú de compartir con el PDF adjunto:
+eliges WhatsApp y el contacto) o **Correo** (se envía por email con el PDF
+adjunto). El PDF lleva el logo y no lleva firma. Los presupuestos van **sin IVA** ("IVA no incluido") y
 son **válidos 30 días**. Al convertirlos en factura se añade el IVA.
 
 ## Primer acceso

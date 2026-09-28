@@ -46,7 +46,7 @@ const DEFAULT_SETTINGS = {
   'presupuesto.notas': '',
   'correo.presupuesto_asunto': 'Presupuesto {{numero}} - {{empresa.nombre}}',
   'correo.presupuesto_cuerpo': 'Hola {{cliente.nombre}}, te adjunto el presupuesto{{obra}}.\n\nSi tienes cualquier duda, contáctame. Un saludo, Cefe',
-  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te adjunto el presupuesto{{obra}}: {{enlace}}\n\nSi tienes cualquier duda, contáctame. Un saludo, Cefe',
+  'whatsapp.mensaje': 'Hola {{cliente.nombre}}, te adjunto el presupuesto{{obra}}.\n\nSi tienes cualquier duda, contáctame. Un saludo, Cefe',
   'correo.remitente_nombre': '',
   'correo.remitente_email': '',
 };
@@ -951,44 +951,6 @@ route('POST', '/api/invoices/:id/convert', async (req, env, { params }) => {
   return json(await getInvoice(env, id));
 });
 
-// Guarda el PDF del presupuesto y devuelve un enlace público (difícil de adivinar)
-route('POST', '/api/invoices/:id/link', async (req, env, { params }) => {
-  const inv = await getInvoice(env, params.id);
-  const { pdf } = await body(req);
-  if (!/^[A-Za-z0-9+/=]+$/.test(String(pdf || '')) || String(pdf).length < 100 || String(pdf).length > 1500000) {
-    throw new HttpError(400, 'No se ha podido generar el PDF.');
-  }
-  const prev = await env.DB.prepare('SELECT token FROM shared_pdfs WHERE invoice_id = ?').bind(inv.id).first();
-  const token = prev?.token || randomToken(18);
-  await env.DB.prepare(
-    `INSERT INTO shared_pdfs (token, invoice_id, pdf) VALUES (?, ?, ?)
-     ON CONFLICT(invoice_id) DO UPDATE SET pdf = excluded.pdf, created_at = datetime('now')`
-  )
-    .bind(token, inv.id, pdf)
-    .run();
-  return json({ url: `${new URL(req.url).origin}/p/${token}` });
-});
-
-// Enlace público al PDF (lo abre el cliente desde WhatsApp)
-route('GET', '/p/:token', async (req, env, { params }) => {
-  const row = await env.DB.prepare(
-    'SELECT s.pdf, i.numero, i.tipo FROM shared_pdfs s JOIN invoices i ON i.id = s.invoice_id WHERE s.token = ?'
-  )
-    .bind(String(params.token))
-    .first();
-  if (!row) return new Response('Este enlace ya no está disponible.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
-  const bytes = Uint8Array.from(atob(row.pdf), (c) => c.charCodeAt(0));
-  const name = `${row.tipo === 'presupuesto' ? 'Presupuesto' : 'Factura'}_${row.numero.replace(/[^\w.-]+/g, '_')}.pdf`;
-  return new Response(bytes, {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${name}"`,
-      'Cache-Control': 'private, max-age=300',
-      'X-Robots-Tag': 'noindex',
-    },
-  });
-}, { public: true });
-
 // Registra un envío hecho desde el móvil (WhatsApp)
 route('POST', '/api/invoices/:id/shared', async (req, env, { params }) => {
   const inv = await getInvoice(env, params.id);
@@ -1116,7 +1078,7 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const path = url.pathname;
-    if (!path.startsWith('/api/') && !path.startsWith('/auth/') && !path.startsWith('/p/')) return env.ASSETS.fetch(req);
+    if (!path.startsWith('/api/') && !path.startsWith('/auth/')) return env.ASSETS.fetch(req);
 
     try {
       if (!env.ENC_KEY) throw new HttpError(500, 'Falta configurar ENC_KEY.');

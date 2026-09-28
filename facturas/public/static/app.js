@@ -679,10 +679,9 @@
       const settings = (await api('/settings')).settings;
       const pdfReady = window.InvoicePdf.build(inv, settings);
       $('#wa').onclick = async (e) => {
-        const win = waPhone(inv.cliente_telefono) ? window.open('', '_blank') : null;
         e.target.disabled = true;
         try {
-          const r = await sendWhatsApp(inv, await pdfReady, settings, win);
+          const r = await sharePdf(inv, await pdfReady, fillText(settings['whatsapp.mensaje'], inv, settings));
           if (r) {
             await markShared(inv);
             toast('Enviado por WhatsApp', 'ok');
@@ -836,7 +835,7 @@
           : ` de la calle ${dir}`;
     const v = {
       obra,
-      enlace: inv.__enlace || '',
+      enlace: '',
       'cliente.direccion': dir,
       numero: inv.numero,
       fecha: fdate(inv.fecha),
@@ -848,29 +847,6 @@
     // Sin enlace (PDF adjunto): "…presupuesto: {{enlace}}" queda en "…presupuesto."
     if (!v.enlace) tpl = String(tpl || '').replace(/:?\s*\{\{\s*enlace\s*\}\}/g, '.');
     return String(tpl || '').replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (m, k) => (k in v ? v[k] : ''));
-  }
-
-  // WhatsApp directo al número del cliente: el PDF va como enlace en el mensaje.
-  // Sin teléfono: menú de compartir del móvil con el PDF adjunto.
-  // `win` es una pestaña abierta en el mismo toque (si no, el navegador bloquea la apertura).
-  async function sendWhatsApp(inv, pdfBytes, s, win) {
-    const tel = waPhone(inv.cliente_telefono);
-    if (!tel) {
-      win?.close();
-      return sharePdf(inv, pdfBytes, fillText(s['whatsapp.mensaje'], inv, s));
-    }
-    try {
-      const { url } = await api(`/invoices/${inv.id}/link`, { method: 'POST', body: { pdf: window.InvoicePdf.toBase64(pdfBytes) } });
-      let text = fillText(s['whatsapp.mensaje'], { ...inv, __enlace: url }, s);
-      if (!/\{\{\s*enlace\s*\}\}/.test(s['whatsapp.mensaje'] || '')) text += '\n' + url;
-      const wa = `https://wa.me/${tel}?text=${encodeURIComponent(text)}`;
-      if (win && !win.closed) win.location.href = wa;
-      else location.href = wa;
-      return 'direct';
-    } catch (err) {
-      win?.close();
-      throw err;
-    }
   }
 
   async function markShared(inv) {
@@ -905,13 +881,16 @@
             <label>Cliente
               <input name="cliente_nombre" list="q-clients" value="${esc(inv?.cliente_nombre || '')}" placeholder="Nombre" required>
             </label>
-            <label>Teléfono (se abre WhatsApp con este número)
+            <label>Teléfono
               <div class="row" style="flex-wrap:nowrap">
                 <input name="cliente_telefono" type="tel" inputmode="tel" value="${esc(inv?.cliente_telefono || '')}" placeholder="600 000 000">
                 ${canPick ? '<button type="button" class="btn" id="pick" title="Elegir de mis contactos">📇</button>' : ''}
               </div>
             </label>
           </div>
+          <label style="margin-top:10px">Email (para enviarlo por correo)
+            <input name="cliente_email" type="email" value="${esc(inv?.cliente_email || '')}" placeholder="cliente@correo.com">
+          </label>
           <datalist id="q-clients">${clients.map((c) => `<option value="${esc(c.nombre)}">${esc(c.telefono || c.direccion || '')}</option>`).join('')}</datalist>
           <details class="small" style="margin-top:8px" ${inv?.cliente_direccion ? 'open' : ''}><summary class="muted" style="cursor:pointer">Dirección de la obra (opcional)</summary>
             <input name="cliente_direccion" value="${esc(inv?.cliente_direccion || '')}" placeholder="C/ … nº …" style="margin-top:6px">
@@ -935,6 +914,7 @@
         <div class="quick-bar">
           <div><div class="small muted">Total (IVA no incluido)</div><div class="quick-total" id="q-total"></div></div>
           <button type="submit" class="btn" value="save">Guardar</button>
+          <button type="submit" class="btn mail" value="mail">Correo</button>
           <button type="submit" class="btn wa" value="wa">WhatsApp</button>
         </div>
       </form>`;
@@ -994,6 +974,7 @@
       clientId = c ? c.id : '';
       if (c && c.telefono && !form.cliente_telefono.value) form.cliente_telefono.value = c.telefono;
       if (c && c.direccion && !form.cliente_direccion.value) form.cliente_direccion.value = c.direccion;
+      if (c && c.email && !form.cliente_email.value) form.cliente_email.value = c.email;
     });
     $('#pick')?.addEventListener('click', async () => {
       try {
@@ -1028,6 +1009,7 @@
         guardar_cliente: true,
         cliente_nombre: f.cliente_nombre.trim(),
         cliente_telefono: f.cliente_telefono.trim(),
+        cliente_email: f.cliente_email.trim(),
         cliente_direccion: f.cliente_direccion.trim(),
         forma_pago: inv?.forma_pago || s['factura.forma_pago'],
         notas: f.notas,
@@ -1055,22 +1037,18 @@
       try {
         const save = inv ? api('/invoices/' + inv.id, { method: 'PUT', body: doc }) : api('/invoices', { method: 'POST', body: doc });
         if (action === 'wa') {
-          // Se abre la pestaña ya (en el mismo toque) para que el navegador no la bloquee
-          const win = waPhone(doc.cliente_telefono) ? window.open('', '_blank') : null;
+          // PDF adjunto: se abre el menú de compartir del móvil (WhatsApp → contacto)
           const pdfBytes = await window.InvoicePdf.build(doc, s);
-          if (!waPhone(doc.cliente_telefono)) {
-            // Sin teléfono: menú de compartir (elige el contacto en WhatsApp)
-            const r = await sharePdf(doc, pdfBytes, fillText(s['whatsapp.mensaje'], doc, s));
-            const saved = await save;
-            dirty = false;
-            if (r) await markShared(saved);
-            return go('#/factura/' + saved.id);
-          }
+          const r = await sharePdf(doc, pdfBytes, fillText(s['whatsapp.mensaje'], doc, s));
           const saved = await save;
           dirty = false;
-          await sendWhatsApp(saved, pdfBytes, s, win);
-          await markShared(saved);
+          if (r) await markShared(saved);
           go('#/factura/' + saved.id);
+        } else if (action === 'mail') {
+          // Se guarda y se abre la ventana de envío por correo con el PDF adjunto
+          const saved = await save;
+          dirty = false;
+          go('#/factura/' + saved.id + '?enviar');
         } else {
           const saved = await save;
           dirty = false;
@@ -1275,7 +1253,7 @@
             <div></div>
             <label style="grid-column:1/-1">Observaciones por defecto <textarea name="presupuesto.notas" rows="2">${v('presupuesto.notas')}</textarea></label>
             <label style="grid-column:1/-1">Mensaje de WhatsApp <textarea name="whatsapp.mensaje" rows="2">${v('whatsapp.mensaje')}</textarea></label>
-            <p class="small muted" style="grid-column:1/-1;margin:0"><code>{{obra}}</code> pone "de la calle …" con la dirección del formulario (si no hay, no pone nada) y <code>{{enlace}}</code> el enlace al PDF. También: <code>{{cliente.nombre}}</code> <code>{{fecha}}</code> <code>{{total}}</code></p>
+            <p class="small muted" style="grid-column:1/-1;margin:0"><code>{{obra}}</code> pone "de la calle …" con la dirección del formulario (si no hay, no pone nada). También: <code>{{cliente.nombre}}</code> <code>{{fecha}}</code> <code>{{total}}</code></p>
           </div>
         </div>
 
