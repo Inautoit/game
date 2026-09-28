@@ -2,6 +2,10 @@
 -- Facturas y presupuestos llevan series separadas, así que el número es único por tipo.
 PRAGMA defer_foreign_keys = true;
 
+-- Copia de las tablas hijas: al borrar la tabla antigua, ON DELETE CASCADE las vaciaría
+CREATE TABLE _lines_bak AS SELECT * FROM invoice_lines;
+CREATE TABLE _email_bak AS SELECT * FROM email_log;
+
 CREATE TABLE invoices_new (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   numero            TEXT NOT NULL,
@@ -59,3 +63,11 @@ DROP TABLE invoices;
 ALTER TABLE invoices_new RENAME TO invoices;
 CREATE INDEX idx_invoices_fecha ON invoices(fecha);
 CREATE INDEX idx_invoices_tipo ON invoices(tipo, fecha);
+
+-- Se restauran las líneas y el historial de envíos
+DELETE FROM invoice_lines;
+INSERT INTO invoice_lines SELECT * FROM _lines_bak;
+DELETE FROM email_log;
+INSERT INTO email_log SELECT * FROM _email_bak;
+DROP TABLE _lines_bak;
+DROP TABLE _email_bak;
