@@ -89,7 +89,7 @@ const buscarHoja = (inf, re) => inf?.hojas.find((h) => re.test(h.nombre));
 
 // La versión de la configuración forma parte de la clave de los resúmenes guardados: si se cambian
 // las colas o campañas, los días cerrados se recalculan con el nuevo criterio.
-const VERSION = "tmk2-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
+const VERSION = "tmk3-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
 
 // ----------------------------------------------------------------- resumen de un paquete (un día)
 const nuevoG = (nombre) => ({ n: nombre || "", marc: 0, con: 0, cortas: 0, tOut: 0, talk: 0, acw: 0,
@@ -115,6 +115,7 @@ function resumir(paquete, conRegistro) {
     const c = indices(hOut, { fr: "Ind_Agent_001", d: "Day", nom: "Agent Name", id: "Employee ID", s: ["Agent Group", "Service Outbound Call"],
       marc: "Ind_Agent_015", con: "Ind_Agent_016", cortas: "Ind_Agent_017", tOut: "Ind_Agent_065", talk: "Ind_Agent_067", acw: "Ind_Agent_082" });
     for (const r of hOut.filas) {
+      if (paquete.dia && c.d >= 0 && diaDe(val(r, c.d)) && diaDe(val(r, c.d)) !== paquete.dia) continue; // dia cerrado: solo ese dia
       const sk = String(val(r, c.s) ?? "").trim();
       if (!CONFIG.colasOut.some((x) => norm(x) === norm(sk))) continue;
       const marc = nv(r, c.marc), con = nv(r, c.con);
@@ -134,14 +135,14 @@ function resumir(paquete, conRegistro) {
   const hCall = tabla(buscarHoja(auto, /llamadas/i));
   if (hCall.filas.length) {
     const c = indices(hCall, { call: "CALL_ID", dur: "Call Duration", ini: "Interaction beginning (Date Time)" });
-    const d = hCall.filas.reduce((m, r) => { const x = diaDe(val(r, c.ini)); return x > m ? x : m; }, "");
+    const d = paquete.dia || hCall.filas.reduce((m, r) => { const x = diaDe(val(r, c.ini)); return x > m ? x : m; }, "");
     for (const r of hCall.filas) if (!d || diaDe(val(r, c.ini)) === d) durDe.set(String(val(r, c.call) ?? ""), nv(r, c.dur));
   }
   const hReg = tabla(buscarHoja(auto, /registos|registros/i));
   if (hReg.filas.length) {
     const c = indices(hReg, { call: "CALL_ID", id: ["EmployeID", "Employee ID"], info: "AGENT_INFO", camp: "NameCampaign", t: "Manage Time",
       ini: "Start_Timestamp (Date Time)", cod: "SD_BusinessCallResult", intento: "attempt" });
-    const d = hReg.filas.reduce((m, r) => { const x = diaDe(val(r, c.ini)); return x > m ? x : m; }, "");
+    const d = paquete.dia || hReg.filas.reduce((m, r) => { const x = diaDe(val(r, c.ini)); return x > m ? x : m; }, "");
     for (const r of hReg.filas) {
       if (d && diaDe(val(r, c.ini)) !== d) continue;
       const nomCamp = String(val(r, c.camp) ?? "").trim() || "(sin campaña)";

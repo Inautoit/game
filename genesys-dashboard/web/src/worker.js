@@ -162,9 +162,28 @@ async function subir(request, env) {
   if (cuerpo.byteLength > MAX_BYTES) return json({ error: "paquete demasiado grande" }, 413);
 
   const subido = new Date().toISOString();
+  // ?dia=AAAA-MM-DD: cierre de un dia pasado (el dia completo). Solo sustituye la copia de ese
+  // dia; el paquete "en directo" no se toca.
+  const dia = new URL(request.url).searchParams.get("dia");
+  if (dia) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || dia >= diaMadrid()) return json({ error: "dia no valido (tiene que ser un dia pasado)" }, 400);
+    await env.DATA.put("dia:" + dia, cuerpo, { metadata: { subido, bytes: cuerpo.byteLength, cerrado: true } });
+    // los resumenes que el navegador guardo de ese dia ya no valen
+    let cursor;
+    do {
+      const r = await env.DATA.list({ prefix: "res:", cursor });
+      for (const k of r.keys) if (k.name.endsWith("-" + dia)) await env.DATA.delete(k.name);
+      cursor = r.list_complete ? null : r.cursor;
+    } while (cursor);
+    return json({ ok: true, dia, subido, bytes: cuerpo.byteLength });
+  }
   await env.DATA.put(CLAVE_KV, cuerpo, { metadata: { subido, bytes: cuerpo.byteLength } });
-  // copia del dia: la ultima subida de cada dia queda guardada (historico para la competicion)
-  await env.DATA.put("dia:" + diaMadrid(), cuerpo, { metadata: { subido, bytes: cuerpo.byteLength } });
+  // copia del dia: la ultima subida de cada dia queda guardada (historico para la competicion).
+  // Si ese dia ya esta cerrado (subido completo con ?dia=), no se pisa.
+  const hoy = diaMadrid();
+  const previo = await env.DATA.getWithMetadata("dia:" + hoy, { type: "stream" });
+  await previo.value?.cancel();
+  if (!previo.metadata?.cerrado) await env.DATA.put("dia:" + hoy, cuerpo, { metadata: { subido, bytes: cuerpo.byteLength } });
   return json({ ok: true, subido, bytes: cuerpo.byteLength });
 }
 
@@ -178,7 +197,7 @@ async function dias(request, env) {
   let cursor;
   do {
     const r = await env.DATA.list({ prefix: "dia:", cursor });
-    for (const k of r.keys) lista.push({ dia: k.name.slice(4), subido: k.metadata?.subido ?? null });
+    for (const k of r.keys) lista.push({ dia: k.name.slice(4), subido: k.metadata?.subido ?? null, cerrado: Boolean(k.metadata?.cerrado) });
     cursor = r.list_complete ? null : r.cursor;
   } while (cursor);
   return json({ hoy: diaMadrid(), dias: lista.sort((a, b) => a.dia.localeCompare(b.dia)) });

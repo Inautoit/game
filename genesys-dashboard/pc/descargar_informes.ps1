@@ -6,8 +6,20 @@
 #    web del dashboard y, si la web confirma, borra los Excel de BO_export.
 #  - Primera ejecucion: pide usuario/contrasena y los guarda CIFRADOS
 #    (solo tu usuario de Windows en este PC puede leerlos).
+#  - Cierre de dias: la primera ejecucion de cada dia vuelve a descargar el dia ANTERIOR
+#    completo (con las ultimas franjas que ya no se subieron) y lo guarda en la web como
+#    dia cerrado. A mano, para un dia concreto:
+#        powershell -ExecutionPolicy Bypass -File .\explorar_informe_BO.ps1 -Dia 2026-09-28
 # =====================================================================
-param([string]$WorkerId, [string]$WorkerNombre, [string]$Sello, [string]$Raiz, $Cred)
+param([string]$WorkerId, [string]$WorkerNombre, [string]$Sello, [string]$Raiz, $Cred, [string]$Dia)
+
+# Dia que se descarga: hoy, o el dia pasado que se pida con -Dia AAAA-MM-DD
+$Fecha    = if ($Dia) { [datetime]::ParseExact($Dia, "yyyy-MM-dd", $null) } else { (Get-Date).Date }
+$FechaISO = $Fecha.ToString("yyyy-MM-dd") + "T00:00:00.000Z"
+$SigISO   = $Fecha.AddDays(1).ToString("yyyy-MM-dd") + "T00:00:00.000Z"
+# Hoy: "Today", como siempre. Dia pasado: fechas explicitas (inicio = ese dia, fin = el siguiente)
+$PreSet   = if ($Dia) { "None" } else { "Today" }
+$FinISO   = if ($Dia) { $SigISO } else { $FechaISO }
 
 # ===== CONFIGURACION =====
 $Server      = "http://es1insigen02v:6405/biprws"
@@ -26,9 +38,9 @@ $QuitarColumnas  = @("Contact_info", "LeadID", "CUST_MKT19", "ConnID")
 $Informes = @(
     # Automarcador: se fuerzan los filtros con los que ya funciono (Today + fechas de hoy)
     @{ nombre = "HistReport_Automarcador";    id = 8648842; respuestas = @{
-        "Pre-set Date Filter:" = @("Today")
-        "Start Date:" = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z")
-        "End Date:"   = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z") } },
+        "Pre-set Date Filter:" = @($PreSet)
+        "Start Date:" = @($FechaISO)
+        "End Date:"   = @($FinISO) } },
     # Sin id: se busca por el NOMBRE EXACTO. Si hay varias copias con ese nombre, se queda con
     # las que tienen esas pestanas y, de ellas, con la usada mas recientemente.
     @{ nombre = "10.Agent_AUX";                  pestanas = @("AUX") },
@@ -38,9 +50,9 @@ $Informes = @(
     # OP.Comerciales: siempre "Today" (dia en curso)
     @{ nombre = "00.Servicio OP.Comerciales_6";  pestanas = @("LlamInbound", "TiemposInb", "TiemposOut", "Chat", "Email", "Callback", "Tareas"); contexto = "";
        respuestas = @{
-        "Pre-set Date Filter:" = @("Today"); "Pre-set Date Filter" = @("Today")
-        "Start Date:" = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z"); "Start Date" = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z")
-        "End Date:"   = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z"); "End Date"   = @((Get-Date).ToString("yyyy-MM-dd") + "T00:00:00.000Z") } }
+        "Pre-set Date Filter:" = @($PreSet); "Pre-set Date Filter" = @($PreSet)
+        "Start Date:" = @($FechaISO); "Start Date" = @($FechaISO)
+        "End Date:"   = @($FinISO); "End Date"   = @($FinISO) } }
 )
 # =========================
 
@@ -49,10 +61,10 @@ $ErrorActionPreference = "Stop"
 try { [Net.WebRequest]::DefaultWebProxy.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials } catch {}   # proxy de empresa
 if (-not $Raiz)  { $Raiz  = if ($PSScriptRoot) { $PSScriptRoot } else { $PWD.Path } }
 if (-not $Sello) { $Sello = Get-Date -Format "yyyyMMdd_HHmm" }
-$Carpeta  = Join-Path $Raiz "BO_export"
+$Carpeta  = Join-Path $Raiz $(if ($Dia) { "BO_export_dia" } else { "BO_export" })   # los dias pasados, aparte
 $CredFile = Join-Path $Raiz "bo_credencial.xml"
 $IdsFile  = Join-Path $Raiz "bo_ids_v2.json"   # ids ya encontrados (borralo para volver a buscar)
-$Hoy      = (Get-Date).ToString("yyyy-MM-dd")
+$Hoy      = $Fecha.ToString("yyyy-MM-dd")
 $HoyISO   = "$($Hoy)T00:00:00.000Z"
 New-Item -ItemType Directory -Force -Path $Carpeta | Out-Null
 # Todos (principal e informes en paralelo) escriben en el mismo resultado, en directo
@@ -83,7 +95,7 @@ function Respuesta($p) {
     $n      = "$($p.name)".Trim()
     $tipo   = "$($p.answer.'@type')"
     $actual = @($p.answer.values.value | Where-Object { $_ -ne $null })
-    $hoy    = Get-Date
+    $hoy    = $Fecha
     $HoyISO    = $hoy.ToString("yyyy-MM-dd") + "T00:00:00.000Z"
     $MananaISO = $hoy.AddDays(1).ToString("yyyy-MM-dd") + "T00:00:00.000Z"
     $esFin  = $n -match '(?i)\b(end|fin|hasta|to)\b'
@@ -531,7 +543,7 @@ function Convertir-Y-Subir {
     # los datos de dias anteriores, o de informes que ya no estan en la lista, no se suben
     $validos = @($Informes | ForEach-Object { Limpio $_.nombre })
     Get-ChildItem $CarpetaJson -Filter "*.json" |
-        Where-Object { $_.LastWriteTime.Date -lt (Get-Date).Date -or $validos -notcontains $_.BaseName } | Remove-Item -ErrorAction SilentlyContinue
+        Where-Object { (-not $Dia -and $_.LastWriteTime.Date -lt (Get-Date).Date) -or $validos -notcontains $_.BaseName } | Remove-Item -ErrorAction SilentlyContinue
     if (-not ("BoXlsx" -as [type])) {
         Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
         $refs = @([System.IO.Compression.ZipArchive].Assembly.Location,
@@ -556,16 +568,18 @@ function Convertir-Y-Subir {
     if (-not $WebUrl) { Log "Subida a la web desactivada (falta WebUrl)"; return }
     $partes = @(Get-ChildItem $CarpetaJson -Filter "*.json" | ForEach-Object { [IO.File]::ReadAllText($_.FullName) })
     if ($partes.Count -eq 0) { Log "Nada que subir"; return }
-    $paquete = '{"subido":"' + (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") + '","informes":[' + ($partes -join ',') + ']}'
+    $paquete = '{"dia":"' + $Hoy + '","subido":"' + (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss") + '","informes":[' + ($partes -join ',') + ']}'
     $bytes = [Text.Encoding]::UTF8.GetBytes($paquete)
     $ms = New-Object IO.MemoryStream
     $gz = New-Object IO.Compression.GZipStream($ms, [IO.Compression.CompressionMode]::Compress)
     $gz.Write($bytes, 0, $bytes.Length); $gz.Close()
     $comprimido = $ms.ToArray()
     try {
-        Invoke-RestMethod -Method Post -Uri $WebUrl -Headers @{ Authorization = "Bearer $WebToken" } `
+        $destino = if ($Dia) { "$($WebUrl)?dia=$Dia" } else { $WebUrl }   # dia pasado: solo se guarda como dia cerrado
+        Invoke-RestMethod -Method Post -Uri $destino -Headers @{ Authorization = "Bearer $WebToken" } `
             -ContentType "application/octet-stream" -Body $comprimido -TimeoutSec 300 | Out-Null
-        Log ("SUBIDO a la web: {0} informes, {1} KB" -f $partes.Count, [math]::Round($comprimido.Length / 1KB))
+        Log ("SUBIDO a la web{2}: {0} informes, {1} KB" -f $partes.Count, [math]::Round($comprimido.Length / 1KB), $(if ($Dia) { " como dia cerrado $Dia" } else { "" }))
+        if ($Dia) { Set-Content (Join-Path $Raiz "cierre_$Dia.ok") (Get-Date) }
         if ($BorrarTrasSubir) {
             foreach ($x in $convertidos) { Remove-Item $x.FullName -Force -ErrorAction SilentlyContinue }
             Log "Excel borrados de BO_export"
@@ -676,7 +690,7 @@ try {
         while (@($trabajos | Where-Object { $_.State -eq 'Running' }).Count -ge $MaxParalelo) {
             $trabajos | Receive-Job -ErrorAction Continue; Start-Sleep -Seconds 2
         }
-        $trabajos += Start-Job -Name "$($c.nombre)" -FilePath $PSCommandPath -ArgumentList $c.id, $c.nombre, $Sello, $Raiz, $cred
+        $trabajos += Start-Job -Name "$($c.nombre)" -FilePath $PSCommandPath -ArgumentList $c.id, $c.nombre, $Sello, $Raiz, $cred, $Dia
     }
     # 3. Ir mostrando el progreso hasta que acaben todos
     while (@($trabajos | Where-Object { $_.State -eq 'Running' }).Count -gt 0) {
@@ -693,4 +707,24 @@ finally {
     Salir
     $trabajos | Remove-Job -Force -ErrorAction SilentlyContinue
     Log "`nFin: $(Get-Date). Duracion total: $([int]((Get-Date) - $inicio).TotalSeconds) s. Archivos en $Carpeta"
+}
+
+# =====================================================================
+#  CIERRE DEL DIA ANTERIOR: una vez al dia se vuelve a descargar el dia de ayer completo
+#  (incluidas las franjas posteriores a la ultima subida) y se guarda en la web como dia cerrado.
+# =====================================================================
+if (-not $Dia) {
+    $ayer = (Get-Date).Date.AddDays(-1).ToString("yyyy-MM-dd")
+    $ok = Join-Path $Raiz "cierre_$ayer.ok"
+    $intentos = Join-Path $Raiz "cierre_$ayer.intentos"
+    $n = if (Test-Path $intentos) { [int](Get-Content $intentos -Raw) } else { 0 }
+    if (-not (Test-Path $ok) -and $n -lt 3) {
+        Set-Content $intentos ($n + 1)
+        Log "`nCierre del dia $ayer (intento $($n + 1) de 3): se descarga el dia completo. Detalle en BO_export_dia"
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Dia $ayer | Out-Null
+        Log $(if (Test-Path $ok) { "Cierre del dia $ayer: SUBIDO" } else { "Cierre del dia $ayer: no se ha podido subir; se reintenta en la siguiente ejecucion" })
+    }
+    # marcas de cierres de hace mas de una semana
+    Get-ChildItem $Raiz -Filter "cierre_*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | Remove-Item -Force -ErrorAction SilentlyContinue
 }
