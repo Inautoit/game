@@ -56,10 +56,13 @@
 
     <main class="contenido">
       <section class="controles">
-        <div class="segmentado" role="radiogroup" aria-label="Periodo">
-          <label><input type="radio" name="periodo" value="hoy" checked> Hoy</label>
-          <label><input type="radio" name="periodo" value="acum"> Acumulado</label>
-        </div>
+        <label class="selector">
+          <span>Ver</span>
+          <select id="periodo-sel" aria-label="Qué día ver">
+            <option value="hoy">Hoy (en directo)</option>
+            <option value="acum">Acumulado de la competición</option>
+          </select>
+        </label>
         <span class="muted pequeno" id="periodo-info"></span>
         <div id="frescura" class="frescura" aria-label="Última actualización"></div>
       </section>

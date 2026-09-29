@@ -194,7 +194,7 @@ function acumular(resumenes) {
 }
 
 // ----------------------------------------------------------------- estado y carga
-const estado = { ayer: null, auto: "", periodo: "hoy", hoy: null, etag: null, acum: null, cargandoAcum: false, dias: [], orden: { ranking: ["gestiones", -1], registro: ["hora", -1], out: ["f", -1], campanas: ["reg", -1] } };
+const estado = { diaSel: null, cacheDia: {}, listaDias: [], ayer: null, auto: "", periodo: "hoy", hoy: null, etag: null, acum: null, cargandoAcum: false, dias: [], orden: { ranking: ["gestiones", -1], registro: ["hora", -1], out: ["f", -1], campanas: ["reg", -1] } };
 const graficos = {};
 
 async function cargar() {
@@ -213,6 +213,7 @@ async function cargar() {
     }
     if (estado.periodo === "acum" && !estado.acum) await cargarAcumulado();
     if (!estado.ayer) await cargarAyer();
+    await cargarListaDias();
     pintar();
     if (!estado.acum && !estado.cargandoAcum) cargarAcumulado().then(pintar).catch(() => {}); // para el marcador
     $("#refresco").textContent = "Comprobado " + new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
@@ -265,10 +266,49 @@ function kpi(titulo, valor, nota = "", ayuda = "") {
 }
 const bloque = (titulo, kpis) => `<div class="bloque"><h2>${esc(titulo)}</h2><div class="kpis">${kpis.join("")}</div></div>`;
 
+// Día que se está viendo: hoy (en directo) o un día guardado elegido arriba
+const vistaActual = () => (estado.periodo === "dia" ? estado.cacheDia[estado.diaSel]?.vista : estado.hoy);
+const anteriorActual = () => (estado.periodo === "dia" ? estado.cacheDia[estado.diaSel]?.ant : estado.ayer) || null;
+
 function datosVista() {
   if (estado.periodo === "acum" && estado.acum) return { ...estado.acum, fr: null };
-  const h = estado.hoy;
+  const h = vistaActual() ?? estado.hoy;
   return { G: h.G, camp: h.camp, fr: h.fr, porDia: null };
+}
+
+// Carga un día guardado completo (con su registro de llamadas) y el día anterior para comparar
+async function cargarDia(dia) {
+  if (estado.cacheDia[dia]) return;
+  $("#periodo-info").textContent = `Cargando el ${fmtFecha(dia)}…`;
+  const r = await fetch("/api/datos?dia=" + dia, { cache: "no-cache" });
+  if (!r.ok) throw new Error("no hay datos guardados del " + fmtFecha(dia));
+  const vista = resumir(await r.json(), true);
+  vista.dia ||= dia;
+  const antDia = estado.listaDias.map((x) => x.dia).filter((x) => x < dia).at(-1);
+  const ant = antDia ? await resumenDia(antDia) : null;
+  estado.cacheDia[dia] = { vista, ant };
+}
+
+// Lista de días guardados en el desplegable de arriba
+const DIAS_SEM = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+async function cargarListaDias() {
+  try {
+    const l = await (await fetch("/api/dias", { cache: "no-cache" })).json();
+    const hoyDia = estado.hoy?.dia || l.hoy;
+    estado.listaDias = l.dias;
+    const pasados = l.dias.filter((d) => d.dia < hoyDia).reverse();
+    const sel = $("#periodo-sel");
+    const opciones = `<option value="hoy">Hoy (en directo)</option><option value="acum">Acumulado de la competición</option>` +
+      (pasados.length ? `<optgroup label="Día concreto">${pasados.map((d) => {
+        const f = new Date(d.dia + "T12:00:00");
+        const nota = d.cerrado ? "completo" : d.subido ? `hasta las ${fmtHora(d.subido)}` : "";
+        return `<option value="d:${d.dia}">${DIAS_SEM[f.getDay()]} ${fmtFecha(d.dia)}${nota ? ` · ${nota}` : ""}</option>`;
+      }).join("")}</optgroup>` : "");
+    if (sel.dataset.o !== opciones) {
+      const v = sel.value; sel.innerHTML = opciones; sel.dataset.o = opciones;
+      sel.value = [...sel.options].some((o) => o.value === v) ? v : "hoy";
+    }
+  } catch {}
 }
 
 function gestoresLista(G) {
@@ -289,15 +329,16 @@ function campanasVista() {
 }
 
 function pintar() {
-  if (!estado.hoy) return;
+  if (!estado.hoy || !vistaActual()) return;
   const d = datosVista();
   const lista = gestoresLista(d.G);
   const t = lista.reduce((s, a) => { for (const k of ["marc", "con", "cortas", "tOut", "talk", "reg", "llam", "dur", "gest"]) s[k] += a[k]; return s; },
     { marc: 0, con: 0, cortas: 0, tOut: 0, talk: 0, reg: 0, llam: 0, dur: 0, gest: 0 });
-  const acum = estado.periodo === "acum";
-  const hoy = estado.hoy.dia;
+  const acum = estado.periodo === "acum", pasado = estado.periodo === "dia";
+  const hoy = vistaActual().dia;
 
-  $("#subtitulo").textContent = `${acum ? "Acumulado" : "Hoy"} · datos subidos a las ${fmtHora(estado.hoy.subido)}`;
+  $("#subtitulo").textContent = acum ? `Acumulado · datos subidos a las ${fmtHora(estado.hoy.subido)}`
+    : pasado ? `Día ${fmtFecha(hoy)} (guardado)` : `Hoy · datos subidos a las ${fmtHora(estado.hoy.subido)}`;
   $("#periodo-info").textContent = acum
     ? (estado.acum ? `${estado.dias.length} día${estado.dias.length === 1 ? "" : "s"}: del ${fmtFecha(estado.dias[0])} al ${fmtFecha(estado.dias.at(-1))}` : "Calculando el acumulado…")
     : hoy ? `Día ${fmtFecha(hoy)}` : "";
@@ -380,6 +421,27 @@ function pintar() {
 }
 
 // ----------------------------------------------------------------- marcador del equipo
+// Día guardado: el día entero frente al día anterior (sin ritmo, proyección ni alertas en directo)
+function marcadorDiaPasado(dia, ant, tot, fs, ult, reparto) {
+  const aTot = ant ? totalFr(ant.fr) : 0;
+  $("#marcador-tit").textContent = `Marcador del equipo · ${fmtFecha(dia.dia)}`;
+  $("#marcador-sub").textContent = ult ? `Actividad de las ${fs[0]} a las ${hhmm(minutos(ult) + 30)}` : "Sin actividad ese día";
+  const mejor = fs.reduce((m, f) => (gFr(dia.fr[f]) > gFr(dia.fr[m] ?? null) ? f : m), fs[0]);
+  const html = [dato(`Gestiones del ${fmtFecha(dia.dia)}`, fmtN(tot), reparto, "principal")];
+  if (ant) html.push(dato(`Día anterior (${fmtFecha(ant.dia)})`, fmtN(aTot), `${variacion(tot, aTot)} este día`));
+  if (mejor) html.push(dato("Mejor franja", mejor, `${fmtN(gFr(dia.fr[mejor]))} gestiones`));
+  if (ult) html.push(dato("Media por hora", fmtN(tot / Math.max(0.5, (minutos(ult) + 30 - minutos(fs[0])) / 60)), "en las horas con actividad"));
+  $("#marcador").innerHTML = html.join("");
+  $("#alertas").innerHTML = `<li class="bien">Día guardado: las alertas son solo para el día en curso ("Hoy").</li>`;
+  $("#g-carrera-tit").textContent = `Carrera del ${fmtFecha(dia.dia)} frente al día anterior`;
+  $("#g-carrera-sub").textContent = "Gestiones acumuladas a lo largo del día";
+  const todas = [...new Set([...Object.keys(dia.fr), ...Object.keys(ant?.fr ?? {})])].sort();
+  let sd = 0, sa = 0;
+  grafico("g-carrera", "line", todas, [
+    { label: fmtFecha(dia.dia), data: todas.map((f) => (sd += gFr(dia.fr[f]))), color: "--c-marca" },
+    ...(ant ? [{ label: fmtFecha(ant.dia), data: todas.map((f) => (sa += gFr(ant.fr?.[f]))), color: "--c-gris", discontinua: true }] : []),
+  ]);
+}
 const gFr = (x) => (x ? x.con + x.reg : 0);                       // gestiones de una franja
 const franjasCon = (fr) => Object.keys(fr ?? {}).filter((f) => gFr(fr[f]) > 0).sort();
 const hastaFranja = (fr, fc) => Object.entries(fr ?? {}).reduce((s, [f, x]) => s + (f <= fc ? gFr(x) : 0), 0);
@@ -395,7 +457,8 @@ const dato = (etq, grande, nota = "", clase = "") => `<div class="marca-dato ${c
 
 function pintarMarcador(lista, t, d) {
   const acum = estado.periodo === "acum";
-  const hoy = estado.hoy, ayer = estado.ayer || null;
+  const hoy = vistaActual(), ayer = anteriorActual();
+  const pasado = estado.periodo === "dia";
   const cs = campanasVista();
   const reparto = `TMK ${fmtN(t.con)}${cs.map((c) => ` · ${esc(etq(c))} ${fmtN(d.camp[c]?.reg ?? 0)}`).join("")}`;
   const alertas = [];
@@ -423,6 +486,7 @@ function pintarMarcador(lista, t, d) {
   const fs = franjasCon(hoy.fr);
   const ult = fs.at(-1);                                  // franja más reciente con actividad
   const tot = totalFr(hoy.fr);
+  if (pasado) return marcadorDiaPasado(hoy, ayer, tot, fs, ult, reparto);
   $("#marcador-tit").textContent = "Marcador del equipo · hoy";
   $("#g-carrera-tit").textContent = "Carrera del día: hoy frente a ayer";
   $("#g-carrera-sub").textContent = "Gestiones acumuladas a lo largo del día";
@@ -584,11 +648,11 @@ function pintarRanking(lista, top) {
 }
 
 function pintarRegistro() {
-  const h = estado.hoy;
+  const h = estado.periodo === "dia" ? vistaActual() : estado.hoy;
   const q = norm($("#buscar-r").value);
   const filas = h.registro.map((r) => ({ ...r, nombre: nombreDe(r.id) }))
     .filter((r) => !q || norm(r.nombre).includes(q) || r.id.includes(q) || norm(r.camp).includes(q) || norm(r.cod).includes(q));
-  $("#cuenta-r").textContent = `${fmtN(filas.length)} registros de hoy`;
+  $("#cuenta-r").textContent = `${fmtN(filas.length)} registros ${estado.periodo === "dia" ? "del " + fmtFecha(h.dia) : "de hoy"}`;
   pintarTabla("t-registro", "registro", [
     { k: "hora", t: "Hora", txt: true },
     { k: "nombre", t: "Gestor", txt: true, f: (r) => `<div class="nombre">${esc(r.nombre)}</div><div class="id">${esc(r.id)}</div>` },
@@ -645,23 +709,26 @@ $("#form-login").addEventListener("submit", async (e) => {
   if (r.ok) { $("#clave").value = ""; cargar(); } else $("#login-error").textContent = "Clave incorrecta.";
 });
 $("#salir").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); estado.etag = null; mostrarLogin(); });
-document.querySelectorAll('input[name="periodo"]').forEach((r) => r.addEventListener("change", async () => {
-  estado.periodo = r.value;
+$("#periodo-sel").addEventListener("change", async (e) => {
+  const v = e.target.value;
+  try {
+    if (v.startsWith("d:")) { estado.diaSel = v.slice(2); await cargarDia(estado.diaSel); estado.periodo = "dia"; }
+    else { estado.periodo = v; if (v === "acum" && !estado.acum) { pintar(); await cargarAcumulado(); } }
+  } catch (err) { $("#periodo-info").textContent = "Error: " + err.message; return; }
   pintar();
-  if (estado.periodo === "acum" && !estado.acum) { await cargarAcumulado(); pintar(); }
-}));
+});
 $("#buscar").addEventListener("input", () => estado.hoy && pintar());
 $("#auto-sel").addEventListener("change", (e) => { estado.auto = e.target.value; estado.hoy && pintar(); });
 $("#buscar-r").addEventListener("input", () => estado.hoy && pintarRegistro());
 $("#csv").addEventListener("click", () => {
   if (!estado.filasRanking) return;
   const cols = columnasRanking.filter((c) => c.k !== "puesto");
-  csv(`competicion_tmk_${estado.periodo}.csv`, ["ID", ...cols.map((c) => c.t)],
+  csv(`competicion_tmk_${estado.periodo === "dia" ? estado.diaSel : estado.periodo}.csv`, ["ID", ...cols.map((c) => c.t)],
     estado.filasRanking.map((a) => [a.id, ...cols.map((c) => { const v = c.orden ? c.orden(a) : a[c.k]; return typeof v === "number" ? (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : "") : v; })]));
 });
 $("#csv-r").addEventListener("click", () => {
   if (!estado.filasRegistro) return;
-  csv(`registro_tmk_${estado.hoy.dia}.csv`, ["Hora", "ID", "Gestor", "Campaña", "Codificación", "Intento", "Duración llamada (s)", "T. gestión (s)"],
+  csv(`registro_tmk_${(estado.periodo === "dia" ? vistaActual() : estado.hoy).dia}.csv`, ["Hora", "ID", "Gestor", "Campaña", "Codificación", "Intento", "Duración llamada (s)", "T. gestión (s)"],
     estado.filasRegistro.map((r) => [r.hora, r.id, r.nombre, r.camp, r.cod, r.intento, r.dur ?? "", Math.round(r.gest)]));
 });
 document.querySelectorAll(".pestanas button").forEach((b) => b.addEventListener("click", () => {
