@@ -6,14 +6,15 @@
 #    web del dashboard y, si la web confirma, borra los Excel de BO_export.
 #  - Primera ejecucion: pide usuario/contrasena y los guarda CIFRADOS
 #    (solo tu usuario de Windows en este PC puede leerlos).
-#  - Cierre de dias: la primera ejecucion de cada dia vuelve a descargar el dia ANTERIOR
-#    completo (con las ultimas franjas que ya no se subieron) y lo guarda en la web como
-#    dia cerrado. A mano, para un dia concreto:
+#  - Dia completo (a mano, una vez al dia): descarga un dia pasado entero, con las ultimas
+#    franjas que ya no se subieron, y lo guarda en la web como dia cerrado. No toca el directo:
+#        powershell -ExecutionPolicy Bypass -File .\explorar_informe_BO.ps1 -Dia ayer
 #        powershell -ExecutionPolicy Bypass -File .\explorar_informe_BO.ps1 -Dia 2026-09-28
 # =====================================================================
 param([string]$WorkerId, [string]$WorkerNombre, [string]$Sello, [string]$Raiz, $Cred, [string]$Dia)
 
 # Dia que se descarga: hoy, o el dia pasado que se pida con -Dia AAAA-MM-DD
+if ($Dia -eq "ayer") { $Dia = (Get-Date).Date.AddDays(-1).ToString("yyyy-MM-dd") }
 $Fecha    = if ($Dia) { [datetime]::ParseExact($Dia, "yyyy-MM-dd", $null) } else { (Get-Date).Date }
 $FechaISO = $Fecha.ToString("yyyy-MM-dd") + "T00:00:00.000Z"
 $SigISO   = $Fecha.AddDays(1).ToString("yyyy-MM-dd") + "T00:00:00.000Z"
@@ -575,11 +576,11 @@ function Convertir-Y-Subir {
     $gz.Write($bytes, 0, $bytes.Length); $gz.Close()
     $comprimido = $ms.ToArray()
     try {
-        $destino = if ($Dia) { "$($WebUrl)?dia=$Dia" } else { $WebUrl }   # dia pasado: solo se guarda como dia cerrado
+        # dia pasado: va a /api/cierre, que solo guarda ese dia (si la web no lo conoce, da error y no pisa nada)
+        $destino = if ($Dia) { ($WebUrl -replace '/api/upload$', '/api/cierre') + "?dia=$Dia" } else { $WebUrl }
         Invoke-RestMethod -Method Post -Uri $destino -Headers @{ Authorization = "Bearer $WebToken" } `
             -ContentType "application/octet-stream" -Body $comprimido -TimeoutSec 300 | Out-Null
         Log ("SUBIDO a la web{2}: {0} informes, {1} KB" -f $partes.Count, [math]::Round($comprimido.Length / 1KB), $(if ($Dia) { " como dia cerrado $Dia" } else { "" }))
-        if ($Dia) { Set-Content (Join-Path $Raiz "cierre_$Dia.ok") (Get-Date) }
         if ($BorrarTrasSubir) {
             foreach ($x in $convertidos) { Remove-Item $x.FullName -Force -ErrorAction SilentlyContinue }
             Log "Excel borrados de BO_export"
@@ -709,22 +710,3 @@ finally {
     Log "`nFin: $(Get-Date). Duracion total: $([int]((Get-Date) - $inicio).TotalSeconds) s. Archivos en $Carpeta"
 }
 
-# =====================================================================
-#  CIERRE DEL DIA ANTERIOR: una vez al dia se vuelve a descargar el dia de ayer completo
-#  (incluidas las franjas posteriores a la ultima subida) y se guarda en la web como dia cerrado.
-# =====================================================================
-if (-not $Dia) {
-    $ayer = (Get-Date).Date.AddDays(-1).ToString("yyyy-MM-dd")
-    $ok = Join-Path $Raiz "cierre_$ayer.ok"
-    $intentos = Join-Path $Raiz "cierre_$ayer.intentos"
-    $n = if (Test-Path $intentos) { [int](Get-Content $intentos -Raw) } else { 0 }
-    if (-not (Test-Path $ok) -and $n -lt 3) {
-        Set-Content $intentos ($n + 1)
-        Log "`nCierre del dia $ayer (intento $($n + 1) de 3): se descarga el dia completo. Detalle en BO_export_dia"
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Dia $ayer | Out-Null
-        Log $(if (Test-Path $ok) { "Cierre del dia $ayer: SUBIDO" } else { "Cierre del dia $ayer: no se ha podido subir; se reintenta en la siguiente ejecucion" })
-    }
-    # marcas de cierres de hace mas de una semana
-    Get-ChildItem $Raiz -Filter "cierre_*" -ErrorAction SilentlyContinue |
-        Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | Remove-Item -Force -ErrorAction SilentlyContinue
-}

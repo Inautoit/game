@@ -162,10 +162,11 @@ async function subir(request, env) {
   if (cuerpo.byteLength > MAX_BYTES) return json({ error: "paquete demasiado grande" }, 413);
 
   const subido = new Date().toISOString();
-  // ?dia=AAAA-MM-DD: cierre de un dia pasado (el dia completo). Solo sustituye la copia de ese
-  // dia; el paquete "en directo" no se toca.
-  const dia = new URL(request.url).searchParams.get("dia");
-  if (dia) {
+  // /api/cierre?dia=AAAA-MM-DD: un dia pasado completo. Solo sustituye la copia de ese dia;
+  // el paquete "en directo" no se toca.
+  const cierre = new URL(request.url).pathname === "/api/cierre";
+  const dia = cierre ? new URL(request.url).searchParams.get("dia") || "" : null;
+  if (cierre) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || dia >= diaMadrid()) return json({ error: "dia no valido (tiene que ser un dia pasado)" }, 400);
     await env.DATA.put("dia:" + dia, cuerpo, { metadata: { subido, bytes: cuerpo.byteLength, cerrado: true } });
     // los resumenes que el navegador guardo de ese dia ya no valen
@@ -263,7 +264,7 @@ export default {
     const url = new URL(request.url);
     const ruta = url.pathname;
     try {
-      if (ruta === "/api/upload" && request.method === "POST") return await subir(request, env);
+      if ((ruta === "/api/upload" || ruta === "/api/cierre") && request.method === "POST") return await subir(request, env);
       if (ruta === "/auth/login" && request.method === "GET") return await msLogin(request, env);
       if (ruta === "/auth/callback" && request.method === "GET") return await msCallback(request, env);
       if (ruta === "/api/login" && request.method === "POST") return await login(request, env);
