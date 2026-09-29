@@ -9,6 +9,9 @@
 // ============ CONFIGURACIÓN DE LA COMPETICIÓN ============
 const CONFIG = {
   colasOut: ["RBE_Outbound_TMK"],   // skills de la cola outbound que cuentan (Service Outbound Call)
+  // gestores de la competición (grupo RBE_Out_TMK_Piloto): solo cuentan estos; vacío = todos
+  gestores: { AE0534: "Adrián Valero García", 356245: "Ángel Vidal Martín", 271471: "Carmen Zárate Sánchez",
+              CK6293: "Carolina Pérez Martínez", CD7581: "Cristina María Muñiz Fernández", 289317: "Sheila Carrascosa Ambite" },
   campanasAuto: ["C_OC_RBE_Auto"], // campañas del automarcador que cuentan; vacío = todas
   desde: "2026-09-28",              // primer día de la competición "AAAA-MM-DD"; null = todos los guardados
   objetivoDia: null,                // objetivo de gestiones por día (número) o null
@@ -89,7 +92,7 @@ const buscarHoja = (inf, re) => inf?.hojas.find((h) => re.test(h.nombre));
 
 // La versión de la configuración forma parte de la clave de los resúmenes guardados: si se cambian
 // las colas o campañas, los días cerrados se recalculan con el nuevo criterio.
-const VERSION = "tmk3-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
+const VERSION = "tmk3-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto, CONFIG.gestores])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
 
 // ----------------------------------------------------------------- resumen de un paquete (un día)
 const nuevoG = (nombre) => ({ n: nombre || "", marc: 0, con: 0, cortas: 0, tOut: 0, talk: 0, acw: 0,
@@ -99,8 +102,10 @@ function resumir(paquete, conRegistro) {
   const auto = buscarInforme(paquete, /automarcador/i);
   const skill = buscarInforme(paquete, /agent group|skill/i);
   const G = {}, fr = {}, camp = {};
+  const permitidos = new Set(Object.keys(CONFIG.gestores).map((x) => x.trim().toUpperCase()));
   const g = (id, nombre) => {
     id = idLimpio(id); if (!id) return null;
+    if (permitidos.size && !permitidos.has(id.toUpperCase())) return null; // no es de la competición
     const a = (G[id] ??= nuevoG());
     if (nombre && !a.n) a.n = nombreLimpio(nombre);
     return a;
@@ -312,8 +317,11 @@ async function cargarListaDias() {
 }
 
 function gestoresLista(G) {
-  return Object.entries(G).map(([id, a]) => ({
-    ...a, id, nombre: a.n || id,
+  // los gestores de la competición salen siempre, aunque aún no tengan actividad
+  const todos = { ...G };
+  for (const [id, n] of Object.entries(CONFIG.gestores)) if (!todos[id]) todos[id] = nuevoG(n);
+  return Object.entries(todos).map(([id, a]) => ({
+    ...a, id, nombre: CONFIG.gestores[id] || a.n || id,
     gestiones: a.con + a.reg,
     ...Object.fromEntries(campanasVista().map((c) => ["r:" + c, a.camp[c]?.reg ?? 0])),
     sel: estado.auto ? (a.camp[estado.auto] ?? nuevoAuto()) : a, // lo que se ve en las columnas del automarcador
@@ -361,7 +369,7 @@ function pintar() {
       ]);
     }),
     bloque("Competición", [
-      kpi("Gestores", fmtN(lista.length), "con actividad en la cola o el automarcador"),
+      kpi("Gestores activos", `${fmtN(lista.filter((a) => a.gestiones > 0).length)} de ${fmtN(lista.length)}`, "con actividad en la cola o el automarcador"),
       kpi("Gestiones", fmtN(t.con + t.reg), "llamadas TMK + registros automarcador"),
     ]),
   ].join("");
@@ -545,6 +553,9 @@ function pintarMarcador(lista, t, d) {
     const pDia = div(t.con, t.marc), pHora = div(ult2.c, ult2.m);
     if (ult2.m >= 10 && pHora < pDia - 0.1) alertas.push(["mal", `Cola TMK: en la última hora se completan el ${fmtPct(pHora)} de las marcadas (media del día ${fmtPct(pDia)}).`]);
   }
+  // gestores de la competición que aún no han hecho nada hoy
+  const sinNada = lista.filter((a) => a.gestiones === 0).map((a) => esc(a.nombre));
+  if (sinNada.length && ult) alertas.push(["", `Sin actividad hoy: ${sinNada.join(", ")}.`]);
   // gestores con actividad hoy pero parados en la última hora
   if (ult) {
     const ultAct = {};
@@ -616,7 +627,7 @@ const cN = (k, t, ayuda) => ({ k, t, ayuda, f: (a) => cero(a[k], fmtN) });
 const cM = (k, t, ayuda) => ({ k, t, ayuda, f: (a) => fmtM(a[k]) });
 const cT = (k, t, ayuda) => ({ k, t, ayuda, f: (a) => cero(a[k], fmtT) });
 const cP = (k, t, ayuda) => ({ k, t, ayuda, f: (a) => fmtPct(a[k]) });
-const nombreDe = (id) => { const a = datosVista().G[id] ?? estado.hoy?.G[id]; return a?.n || id; };
+const nombreDe = (id) => { const a = datosVista().G[id] ?? estado.hoy?.G[id]; return CONFIG.gestores[id] || a?.n || id; };
 
 let columnasRanking = [];
 function pintarRanking(lista, top) {
