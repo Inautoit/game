@@ -65,7 +65,10 @@ const idLimpio = (v) => String(v ?? "").trim().replace(/\.0$/, "");
 const nombreLimpio = (v) => String(v ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
 const skillDeCola = (q) => String(q ?? "").trim().replace(/_Target_VQ$/i, "");
 const VERIFICAR = new URLSearchParams(location.search).has("verificar"); // vista con los datos de un dia cerrado
+let DIA_SEL = null;                                   // día guardado elegido arriba (null = hoy en directo)
+const modoDia = () => VERIFICAR || Boolean(DIA_SEL);
 function hoyLocal() {
+  if (DIA_SEL) return DIA_SEL;
   if (VERIFICAR && estado?.paquete?.dia) return estado.paquete.dia;
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -410,8 +413,8 @@ function pintarFrescura(paquete) {
     const fd = fechaDatos(i);
     const otroDia = fd && fd !== hoy;
     if (otroDia) deOtroDia.push(`${i.informe} (datos del ${fmtFecha(fd)})`);
-    const clase = VERIFICAR ? (otroDia ? "malo" : "ok") : otroDia || !String(i.generado).startsWith(hoy) ? "malo" : min <= 35 ? "ok" : min <= 90 ? "viejo" : "malo";
-    const txt = otroDia ? `trae datos del ${fmtFecha(fd)}, no de hoy` : VERIFICAR ? "día cerrado" : clase === "ok" ? "al día" : clase === "viejo" ? "con retraso" : "desactualizado";
+    const clase = modoDia() ? (otroDia ? "malo" : "ok") : otroDia || !String(i.generado).startsWith(hoy) ? "malo" : min <= 35 ? "ok" : min <= 90 ? "viejo" : "malo";
+    const txt = otroDia ? `trae datos del ${fmtFecha(fd)}, no de ese día` : modoDia() ? "día guardado" : clase === "ok" ? "al día" : clase === "viejo" ? "con retraso" : "desactualizado";
     return `<span class="chip ${clase}" title="${esc(txt)}"><i aria-hidden="true"></i>${esc(i.informe)} · ${fmtHora(i.generado)}${otroDia ? ` · <b>datos del ${fmtFecha(fd)}</b>` : ""} <span class="sr">(${esc(txt)})</span></span>`;
   }).join("");
   const faltan = [["Automarcador", /automarcador/i], ["Agent AUX", /agent_aux/i], ["Agent State", /agent state/i],
@@ -419,7 +422,8 @@ function pintarFrescura(paquete) {
     .filter(([, re]) => !paquete.informes.some((i) => re.test(i.informe))).map(([m]) => m);
   const avisos = [];
   if (faltan.length) avisos.push(`Faltan informes en la última subida: ${faltan.join(", ")}.`);
-  if (VERIFICAR) avisos.unshift(`VISTA DE VERIFICACIÓN: datos cerrados del ${fmtFecha(paquete.dia)}. No se actualiza; el dashboard normal está sin ?verificar.`);
+  if (DIA_SEL) avisos.unshift(`Estás viendo el ${fmtFecha(DIA_SEL)} (día guardado). Para volver al directo, elige "Hoy" arriba.`);
+  else if (VERIFICAR) avisos.unshift(`VISTA DE VERIFICACIÓN: datos cerrados del ${fmtFecha(paquete.dia)}. No se actualiza; el dashboard normal está sin ?verificar.`);
   if (deOtroDia.length) avisos.push(`Estos informes no traen datos de hoy: ${deOtroDia.join(", ")}. Revisa sus filtros de fecha.`);
   $("#aviso").hidden = !avisos.length;
   $("#aviso").textContent = avisos.join(" ");
@@ -773,8 +777,8 @@ function pintarVista() {
   pintarPausas();
 }
 function pintarTodo() {
-  $("#subtitulo").textContent = VERIFICAR
-    ? `Verificación · día cerrado ${new Date(hoyLocal() + "T12:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}`
+  $("#subtitulo").textContent = modoDia()
+    ? `${DIA_SEL ? "Día guardado" : "Verificación · día cerrado"} · ${new Date(hoyLocal() + "T12:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}`
     : `${new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })} · datos subidos a las ${fmtHora(estado.paquete.subido)}`;
   pintarFrescura(estado.paquete);
   pintarSelector();
@@ -808,11 +812,12 @@ function descargarCsv() {
 // ----------------------------------------------------------------- carga y refresco
 async function cargar() {
   try {
-    const r = await fetch(VERIFICAR ? "/api/datos?p=verificacion" : "/api/datos", { cache: "no-cache", credentials: "same-origin" });
+    const r = await fetch(DIA_SEL ? "/api/datos?dia=" + DIA_SEL : VERIFICAR ? "/api/datos?p=verificacion" : "/api/datos", { cache: "no-cache", credentials: "same-origin" });
     if (r.status === 401) return mostrarLogin();
     if (r.status === 404) { mostrarApp(); $("#subtitulo").textContent = "Todavía no se ha subido ningún informe desde el PC."; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     mostrarApp();
+    cargarListaDias();
     if (!estado.usuario) {
       fetch("/api/sesion", { cache: "no-store" }).then((x) => x.json()).then((x) => {
         estado.usuario = x.usuario; $("#usuario").textContent = x.usuario && x.usuario.includes("@") ? x.usuario : "";
@@ -828,6 +833,20 @@ async function cargar() {
   } catch (e) {
     $("#refresco").textContent = "Error al actualizar: " + e.message + " (se reintenta en 1 min)";
   }
+}
+const DIAS_SEM = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+async function cargarListaDias() {
+  try {
+    const l = await (await fetch("/api/dias", { cache: "no-cache" })).json();
+    const pasados = l.dias.filter((d) => d.dia < l.hoy).reverse();
+    const sel = $("#dia-sel");
+    const opciones = `<option value="">Hoy (en directo)</option>` + pasados.map((d) => {
+      const f = new Date(d.dia + "T12:00:00");
+      const nota = d.cerrado ? "completo" : d.subido ? `hasta las ${fmtHora(d.subido)}` : "";
+      return `<option value="${d.dia}">${DIAS_SEM[f.getDay()]} ${fmtFecha(d.dia)}${nota ? ` · ${nota}` : ""}</option>`;
+    }).join("");
+    if (sel.dataset.o !== opciones) { sel.innerHTML = opciones; sel.dataset.o = opciones; sel.value = DIA_SEL ?? ""; }
+  } catch {}
 }
 function marcarRefresco() { $("#refresco").textContent = "Comprobado " + new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); }
 async function mostrarLogin() {
@@ -852,6 +871,7 @@ $("#salir").addEventListener("click", async () => { await fetch("/api/logout", {
   const q = new URLSearchParams(location.search);
   if (q.has("error")) { $("#login-error").textContent = q.get("error"); history.replaceState(null, "", "/"); }
 }
+$("#dia-sel").addEventListener("change", (e) => { DIA_SEL = e.target.value || null; estado.etag = null; cargar(); });
 $("#skill").addEventListener("change", (e) => estado.datos && elegirSkill(e.target.value));
 $("#buscar").addEventListener("input", () => estado.datos && pintarGestores());
 $("#solo-conectados").addEventListener("change", () => estado.datos && pintarGestores());
