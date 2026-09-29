@@ -835,10 +835,11 @@ async function cargar() {
   }
 }
 const DIAS_SEM = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+const DIAS_DESDE = "2026-09-28"; // primer día que sale en el selector
 async function cargarListaDias() {
   try {
     const l = await (await fetch("/api/dias", { cache: "no-cache" })).json();
-    const pasados = l.dias.filter((d) => d.dia < l.hoy).reverse();
+    const pasados = l.dias.filter((d) => d.dia < l.hoy && d.dia >= DIAS_DESDE).reverse();
     const sel = $("#dia-sel");
     const opciones = `<option value="">Hoy (en directo)</option>` + pasados.map((d) => {
       const f = new Date(d.dia + "T12:00:00");

@@ -296,7 +296,7 @@ async function cargarListaDias() {
     const l = await (await fetch("/api/dias", { cache: "no-cache" })).json();
     const hoyDia = estado.hoy?.dia || l.hoy;
     estado.listaDias = l.dias;
-    const pasados = l.dias.filter((d) => d.dia < hoyDia).reverse();
+    const pasados = l.dias.filter((d) => d.dia < hoyDia && (!CONFIG.desde || d.dia >= CONFIG.desde)).reverse(); // solo días de la competición
     const sel = $("#periodo-sel");
     const opciones = `<option value="hoy">Hoy (en directo)</option><option value="acum">Acumulado de la competición</option>` +
       (pasados.length ? `<optgroup label="Día concreto">${pasados.map((d) => {
