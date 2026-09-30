@@ -92,7 +92,7 @@ const buscarHoja = (inf, re) => inf?.hojas.find((h) => re.test(h.nombre));
 
 // La versión de la configuración forma parte de la clave de los resúmenes guardados: si se cambian
 // las colas o campañas, los días cerrados se recalculan con el nuevo criterio.
-const VERSION = "tmk3-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto, CONFIG.gestores])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
+const VERSION = "tmk4-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto, CONFIG.gestores])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
 
 // ----------------------------------------------------------------- resumen de un paquete (un día)
 const nuevoG = (nombre) => ({ n: nombre || "", marc: 0, con: 0, cortas: 0, tOut: 0, talk: 0, acw: 0,
@@ -143,10 +143,12 @@ function resumir(paquete, conRegistro) {
     const d = paquete.dia || hCall.filas.reduce((m, r) => { const x = diaDe(val(r, c.ini)); return x > m ? x : m; }, "");
     for (const r of hCall.filas) if (!d || diaDe(val(r, c.ini)) === d) durDe.set(String(val(r, c.call) ?? ""), nv(r, c.dur));
   }
+  // Hora de cada registro = End_Timestamp (cuando el gestor termina y codifica, junto a la llamada).
+  // Start_Timestamp NO vale: es cuando el automarcador carga el registro, a veces una hora antes.
   const hReg = tabla(buscarHoja(auto, /registos|registros/i));
   if (hReg.filas.length) {
     const c = indices(hReg, { call: "CALL_ID", id: ["EmployeID", "Employee ID"], info: "AGENT_INFO", camp: "NameCampaign", t: "Manage Time",
-      ini: "Start_Timestamp (Date Time)", cod: "SD_BusinessCallResult", intento: "attempt" });
+      ini: ["End_Timestamp (Date Time)", "Start_Timestamp (Date Time)"], cod: "SD_BusinessCallResult", intento: "attempt" });
     const d = paquete.dia || hReg.filas.reduce((m, r) => { const x = diaDe(val(r, c.ini)); return x > m ? x : m; }, "");
     for (const r of hReg.filas) {
       if (d && diaDe(val(r, c.ini)) !== d) continue;

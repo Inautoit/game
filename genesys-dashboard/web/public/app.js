@@ -247,7 +247,7 @@ function procesar(paquete) {
   const hReg = tabla(buscarHoja(inf.auto, /registos|registros/i));
   if (hReg.filas.length) {
     const c = indices(hReg, { call: "CALL_ID", id: ["EmployeID", "Employee ID"], info: "AGENT_INFO", camp: "NameCampaign", t: "Manage Time",
-      ini: "Start_Timestamp (Date Time)", cod: "SD_BusinessCallResult", intento: "attempt" });
+      ini: ["End_Timestamp (Date Time)", "Start_Timestamp (Date Time)"], cod: "SD_BusinessCallResult", intento: "attempt" });
     const dia = hReg.filas.reduce((m, r) => { const d = diaDe(val(r, c.ini)); return d > m ? d : m; }, "");
     for (const r of hReg.filas) {
       if (dia && diaDe(val(r, c.ini)) !== dia) continue;
