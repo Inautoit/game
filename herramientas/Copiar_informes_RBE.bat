@@ -1,7 +1,13 @@
 <# :
 @echo off
+rem  Doble clic      -> se ejecuta en segundo plano (sin ventana).
+rem  Con "/ver"      -> se ejecuta con ventana, para ver que pasa si algo falla.
+if /i "%~1"=="/ver" goto :visible
+start "" powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$f='%~f0'; $Oculto=$true; iex ((Get-Content -LiteralPath $f -Raw))"
+exit /b
+:visible
 title Copiar informes RBE de SharePoint a la carpeta de red
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$f='%~f0'; iex ((Get-Content -LiteralPath $f -Raw))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$f='%~f0'; $Oculto=$false; iex ((Get-Content -LiteralPath $f -Raw))"
 echo.
 pause
 exit /b
@@ -25,13 +31,40 @@ $Archivos = @(
 # ("Planificacion" con acento), el script la encuentra solo.
 $CarpetaRed = "\\fileserver\SSRR_SP\Operaciones Comerciales\INFORMES\Ventas al Portfolio\Planificacion Comercial\Informes"
 
+# Mostrar un aviso junto al reloj de Windows al terminar ($true / $false)
+$AvisoAlTerminar = $true
+
 # =====================================================================
 #  A PARTIR DE AQUI NO HACE FALTA TOCAR NADA
 # =====================================================================
 
 $ErrorActionPreference = "Stop"
 
-function Escribir($texto, $color = "Gray") { Write-Host $texto -ForegroundColor $color }
+# Registro: se guarda junto al .bat (Copiar_informes_RBE.log)
+$Registro = [IO.Path]::ChangeExtension($f, ".log")
+
+function Escribir($texto, $color = "Gray") {
+    if (-not $Oculto) { Write-Host $texto -ForegroundColor $color }
+    try { Add-Content -LiteralPath $Registro -Value "$(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')  $texto" } catch { }
+}
+
+function Avisar($titulo, $texto, $esError = $false) {
+    if (-not $AvisoAlTerminar) { return }
+    try {
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+        $n = New-Object System.Windows.Forms.NotifyIcon
+        $n.Icon = [System.Drawing.SystemIcons]::Information
+        $tipo = if ($esError) { 'Error' } else { 'Info' }
+        $n.Visible = $true
+        $n.ShowBalloonTip(10000, $titulo, $texto, $tipo)
+        Start-Sleep -Seconds 10
+        $n.Dispose()
+    } catch { }
+}
+
+# El registro no crece sin limite: se reinicia si pasa de 1 MB
+try { if ((Get-Item -LiteralPath $Registro -ErrorAction Stop).Length -gt 1MB) { Remove-Item -LiteralPath $Registro -Force } } catch { }
+Escribir "----- Inicio -----"
 
 function Resolver-Carpeta($ruta) {
     # Prueba la ruta tal cual y, si no existe, con tilde en "Planificacion".
@@ -77,7 +110,7 @@ function Copiar-Archivo($url, $carpeta) {
 
     $sitio = "https://$servidor" + ($rutaRelativa -replace '^(/(sites|teams)/[^/]+).*$', '$1')
     $urlDescarga = "$sitio/_layouts/15/download.aspx?SourceUrl=" + [Uri]::EscapeDataString($rutaRelativa)
-    Start-Process $urlDescarga
+    Start-Process $urlDescarga -WindowStyle Minimized
 
     Escribir "Esperando a que termine la descarga (max. 2 min)..."
     $descargado = $null
@@ -117,6 +150,7 @@ $carpeta = Resolver-Carpeta $CarpetaRed
 if (-not $carpeta) {
     Escribir "No se encuentra la carpeta de red: $CarpetaRed" Red
     Escribir "Comprueba que estas en la red / VPN y que tienes permisos." Red
+    Avisar "Informes RBE" "No se encuentra la carpeta de red (revisa la VPN)." $true
     return
 }
 Escribir "Destino: $carpeta"
@@ -134,6 +168,8 @@ foreach ($a in $Archivos) {
 Escribir ""
 if ($fallos -eq 0) {
     Escribir "HECHO: $ok archivo(s) copiados  ($(Get-Date -Format 'dd/MM/yyyy HH:mm'))" Green
+    Avisar "Informes RBE" "$ok archivo(s) copiados a la carpeta de red."
 } else {
     Escribir "Terminado con errores: $ok OK, $fallos con fallo." Red
+    Avisar "Informes RBE" "Terminado con errores: $ok OK, $fallos con fallo. Mira el archivo .log" $true
 }
