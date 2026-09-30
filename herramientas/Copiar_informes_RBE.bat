@@ -40,12 +40,8 @@ $AvisoAlTerminar = $true
 
 $ErrorActionPreference = "Stop"
 
-# Registro: se guarda junto al .bat (Copiar_informes_RBE.log)
-$Registro = [IO.Path]::ChangeExtension($f, ".log")
-
 function Escribir($texto, $color = "Gray") {
     if (-not $Oculto) { Write-Host $texto -ForegroundColor $color }
-    try { Add-Content -LiteralPath $Registro -Value "$(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')  $texto" } catch { }
 }
 
 function Avisar($titulo, $texto, $esError = $false) {
@@ -62,9 +58,6 @@ function Avisar($titulo, $texto, $esError = $false) {
     } catch { }
 }
 
-# El registro no crece sin limite: se reinicia si pasa de 1 MB
-try { if ((Get-Item -LiteralPath $Registro -ErrorAction Stop).Length -gt 1MB) { Remove-Item -LiteralPath $Registro -Force } } catch { }
-Escribir "----- Inicio -----"
 
 function Resolver-Carpeta($ruta) {
     # Prueba la ruta tal cual y, si no existe, con tilde en "Planificacion".
@@ -171,5 +164,5 @@ if ($fallos -eq 0) {
     Avisar "Informes RBE" "$ok archivo(s) copiados a la carpeta de red."
 } else {
     Escribir "Terminado con errores: $ok OK, $fallos con fallo." Red
-    Avisar "Informes RBE" "Terminado con errores: $ok OK, $fallos con fallo. Mira el archivo .log" $true
+    Avisar "Informes RBE" "Terminado con errores: $ok OK, $fallos con fallo. Ejecuta con /ver para ver el detalle" $true
 }
