@@ -28,8 +28,8 @@ $Archivos = @(
 
 # Carpeta de red donde se dejan las copias.
 # Escribela SIN tildes: si en el servidor la carpeta lleva tilde
-# ("Planificacion" con acento), el script la encuentra solo.
-$CarpetaRed = "\\fileserver\SSRR_SP\Operaciones Comerciales\INFORMES\Ventas al Portfolio\Planificacion Comercial\Informes"
+# ("Analisis" con acento), el script la encuentra solo.
+$CarpetaRed = "\\fileserver\televenta\92 - Analisis piloto RBE\RBE"
 
 # Mostrar un aviso junto al reloj de Windows al terminar ($true / $false)
 $AvisoAlTerminar = $true
@@ -60,9 +60,9 @@ function Avisar($titulo, $texto, $esError = $false) {
 
 
 function Resolver-Carpeta($ruta) {
-    # Prueba la ruta tal cual y, si no existe, con tilde en "Planificacion".
+    # Prueba la ruta tal cual y, si no existe, con tilde en "Analisis".
     # La tilde se genera con [char] para no depender de la codificacion del .bat.
-    $conTilde = $ruta -replace 'Planificacion', ('Planificaci' + [char]0x00F3 + 'n')
+    $conTilde = $ruta -replace 'Analisis', ('An' + [char]0x00E1 + 'lisis')
     foreach ($v in @($ruta, $conTilde)) {
         if (Test-Path -LiteralPath $v) { return $v }
     }
