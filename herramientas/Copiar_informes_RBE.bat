@@ -74,6 +74,17 @@ function Obtener-Descargas {
     catch { return (Join-Path $env:USERPROFILE "Downloads") }
 }
 
+function Copiar-ADestino($origen, $destino) {
+    # Reintenta por si el archivo de destino esta abierto en ese momento
+    for ($i = 1; $i -le 3; $i++) {
+        try { Copy-Item -LiteralPath $origen -Destination $destino -Force; return }
+        catch {
+            if ($i -eq 3) { throw "no se pudo pegar en la carpeta de red (puede que alguien lo tenga abierto en Excel): $($_.Exception.Message)" }
+            Start-Sleep -Seconds 5
+        }
+    }
+}
+
 function Copiar-Archivo($url, $carpeta) {
     $uri          = [Uri]([Uri]::UnescapeDataString($url))
     $servidor     = $uri.Host
@@ -90,7 +101,7 @@ function Copiar-Archivo($url, $carpeta) {
         if (Test-Path -LiteralPath $unc) {
             Copy-Item -LiteralPath $unc -Destination $destino -Force
             Escribir "OK (copia directa)" Green
-            return $true
+            return
         }
     } catch { }
 
@@ -114,7 +125,7 @@ function Copiar-Archivo($url, $carpeta) {
             Where-Object {
                 $_.LastWriteTime -ge $inicio.AddSeconds(-5) -and
                 $_.Extension -eq $extension -and
-                $_.Name.StartsWith($base)
+                $_.Name.StartsWith($base, [StringComparison]::OrdinalIgnoreCase)
             } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
@@ -129,14 +140,12 @@ function Copiar-Archivo($url, $carpeta) {
     }
 
     if (-not $descargado) {
-        Escribir "ERROR: no se ha detectado la descarga (revisa si el navegador pide iniciar sesion o confirmar)." Red
-        return $false
+        throw "no se ha descargado en 2 min (revisa que la URL y el nombre del archivo son correctos)"
     }
 
-    Copy-Item -LiteralPath $descargado.FullName -Destination $destino -Force
-    Remove-Item -LiteralPath $descargado.FullName -Force -ErrorAction SilentlyContinue
+    try { Copiar-ADestino $descargado.FullName $destino }
+    finally { Remove-Item -LiteralPath $descargado.FullName -Force -ErrorAction SilentlyContinue }
     Escribir "OK (descarga por navegador)" Green
-    return $true
 }
 
 $carpeta = Resolver-Carpeta $CarpetaRed
@@ -148,15 +157,18 @@ if (-not $carpeta) {
 }
 Escribir "Destino: $carpeta"
 
-$ok = 0; $fallos = 0
+$ok = 0; $errores = @()
 foreach ($a in $Archivos) {
     try {
-        if (Copiar-Archivo $a $carpeta) { $ok++ } else { $fallos++ }
+        Copiar-Archivo $a $carpeta
+        $ok++
     } catch {
+        $nombreArchivo = [IO.Path]::GetFileName([Uri]::UnescapeDataString($a))
         Escribir "ERROR: $($_.Exception.Message)" Red
-        $fallos++
+        $errores += "$nombreArchivo -> $($_.Exception.Message)"
     }
 }
+$fallos = $errores.Count
 
 Escribir ""
 if ($fallos -eq 0) {
@@ -164,5 +176,7 @@ if ($fallos -eq 0) {
     Avisar "Informes RBE" "$ok archivo(s) copiados a la carpeta de red."
 } else {
     Escribir "Terminado con errores: $ok OK, $fallos con fallo." Red
-    Avisar "Informes RBE" "Terminado con errores: $ok OK, $fallos con fallo. Ejecuta con /ver para ver el detalle" $true
+    $detalle = "$ok OK, $fallos con fallo.`n" + ($errores -join "`n")
+    if ($detalle.Length -gt 250) { $detalle = $detalle.Substring(0, 247) + "..." }
+    Avisar "Informes RBE - errores" $detalle $true
 }
