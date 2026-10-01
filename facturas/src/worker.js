@@ -902,23 +902,15 @@ route('POST', '/api/invoices/:id/convert', async (req, env, { params }) => {
   }
   const s = await getSettings(env);
   const fecha = today();
-  // El presupuesto va sin IVA: la factura lleva el IVA por defecto y el descuento como una línea más
+  // El presupuesto va sin IVA: la factura lleva el IVA por defecto y el mismo descuento (antes del IVA)
   const lines = src.lines.map((l) => ({ ...l }));
-  if (src.dto_importe) {
-    lines.push({
-      descripcion: `Descuento${src.dto_tipo === 'pct' ? ` (${src.dto_valor}%)` : ''}`,
-      cantidad: 1,
-      unidad: '',
-      precio: -src.dto_importe,
-      descuento: 0,
-    });
-  }
   const { inv: calc, lines: fLines } = computeInvoice({
     ...src,
     tipo: 'factura',
     iva_pct: s['factura.iva_pct'],
     irpf_pct: s['factura.irpf_pct'],
-    dto_valor: 0,
+    dto_tipo: src.dto_tipo,
+    dto_valor: src.dto_valor,
     lines,
   });
   const f = {

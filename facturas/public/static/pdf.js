@@ -220,25 +220,39 @@
 
     // ---------------------------------------------------------- Totales (última página)
     const [x0, , x2, x3, x4] = t.x;
-    // Subtotal
-    rect(x3, 606, x4 - x3, 12, { color: grey, borderColor: black, borderWidth: 0.6 });
-    text('Subtotal', x3 - 6, 615, { size: 8.5, align: 'right' });
-    text(eur(inv.base), x4 - 5, 615, { size: 9, align: 'right' });
+    // Subtotal (y, si hay descuento, descuento y base imponible antes del IVA)
+    const dtoImp = Number(inv.dto_importe) || 0;
+    const fila = (top, label, valor, bold = false) => {
+      rect(x3, top, x4 - x3, 12, { color: grey, borderColor: black, borderWidth: 0.6 });
+      text(label, x3 - 6, top + 9, { size: 8.5, align: 'right', f: bold ? helvB : helv });
+      text(valor, x4 - 5, top + 9, { size: 9, align: 'right', f: bold ? helvB : helv });
+    };
+    let off = 0;
+    if (dtoImp) {
+      fila(606, 'Subtotal', eur(Number(inv.base) + dtoImp));
+      fila(618, `Descuento${inv.dto_tipo === 'pct' ? ` (${numES(inv.dto_valor)}%)` : ''}`, '-' + eur(dtoImp));
+      fila(630, 'Base imponible', eur(inv.base), true);
+      off = 25;
+    } else {
+      fila(606, 'Subtotal', eur(inv.base));
+    }
     // IVA
-    text('IVA', 346, 637.5, { size: 8.5, f: helvB });
-    rect(x2, 629, x3 - x2, 11.5, { borderColor: black, borderWidth: 0.6 });
-    text(`${numES(inv.iva_pct)} %`, x3 - 5, 637.5, { size: 8.5, align: 'right' });
-    rect(x3, 629, x4 - x3, 11.5, { color: grey, borderColor: black, borderWidth: 0.6 });
-    text(eur(inv.iva), x4 - 5, 637.5, { size: 9, align: 'right' });
+    const ivaTop = 629 + off;
+    text('IVA', 346, ivaTop + 8.5, { size: 8.5, f: helvB });
+    rect(x2, ivaTop, x3 - x2, 11.5, { borderColor: black, borderWidth: 0.6 });
+    text(`${numES(inv.iva_pct)} %`, x3 - 5, ivaTop + 8.5, { size: 8.5, align: 'right' });
+    rect(x3, ivaTop, x4 - x3, 11.5, { color: grey, borderColor: black, borderWidth: 0.6 });
+    text(eur(inv.iva), x4 - 5, ivaTop + 8.5, { size: 9, align: 'right' });
     // IRPF (solo si hay retención)
-    let totalTop = 651;
+    let totalTop = 651 + off;
     if (Number(inv.irpf_pct)) {
-      text('IRPF', 346, 649, { size: 8.5, f: helvB });
-      rect(x2, 641, x3 - x2, 11.5, { borderColor: black, borderWidth: 0.6 });
-      text(`${numES(inv.irpf_pct)} %`, x3 - 5, 649, { size: 8.5, align: 'right' });
-      rect(x3, 641, x4 - x3, 11.5, { color: grey, borderColor: black, borderWidth: 0.6 });
-      text('-' + eur(inv.irpf), x4 - 5, 649, { size: 9, align: 'right' });
-      totalTop = 656;
+      const t2 = 641 + off;
+      text('IRPF', 346, t2 + 8, { size: 8.5, f: helvB });
+      rect(x2, t2, x3 - x2, 11.5, { borderColor: black, borderWidth: 0.6 });
+      text(`${numES(inv.irpf_pct)} %`, x3 - 5, t2 + 8, { size: 8.5, align: 'right' });
+      rect(x3, t2, x4 - x3, 11.5, { color: grey, borderColor: black, borderWidth: 0.6 });
+      text('-' + eur(inv.irpf), x4 - 5, t2 + 8, { size: 9, align: 'right' });
+      totalTop = 656 + off;
     }
     // TOTAL
     rect(x2, totalTop, x3 - x2, 12.5, { borderColor: black, borderWidth: 1.4 });
@@ -275,7 +289,8 @@
     // Observaciones (bajo el sello)
     if (inv.notas) {
       const notas = wrap(inv.notas, x4 - x0, 7.5).slice(0, 5);
-      notas.forEach((n, i) => text(n, x0, 722 + i * 9.5, { size: 7.5 }));
+      const notasTop = Math.max(722, by + 4);
+      notas.forEach((n, i) => text(n, x0, notasTop + i * 9.5, { size: 7.5 }));
     } else {
       hline(122, 471, 714, 0.4, grey);
     }

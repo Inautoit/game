@@ -414,7 +414,10 @@
                 esPres
                   ? `<label>Descuento <input name="dto_valor" inputmode="decimal" value="${esc(data.dto_valor || '')}" placeholder="0"></label>
                      <label>&nbsp;<select name="dto_tipo"><option value="pct" ${data.dto_tipo !== 'eur' ? 'selected' : ''}>%</option><option value="eur" ${data.dto_tipo === 'eur' ? 'selected' : ''}>€</option></select></label>`
-                  : `<label>IVA %
+                  : `<label>Descuento % (antes del IVA) <input name="dto_valor" inputmode="decimal" value="${esc(blank0(data.dto_valor))}" placeholder="Sin descuento"></label>
+              <input type="hidden" name="dto_tipo" value="pct">
+              <div></div>
+              <label>IVA %
                 <select name="iva_pct">
                   ${['21', '10', '4', '0'].map((v) => `<option ${String(parseNum(data.iva_pct)) === v ? 'selected' : ''}>${v}</option>`).join('')}
                 </select>
@@ -477,12 +480,15 @@
           <div class="small muted" style="justify-content:flex-end">IVA no incluido</div>`;
         return;
       }
-      const base = bruto;
+      const dtoPct = Math.min(Math.max(parseNum(form.dto_valor.value), 0), 100);
+      const dto = round2((bruto * dtoPct) / 100);
+      const base = round2(bruto - dto);
       const ivaPct = parseNum(form.iva_pct.value);
       const irpfPct = parseNum(form.irpf_pct.value);
       const iva = round2((base * ivaPct) / 100);
       const irpf = round2((base * irpfPct) / 100);
       $('#totals').innerHTML = `
+        ${dto ? `<div><span>Subtotal</span><span class="num">${eur(bruto)}</span></div><div><span>Descuento (${dtoPct}%)</span><span class="num">-${eur(dto)}</span></div>` : ''}
         <div><span>Base imponible</span><span class="num">${eur(base)}</span></div>
         <div><span>IVA (${ivaPct}%)</span><span class="num">${eur(iva)}</span></div>
         ${irpfPct ? `<div><span>Retención IRPF (${irpfPct}%)</span><span class="num">-${eur(irpf)}</span></div>` : ''}
@@ -531,6 +537,7 @@
       form.dto_valor.oninput = renderTotals;
       form.dto_tipo.onchange = renderTotals;
     } else {
+      form.dto_valor.oninput = renderTotals;
       form.iva_pct.onchange = renderTotals;
       form.irpf_pct.onchange = renderTotals;
     }
@@ -662,7 +669,8 @@
               ? `${inv.dto_importe ? `<div><span>Subtotal</span><span class="num">${eur(inv.base + inv.dto_importe)}</span></div><div><span>Descuento${inv.dto_tipo === 'pct' ? ` (${inv.dto_valor}%)` : ''}</span><span class="num">-${eur(inv.dto_importe)}</span></div>` : ''}
                  <div class="grand"><span>TOTAL</span><span class="num">${eur(inv.total)}</span></div>
                  <div class="small muted" style="justify-content:flex-end">IVA no incluido · válido hasta el ${fdate(inv.vencimiento)}</div>`
-              : `<div><span>Subtotal</span><span class="num">${eur(inv.base)}</span></div>
+              : `${inv.dto_importe ? `<div><span>Subtotal</span><span class="num">${eur(inv.base + inv.dto_importe)}</span></div><div><span>Descuento${inv.dto_tipo === 'pct' ? ` (${inv.dto_valor}%)` : ''}</span><span class="num">-${eur(inv.dto_importe)}</span></div>` : ''}
+          <div><span>${inv.dto_importe ? 'Base imponible' : 'Subtotal'}</span><span class="num">${eur(inv.base)}</span></div>
           <div><span>IVA (${inv.iva_pct}%)</span><span class="num">${eur(inv.iva)}</span></div>
           ${inv.irpf_pct ? `<div><span>Retención IRPF (${inv.irpf_pct}%)</span><span class="num">-${eur(inv.irpf)}</span></div>` : ''}
           <div class="grand"><span>TOTAL</span><span class="num">${eur(inv.total)}</span></div>`
