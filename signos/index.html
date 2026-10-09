@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#060912" />
+  <title>Signa</title>
+  <meta name="description" content="Traductor de lengua de signos en el navegador: detecta tus manos con la cámara y escribe lo que signas." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">SIGNA</span>
+      <span class="brand-sub">traductor de signos</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Modo">
+      <button class="tab" id="tab-translate" role="tab" aria-selected="true" data-mode="translate">Traducir</button>
+      <button class="tab" id="tab-train" role="tab" aria-selected="false" data-mode="train">Entrenar</button>
+    </nav>
+    <div class="status" id="status"><span class="dot"></span><span id="status-text">Cámara apagada</span></div>
+  </header>
+
+  <main class="layout">
+    <!-- Cámara -->
+    <section class="stage" aria-label="Cámara">
+      <div class="viewport" id="viewport">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="scan" aria-hidden="true"></div>
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+
+        <div class="hud hud-top">
+          <span>MANOS <b id="hud-hands">0</b></span>
+          <span>FPS <b id="hud-fps">--</b></span>
+          <span>EJEMPLOS <b id="hud-samples">0</b></span>
+        </div>
+
+        <div class="rec-banner" id="rec-banner" hidden>
+          <span class="rec-dot"></span><span id="rec-text">Grabando</span>
+        </div>
+
+        <div class="start" id="start">
+          <div class="start-card">
+            <h1>Signa lee tus manos</h1>
+            <p>Enciende la cámara, enséñale tus signos en el modo <b>Entrenar</b>
+              y después signa en <b>Traducir</b>: el texto se irá escribiendo solo.</p>
+            <p class="privacy">El vídeo se procesa en tu navegador. No se envía ni se guarda en ningún sitio.</p>
+            <button class="btn primary big" id="btn-start">Activar cámara</button>
+            <p class="start-error" id="start-error" hidden></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Texto traducido -->
+      <div class="transcript-wrap">
+        <div class="transcript-label">
+          <span>Texto</span>
+          <span class="hint">Mantén el signo quieto hasta que se llene el círculo</span>
+        </div>
+        <p class="transcript" id="transcript" aria-live="polite"><span class="caret"></span></p>
+        <div class="transcript-actions">
+          <button class="btn" id="btn-space">Espacio</button>
+          <button class="btn" id="btn-undo">Borrar último</button>
+          <button class="btn" id="btn-clear">Limpiar</button>
+          <button class="btn" id="btn-copy">Copiar</button>
+          <button class="btn accent" id="btn-speak">Leer en voz alta</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Panel lateral -->
+    <aside class="panel">
+      <!-- Modo traducir -->
+      <div id="panel-translate">
+        <div class="readout">
+          <div class="ring-wrap">
+            <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+              <circle class="ring-fg" id="ring-fg" cx="60" cy="60" r="52"></circle>
+            </svg>
+            <span class="glyph" id="glyph">·</span>
+          </div>
+          <div class="readout-info">
+            <span class="eyebrow">Signo detectado</span>
+            <span class="readout-label" id="readout-label">Sin mano</span>
+            <ol class="ranking" id="ranking"></ol>
+          </div>
+        </div>
+
+        <div class="empty-note" id="empty-note">
+          <b>Todavía no has enseñado ningún signo.</b>
+          Ve a <button class="link" data-goto="train">Entrenar</button>, elige una letra y graba
+          unos segundos haciendo el signo. Con 4 o 5 letras ya puedes probar.
+        </div>
+
+        <details class="settings" open>
+          <summary>Ajustes</summary>
+          <label class="field">
+            <span>Tiempo para aceptar un signo <output id="out-hold">0,7 s</output></span>
+            <input type="range" id="set-hold" min="300" max="2000" step="100" value="700" />
+          </label>
+          <label class="field">
+            <span>Exigencia <output id="out-strict">media</output></span>
+            <input type="range" id="set-strict" min="1" max="5" step="1" value="3" />
+          </label>
+          <label class="check"><input type="checkbox" id="set-autospace" checked /> Espacio automático al retirar la mano</label>
+          <label class="check"><input type="checkbox" id="set-voice" /> Leer cada palabra al terminarla</label>
+          <label class="check"><input type="checkbox" id="set-mirror" /> Signo con la mano izquierda</label>
+        </details>
+      </div>
+
+      <!-- Modo entrenar -->
+      <div id="panel-train" hidden>
+        <div class="train-head">
+          <span class="eyebrow">Signo seleccionado</span>
+          <div class="train-selected">
+            <span class="glyph small" id="train-glyph">A</span>
+            <div>
+              <span class="train-count"><b id="train-count">0</b> ejemplos</span>
+              <span class="train-tip" id="train-tip">Graba al menos 30 ejemplos, moviendo un poco la mano.</span>
+            </div>
+          </div>
+          <div class="train-actions">
+            <button class="btn primary" id="btn-record">Grabar 3 s</button>
+            <button class="btn danger" id="btn-forget">Borrar este signo</button>
+          </div>
+          <p class="hint">Tecla <kbd>Espacio</kbd>: grabar. Antes de empezar hay una cuenta atrás.</p>
+        </div>
+
+        <h2 class="group-title">Abecedario (LSE)</h2>
+        <div class="label-grid" id="grid-letters"></div>
+
+        <h2 class="group-title">Palabras y comandos</h2>
+        <div class="label-grid" id="grid-words"></div>
+        <form class="add-word" id="form-word">
+          <input type="text" id="input-word" maxlength="24" placeholder="Nueva palabra, p. ej. HOLA" aria-label="Nueva palabra" />
+          <button class="btn" type="submit">Añadir</button>
+        </form>
+
+        <details class="settings">
+          <summary>Copia de seguridad</summary>
+          <p class="hint">Tus ejemplos se guardan en este navegador. Exporta el archivo para usarlos en otro equipo.</p>
+          <div class="train-actions">
+            <button class="btn" id="btn-export">Exportar ejemplos</button>
+            <label class="btn" for="input-import">Importar ejemplos</label>
+            <input type="file" id="input-import" accept="application/json,.json" hidden />
+            <button class="btn danger" id="btn-reset">Borrar todo</button>
+          </div>
+        </details>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

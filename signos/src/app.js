@@ -1,0 +1,761 @@
+import { FilesetResolver, HandLandmarker } from '../vendor/mediapipe/vision_bundle.mjs';
+import { extractFeatures } from './features.js';
+import { SignClassifier } from './classifier.js';
+
+// ---------------------------------------------------------------------------
+// Datos fijos
+// ---------------------------------------------------------------------------
+
+// Abecedario dactilológico de la Lengua de Signos Española.
+const LETTERS = [
+  'A', 'B', 'C', 'CH', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'LL', 'M',
+  'N', 'Ñ', 'O', 'P', 'Q', 'R', 'RR', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+];
+const COMMANDS = ['ESPACIO', 'BORRAR'];
+
+// Exigencia: confianza mínima del voto y distancia máxima al ejemplo más cercano.
+const STRICTNESS = {
+  1: { conf: 0.45, dist: 0.45, name: 'muy baja' },
+  2: { conf: 0.5, dist: 0.38, name: 'baja' },
+  3: { conf: 0.6, dist: 0.32, name: 'media' },
+  4: { conf: 0.7, dist: 0.26, name: 'alta' },
+  5: { conf: 0.8, dist: 0.2, name: 'muy alta' },
+};
+
+const SMOOTH_FRAMES = 8;     // fotogramas para suavizar la predicción
+const SMOOTH_MIN = 5;        // votos mínimos dentro de esa ventana
+const HAND_GONE_MS = 250;    // sin mano este tiempo = puedes repetir la misma letra
+const AUTO_SPACE_MS = 1200;  // sin mano este tiempo = espacio automático
+const RECORD_MS = 3000;
+const CAPTURE_EVERY_MS = 60;
+const SETTINGS_KEY = 'signa.settings.v1';
+const WORDS_KEY = 'signa.words.v1';
+
+// ---------------------------------------------------------------------------
+// Elementos
+// ---------------------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+const video = $('video');
+const canvas = $('overlay');
+const ctx = canvas.getContext('2d');
+const ringFg = $('ring-fg');
+const RING_LEN = 2 * Math.PI * 52;
+
+// ---------------------------------------------------------------------------
+// Estado
+// ---------------------------------------------------------------------------
+
+const classifier = new SignClassifier();
+classifier.restore();
+
+const settings = loadJSON(SETTINGS_KEY, {
+  hold: 700,
+  strict: 3,
+  autospace: true,
+  voice: false,
+  mirror: false,
+});
+let customWords = loadWords();
+
+let landmarker = null;
+let mode = 'translate';
+let selectedLabel = 'A';
+let lastVideoTime = -1;
+let fps = { frames: 0, since: performance.now() };
+
+const history = [];          // predicciones recientes (o null)
+let current = { label: null, since: 0 };
+let lastCommitted = null;
+let lastHandAt = 0;
+let autoSpaced = true;
+
+/** Cada entrada es el trozo de texto que añadió un signo, para poder deshacer. */
+const entries = [];
+let lastEntryAt = 0;
+
+const recording = { active: false, phase: 'idle', label: null, count: 0, lastCapture: 0 };
+
+// ---------------------------------------------------------------------------
+// Utilidades
+// ---------------------------------------------------------------------------
+
+function loadJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* almacenamiento bloqueado: seguimos sin guardar */
+  }
+}
+
+function loadWords() {
+  try {
+    const list = JSON.parse(localStorage.getItem(WORDS_KEY) || '[]');
+    return Array.isArray(list) ? list.filter((w) => typeof w === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 2600);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function setStatus(text, kind = '') {
+  $('status-text').textContent = text;
+  $('status').className = `status ${kind}`;
+}
+
+function isWord(label) {
+  return !LETTERS.includes(label);
+}
+
+function allWordLabels() {
+  const set = new Set([...COMMANDS, ...customWords]);
+  for (const s of classifier.samples) if (isWord(s.label)) set.add(s.label);
+  return [...set];
+}
+
+// ---------------------------------------------------------------------------
+// Cámara y modelo
+// ---------------------------------------------------------------------------
+
+async function createLandmarker() {
+  const base = new URL('../vendor/mediapipe/', import.meta.url);
+  const fileset = await FilesetResolver.forVisionTasks(new URL('wasm', base).href);
+  const options = (delegate) => ({
+    baseOptions: { modelAssetPath: new URL('hand_landmarker.task', base).href, delegate },
+    runningMode: 'VIDEO',
+    numHands: 2,
+    minHandDetectionConfidence: 0.6,
+    minHandPresenceConfidence: 0.6,
+    minTrackingConfidence: 0.5,
+  });
+  try {
+    return await HandLandmarker.createFromOptions(fileset, options('GPU'));
+  } catch {
+    return await HandLandmarker.createFromOptions(fileset, options('CPU'));
+  }
+}
+
+async function startCamera() {
+  if (!window.isSecureContext) {
+    throw new Error('La cámara solo funciona si abres la página con https:// o desde localhost.');
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Este navegador no permite usar la cámara. Prueba con Chrome, Edge o Safari actualizados.');
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch (err) {
+    if (err.name === 'NotAllowedError') {
+      throw new Error('Has bloqueado la cámara. Permítela desde el icono junto a la dirección web y vuelve a pulsar.');
+    }
+    if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+      throw new Error('No encuentro ninguna cámara conectada.');
+    }
+    if (err.name === 'NotReadableError') {
+      throw new Error('La cámara está ocupada por otra aplicación (Teams, Zoom…). Ciérrala y vuelve a pulsar.');
+    }
+    throw err;
+  }
+}
+
+$('btn-start').addEventListener('click', async () => {
+  const btn = $('btn-start');
+  const errEl = $('start-error');
+  btn.disabled = true;
+  errEl.hidden = true;
+  setStatus('Cargando detector de manos…', 'busy');
+  try {
+    const [lm] = await Promise.all([landmarker ?? createLandmarker(), startCamera()]);
+    landmarker = lm;
+    $('start').hidden = true;
+    setStatus('En directo', 'live');
+    requestAnimationFrame(loop);
+  } catch (err) {
+    errEl.textContent = err.message || 'No se pudo iniciar. Recarga la página e inténtalo otra vez.';
+    errEl.hidden = false;
+    btn.disabled = false;
+    setStatus('Sin cámara', 'error');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Bucle principal
+// ---------------------------------------------------------------------------
+
+function loop() {
+  requestAnimationFrame(loop);
+  if (!landmarker || video.readyState < 2 || video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+
+  const now = performance.now();
+  const result = landmarker.detectForVideo(video, now);
+  const hands = result.landmarks || [];
+  const aspect = video.videoWidth / video.videoHeight || 16 / 9;
+
+  // FPS
+  fps.frames++;
+  if (now - fps.since >= 500) {
+    $('hud-fps').textContent = Math.round((fps.frames * 1000) / (now - fps.since));
+    fps = { frames: 0, since: now };
+  }
+  $('hud-hands').textContent = hands.length;
+
+  const feat = extractFeatures(hands, aspect, settings.mirror);
+  if (feat) lastHandAt = now;
+
+  // Grabación de ejemplos
+  if (recording.phase === 'capture' && feat && now - recording.lastCapture >= CAPTURE_EVERY_MS) {
+    classifier.add(recording.label, feat);
+    recording.count++;
+    recording.lastCapture = now;
+    $('rec-text').textContent = `Grabando ${recording.label} · ${recording.count}`;
+  }
+
+  const pred = recording.active ? null : classifier.predict(feat);
+  const stable = smooth(pred);
+  draw(hands, stable);
+  updateReadout(feat, pred, stable, now);
+}
+
+/** Devuelve la etiqueta aceptada si se repite en la mayoría de los últimos fotogramas. */
+function smooth(pred) {
+  const th = STRICTNESS[settings.strict];
+  const ok = pred && pred.confidence >= th.conf && pred.distance <= th.dist;
+  history.push(ok ? pred.label : null);
+  if (history.length > SMOOTH_FRAMES) history.shift();
+  const counts = new Map();
+  for (const l of history) if (l) counts.set(l, (counts.get(l) || 0) + 1);
+  let best = null;
+  let bestN = 0;
+  for (const [l, n] of counts) if (n > bestN) [best, bestN] = [l, n];
+  return bestN >= SMOOTH_MIN ? best : null;
+}
+
+function updateReadout(feat, pred, stable, now) {
+  const glyph = $('glyph');
+  const label = $('readout-label');
+
+  if (stable !== current.label) current = { label: stable, since: now };
+
+  // Sin mano: permite repetir letra y, si dura, añade espacio.
+  if (!feat && now - lastHandAt >= HAND_GONE_MS) lastCommitted = null;
+  if (feat) autoSpaced = false;
+  if (
+    mode === 'translate' && settings.autospace && !feat && !autoSpaced &&
+    now - lastHandAt >= AUTO_SPACE_MS
+  ) {
+    autoSpaced = true;
+    addSpace();
+  }
+
+  // Texto del lector
+  let shown = '·';
+  if (!feat) {
+    label.textContent = 'Sin mano';
+  } else if (recording.active) {
+    label.textContent = 'Grabando ejemplos…';
+  } else if (classifier.samples.length === 0) {
+    label.textContent = 'Mano detectada';
+  } else if (!pred) {
+    label.textContent = `No hay ejemplos con ${feat.hands === 2 ? 'dos manos' : 'una mano'}`;
+    shown = '?';
+  } else if (!stable) {
+    label.textContent = 'No lo reconozco';
+    shown = '?';
+  } else {
+    label.textContent = isWord(stable) ? 'Palabra' : `Letra ${stable}`;
+    shown = stable;
+  }
+  if (glyph.textContent !== shown) {
+    glyph.textContent = shown;
+    glyph.classList.toggle('long', shown.length > 3);
+  }
+  renderRanking(pred);
+
+  // Progreso y aceptación del signo
+  let progress = 0;
+  let done = false;
+  if (stable && mode === 'translate') {
+    if (stable === lastCommitted) {
+      progress = 1;
+      done = true;
+    } else {
+      progress = Math.min(1, (now - current.since) / settings.hold);
+      if (progress >= 1) {
+        commit(stable);
+        lastCommitted = stable;
+        done = true;
+      }
+    }
+  }
+  ringFg.style.strokeDashoffset = String(RING_LEN * (1 - progress));
+  ringFg.classList.toggle('done', done);
+}
+
+let lastRankingKey = '';
+function renderRanking(pred) {
+  const top = pred ? pred.ranking.slice(0, 3) : [];
+  const key = top.map((r) => `${r.label}:${Math.round(r.share * 20)}`).join('|');
+  if (key === lastRankingKey) return;
+  lastRankingKey = key;
+  const ol = $('ranking');
+  ol.replaceChildren(
+    ...top.map((r) => {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = r.label;
+      const bar = document.createElement('span');
+      bar.className = 'bar';
+      const fill = document.createElement('i');
+      fill.style.width = `${Math.round(r.share * 100)}%`;
+      bar.append(fill);
+      const pct = document.createElement('span');
+      pct.className = 'pct';
+      pct.textContent = `${Math.round(r.share * 100)}%`;
+      li.append(name, bar, pct);
+      return li;
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dibujo de las manos
+// ---------------------------------------------------------------------------
+
+const TIPS = new Set([4, 8, 12, 16, 20]);
+
+function draw(hands, stableLabel) {
+  const W = video.videoWidth;
+  const H = video.videoHeight;
+  if (canvas.width !== W || canvas.height !== H) {
+    canvas.width = W;
+    canvas.height = H;
+  }
+  ctx.clearRect(0, 0, W, H);
+  const unit = W / 640;
+  const X = (p) => (1 - p.x) * W; // el vídeo se ve en espejo
+  const Y = (p) => p.y * H;
+
+  hands.forEach((lm, i) => {
+    const color = i === 0 ? '#6ae4ff' : '#ffb547';
+
+    // Huesos
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5 * unit;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 14 * unit;
+    ctx.beginPath();
+    for (const { start, end } of HandLandmarker.HAND_CONNECTIONS) {
+      ctx.moveTo(X(lm[start]), Y(lm[start]));
+      ctx.lineTo(X(lm[end]), Y(lm[end]));
+    }
+    ctx.stroke();
+
+    // Articulaciones
+    lm.forEach((p, idx) => {
+      const r = (TIPS.has(idx) ? 5 : 3) * unit;
+      ctx.fillStyle = TIPS.has(idx) ? '#ffffff' : color;
+      ctx.beginPath();
+      ctx.arc(X(p), Y(p), r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+
+    // Recuadro con esquinas
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of lm) {
+      minX = Math.min(minX, X(p)); maxX = Math.max(maxX, X(p));
+      minY = Math.min(minY, Y(p)); maxY = Math.max(maxY, Y(p));
+    }
+    const pad = 16 * unit;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const c = 14 * unit;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 2 * unit;
+    ctx.beginPath();
+    ctx.moveTo(minX, minY + c); ctx.lineTo(minX, minY); ctx.lineTo(minX + c, minY);
+    ctx.moveTo(maxX - c, minY); ctx.lineTo(maxX, minY); ctx.lineTo(maxX, minY + c);
+    ctx.moveTo(maxX, maxY - c); ctx.lineTo(maxX, maxY); ctx.lineTo(maxX - c, maxY);
+    ctx.moveTo(minX + c, maxY); ctx.lineTo(minX, maxY); ctx.lineTo(minX, maxY - c);
+    ctx.stroke();
+
+    // Etiqueta del signo sobre la primera mano
+    if (i === 0 && stableLabel) {
+      const size = 22 * unit;
+      ctx.font = `700 ${size}px "Chakra Petch", system-ui, sans-serif`;
+      const text = stableLabel;
+      const tw = ctx.measureText(text).width;
+      const bx = minX;
+      const by = Math.max(0, minY - size - 14 * unit);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(6, 9, 18, 0.85)';
+      ctx.fillRect(bx, by, tw + 20 * unit, size + 10 * unit);
+      ctx.strokeRect(bx, by, tw + 20 * unit, size + 10 * unit);
+      ctx.fillStyle = color;
+      ctx.textBaseline = 'top';
+      ctx.fillText(text, bx + 10 * unit, by + 6 * unit);
+    }
+    ctx.restore();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Texto
+// ---------------------------------------------------------------------------
+
+const textValue = () => entries.join('');
+
+function push(piece) {
+  entries.push(piece);
+  lastEntryAt = performance.now();
+  renderTranscript();
+}
+
+function lastWord() {
+  const words = textValue().trim().split(/\s+/);
+  return words[words.length - 1] || '';
+}
+
+function addSpace() {
+  const t = textValue();
+  if (!t || t.endsWith(' ')) return;
+  const word = lastWord();
+  push(' ');
+  if (settings.voice) speak(word);
+}
+
+function commit(label) {
+  if (label === 'ESPACIO') return addSpace();
+  if (label === 'BORRAR') return undo();
+  if (isWord(label)) {
+    const t = textValue();
+    const lead = t && !t.endsWith(' ') ? ' ' : '';
+    push(`${lead}${label} `);
+    if (settings.voice) speak(label);
+    return;
+  }
+  push(label);
+}
+
+function undo() {
+  entries.pop();
+  renderTranscript();
+}
+
+function renderTranscript() {
+  const el = $('transcript');
+  const fresh = performance.now() - lastEntryAt < 1200 && entries.length > 0;
+  const before = fresh ? entries.slice(0, -1).join('') : textValue();
+  const nodes = [document.createTextNode(before)];
+  if (fresh) {
+    const span = document.createElement('span');
+    span.className = 'new';
+    span.textContent = entries[entries.length - 1];
+    nodes.push(span);
+    setTimeout(renderTranscript, 1250);
+  }
+  const caret = document.createElement('span');
+  caret.className = 'caret';
+  nodes.push(caret);
+  el.replaceChildren(...nodes);
+}
+
+function speak(text) {
+  if (!('speechSynthesis' in window) || !text.trim()) return;
+  const u = new SpeechSynthesisUtterance(text.toLowerCase());
+  u.lang = 'es-ES';
+  const voice = speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith('es'));
+  if (voice) u.voice = voice;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+$('btn-space').addEventListener('click', () => {
+  if (textValue()) push(' ');
+});
+$('btn-undo').addEventListener('click', undo);
+$('btn-clear').addEventListener('click', () => {
+  entries.length = 0;
+  renderTranscript();
+});
+$('btn-copy').addEventListener('click', async () => {
+  const t = textValue().trim();
+  if (!t) return toast('Todavía no hay texto que copiar.');
+  try {
+    await navigator.clipboard.writeText(t);
+    toast('Texto copiado.');
+  } catch {
+    toast('No se pudo copiar. Selecciona el texto y usa Ctrl+C.');
+  }
+});
+$('btn-speak').addEventListener('click', () => {
+  const t = textValue().trim();
+  if (!t) return toast('Todavía no hay texto que leer.');
+  if (!('speechSynthesis' in window)) return toast('Este navegador no puede leer en voz alta.');
+  speak(t);
+});
+
+// ---------------------------------------------------------------------------
+// Modos
+// ---------------------------------------------------------------------------
+
+function setMode(next) {
+  mode = next;
+  for (const tab of document.querySelectorAll('.tab')) {
+    tab.setAttribute('aria-selected', String(tab.dataset.mode === next));
+  }
+  $('panel-translate').hidden = next !== 'translate';
+  $('panel-train').hidden = next !== 'train';
+  // El signo que ya estás haciendo al cambiar de modo no se escribe de golpe.
+  lastCommitted = current.label;
+  refreshTrainUI();
+}
+
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.addEventListener('click', () => setMode(tab.dataset.mode));
+}
+for (const link of document.querySelectorAll('[data-goto]')) {
+  link.addEventListener('click', () => setMode(link.dataset.goto));
+}
+
+// ---------------------------------------------------------------------------
+// Entrenamiento
+// ---------------------------------------------------------------------------
+
+function chip(label, extraClass = '') {
+  const b = document.createElement('button');
+  b.type = 'button';
+  const n = classifier.countFor(label);
+  b.className = `chip ${extraClass} ${n > 0 ? 'trained' : ''}`.trim();
+  b.setAttribute('aria-pressed', String(label === selectedLabel));
+  const name = document.createElement('span');
+  name.className = isWord(label) ? 'word' : '';
+  name.textContent = label;
+  const count = document.createElement('small');
+  count.textContent = n;
+  b.append(name, count);
+  b.addEventListener('click', () => {
+    selectedLabel = label;
+    refreshTrainUI();
+  });
+  return b;
+}
+
+function refreshTrainUI() {
+  $('grid-letters').replaceChildren(...LETTERS.map((l) => chip(l)));
+  $('grid-words').replaceChildren(
+    ...allWordLabels().map((w) => chip(w, COMMANDS.includes(w) ? 'cmd' : '')),
+  );
+  const n = classifier.countFor(selectedLabel);
+  const g = $('train-glyph');
+  g.textContent = selectedLabel;
+  g.classList.toggle('long', selectedLabel.length > 3);
+  $('train-count').textContent = n;
+  $('train-tip').textContent =
+    selectedLabel === 'ESPACIO' ? 'Un gesto que uses para separar palabras.'
+    : selectedLabel === 'BORRAR' ? 'Un gesto que uses para borrar lo último escrito.'
+    : n === 0 ? 'Graba al menos 30 ejemplos, moviendo un poco la mano.'
+    : n < 30 ? 'Graba otra tanda para que lo reconozca mejor.'
+    : 'Bien entrenado. Otra tanda desde otro ángulo lo hará más robusto.';
+  $('hud-samples').textContent = classifier.samples.length;
+  $('empty-note').hidden = classifier.samples.length > 0;
+}
+
+async function record() {
+  if (recording.active) return;
+  if (!landmarker) return toast('Primero activa la cámara.');
+  Object.assign(recording, { active: true, phase: 'countdown', label: selectedLabel, count: 0, lastCapture: 0 });
+  $('btn-record').disabled = true;
+  $('rec-banner').hidden = false;
+  for (const n of [3, 2, 1]) {
+    $('rec-text').textContent = `Prepara el signo ${recording.label} · ${n}`;
+    await sleep(600);
+  }
+  recording.phase = 'capture';
+  $('rec-text').textContent = `Grabando ${recording.label} · 0`;
+  await sleep(RECORD_MS);
+  recording.phase = 'idle';
+  recording.active = false;
+  $('rec-banner').hidden = true;
+  $('btn-record').disabled = false;
+
+  if (recording.count === 0) {
+    toast('No vi ninguna mano. Ponla dentro del recuadro y repite.');
+  } else {
+    if (!classifier.save()) toast('Ejemplos añadidos, pero el navegador no deja guardarlos. Expórtalos para no perderlos.');
+    else toast(`+${recording.count} ejemplos de ${recording.label}`);
+  }
+  refreshTrainUI();
+}
+
+$('btn-record').addEventListener('click', record);
+
+function confirmTwice(btn, label, action) {
+  if (btn.dataset.armed === '1') {
+    btn.dataset.armed = '';
+    btn.textContent = label;
+    action();
+    return;
+  }
+  btn.dataset.armed = '1';
+  btn.textContent = 'Pulsa otra vez para confirmar';
+  setTimeout(() => {
+    btn.dataset.armed = '';
+    btn.textContent = label;
+  }, 3000);
+}
+
+$('btn-forget').addEventListener('click', (e) =>
+  confirmTwice(e.currentTarget, 'Borrar este signo', () => {
+    classifier.removeLabel(selectedLabel);
+    if (customWords.includes(selectedLabel)) {
+      customWords = customWords.filter((w) => w !== selectedLabel);
+      saveJSON(WORDS_KEY, customWords);
+      selectedLabel = 'A';
+    }
+    classifier.save();
+    refreshTrainUI();
+    toast('Signo borrado.');
+  }),
+);
+
+$('btn-reset').addEventListener('click', (e) =>
+  confirmTwice(e.currentTarget, 'Borrar todo', () => {
+    classifier.clear();
+    classifier.save();
+    customWords = [];
+    saveJSON(WORDS_KEY, customWords);
+    selectedLabel = 'A';
+    refreshTrainUI();
+    toast('Todos los ejemplos borrados.');
+  }),
+);
+
+$('form-word').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('input-word');
+  const word = input.value.trim().toUpperCase().replace(/\s+/g, ' ');
+  if (!word) return;
+  if (!LETTERS.includes(word) && !allWordLabels().includes(word)) {
+    customWords.push(word);
+    saveJSON(WORDS_KEY, customWords);
+  }
+  selectedLabel = word;
+  input.value = '';
+  refreshTrainUI();
+});
+
+$('btn-export').addEventListener('click', () => {
+  if (classifier.samples.length === 0) return toast('Todavía no hay ejemplos que exportar.');
+  const data = { ...classifier.toJSON(), words: customWords };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'signa-ejemplos.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+$('input-import').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const incoming = new SignClassifier();
+    incoming.load(data);
+    classifier.samples.push(...incoming.samples);
+    if (Array.isArray(data.words)) {
+      for (const w of data.words) if (typeof w === 'string' && !customWords.includes(w)) customWords.push(w);
+      saveJSON(WORDS_KEY, customWords);
+    }
+    classifier.save();
+    refreshTrainUI();
+    toast(`Importados ${incoming.samples.length} ejemplos.`);
+  } catch (err) {
+    toast(err.message?.startsWith('El archivo') ? err.message : 'Ese archivo no es una copia de Signa.');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Ajustes
+// ---------------------------------------------------------------------------
+
+function bindSettings() {
+  const hold = $('set-hold');
+  const strict = $('set-strict');
+  const showHold = () => ($('out-hold').textContent = `${(settings.hold / 1000).toFixed(1).replace('.', ',')} s`);
+  const showStrict = () => ($('out-strict').textContent = STRICTNESS[settings.strict].name);
+
+  hold.value = settings.hold;
+  strict.value = settings.strict;
+  showHold();
+  showStrict();
+  hold.addEventListener('input', () => {
+    settings.hold = Number(hold.value);
+    showHold();
+    saveJSON(SETTINGS_KEY, settings);
+  });
+  strict.addEventListener('input', () => {
+    settings.strict = Number(strict.value);
+    showStrict();
+    saveJSON(SETTINGS_KEY, settings);
+  });
+  for (const key of ['autospace', 'voice', 'mirror']) {
+    const box = $(`set-${key}`);
+    box.checked = settings[key];
+    box.addEventListener('change', () => {
+      settings[key] = box.checked;
+      saveJSON(SETTINGS_KEY, settings);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Teclado
+// ---------------------------------------------------------------------------
+
+document.addEventListener('keydown', (e) => {
+  if (e.code !== 'Space' || e.repeat) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+  e.preventDefault();
+  if (mode === 'train') record();
+  else if (textValue()) push(' ');
+});
+
+// Las voces del navegador se cargan con retraso.
+if ('speechSynthesis' in window) speechSynthesis.getVoices();
+
+bindSettings();
+refreshTrainUI();
+renderTranscript();

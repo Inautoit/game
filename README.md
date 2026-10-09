@@ -51,6 +51,11 @@ assets/         Modelos 3D (.glb) — ver assets/README.md
 Exporta tu modelo como `assets/car.glb` y el juego lo usará
 automáticamente. Detalles en [`assets/README.md`](assets/README.md).
 
+## Otros proyectos del repo
+
+- [`signos/`](signos/README.md): **Signa**, un traductor de lengua de signos que
+  detecta tus manos con la cámara y escribe lo que signas.
+
 ## Próximas mejoras posibles
 
 - Coche importado con materiales reales
