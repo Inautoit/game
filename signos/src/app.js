@@ -2,6 +2,7 @@ import { FilesetResolver, HandLandmarker } from '../vendor/mediapipe/vision_bund
 import { extractFeatures } from './features.js';
 import { SignClassifier } from './classifier.js';
 import { recognize, MOTION_VARIANTS, AUTO_LABELS } from './rules.js';
+import { Typist } from './typist.js';
 import {
   LETTERS as LETTER_DATA, NUMBERS as NUMBER_DATA, COMMANDS as COMMAND_DATA,
   CATEGORIES, GRAMMAR, PHRASES,
@@ -39,15 +40,19 @@ const STRICTNESS = {
   5: { conf: 0.8, dist: 0.2, name: 'muy alta' },
 };
 
-const SMOOTH_FRAMES = 8;     // fotogramas para suavizar la predicción
-const SMOOTH_MIN = 5;        // votos mínimos dentro de esa ventana
-const HAND_GONE_MS = 250;    // sin mano este tiempo = puedes repetir la misma letra
+const SMOOTH_FRAMES = 6;     // fotogramas para suavizar la predicción
+const SMOOTH_MIN = 4;        // votos mínimos dentro de esa ventana
+// Una letra ya escrita no se repite mientras la mantengas. Para repetirla, baja
+// la mano este tiempo (más que un parpadeo del detector) o haz otra letra antes.
+const HAND_GONE_MS = 700;
+const DEFAULT_HOLD = 350;
 const AUTO_SPACE_MS = 1200;  // sin mano este tiempo = espacio automático
 const MOTION_WINDOW_MS = 700;
 const MOTION_MIN = 1.2;      // recorrido mínimo (en largos de palma) para CH, LL, Ñ, RR, J
 const RECORD_MS = 3000;
 const CAPTURE_EVERY_MS = 60;
-const SETTINGS_KEY = 'signa.settings.v1';
+const SETTINGS_KEY = 'signa.settings.v2';
+const OLD_SETTINGS_KEY = 'signa.settings.v1';
 const WORDS_KEY = 'signa.words.v1';
 
 // ---------------------------------------------------------------------------
@@ -68,8 +73,8 @@ const RING_LEN = 2 * Math.PI * 52;
 const classifier = new SignClassifier();
 classifier.restore();
 
-const settings = loadJSON(SETTINGS_KEY, {
-  hold: 700,
+const settings = loadSettings({
+  hold: DEFAULT_HOLD,
   strict: 3,
   auto: true,
   spell: 'letters',
@@ -84,15 +89,11 @@ let mode = 'translate';
 let selectedLabel = 'A';
 let trainGroup = 'letras';
 const motionBuf = [];
-let motionLock = null;
 let lastVideoTime = -1;
 let fps = { frames: 0, since: performance.now() };
 
 const history = [];          // predicciones recientes (o null)
-let current = { label: null, since: 0 };
-let lastCommitted = null;
-let lastHandAt = 0;
-let autoSpaced = true;
+const typist = new Typist({ handGoneMs: HAND_GONE_MS, autoSpaceMs: AUTO_SPACE_MS });
 
 /** Cada entrada es el trozo de texto que añadió un signo, para poder deshacer. */
 const entries = [];
@@ -110,6 +111,17 @@ function loadJSON(key, fallback) {
     return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
   } catch {
     return fallback;
+  }
+}
+
+/** Ajustes guardados; los de la versión anterior conservan todo menos el tiempo, que ahora es más rápido. */
+function loadSettings(defaults) {
+  try {
+    if (localStorage.getItem(SETTINGS_KEY)) return loadJSON(SETTINGS_KEY, defaults);
+    const old = loadJSON(OLD_SETTINGS_KEY, defaults);
+    return { ...old, hold: DEFAULT_HOLD };
+  } catch {
+    return defaults;
   }
 }
 
@@ -195,15 +207,29 @@ function movement() {
 // Cámara y modelo
 // ---------------------------------------------------------------------------
 
+/** Buscar una sola mano es más rápido; dos solo para números o signos entrenados con dos manos. */
+function handsNeeded() {
+  const two = mode === 'train' || settings.spell === 'numbers' || classifier.samples.some((s) => s.hands === 2);
+  return two ? 2 : 1;
+}
+
+let handsConfigured = 0;
+async function syncHandCount() {
+  const n = handsNeeded();
+  if (!landmarker || n === handsConfigured) return;
+  handsConfigured = n;
+  await landmarker.setOptions({ numHands: n });
+}
+
 async function createLandmarker() {
   const base = new URL('../vendor/mediapipe/', import.meta.url);
   const fileset = await FilesetResolver.forVisionTasks(new URL('wasm', base).href);
   const options = (delegate) => ({
     baseOptions: { modelAssetPath: new URL('hand_landmarker.task', base).href, delegate },
     runningMode: 'VIDEO',
-    numHands: 2,
-    minHandDetectionConfidence: 0.6,
-    minHandPresenceConfidence: 0.6,
+    numHands: handsNeeded(),
+    minHandDetectionConfidence: 0.5,
+    minHandPresenceConfidence: 0.5,
     minTrackingConfidence: 0.5,
   });
   try {
@@ -222,7 +248,8 @@ async function startCamera() {
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      // El detector trabaja a baja resolución: más píxeles solo lo ralentizan.
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
       audio: false,
     });
     video.srcObject = stream;
@@ -250,6 +277,7 @@ $('btn-start').addEventListener('click', async () => {
   try {
     const [lm] = await Promise.all([landmarker ?? createLandmarker(), startCamera()]);
     landmarker = lm;
+    handsConfigured = handsNeeded();
     $('start').hidden = true;
     setStatus('En directo', 'live');
     requestAnimationFrame(loop);
@@ -285,7 +313,6 @@ function loop() {
   $('hud-hands').textContent = hands.length;
 
   const feat = extractFeatures(hands, aspect, settings.mirror);
-  if (feat) lastHandAt = now;
 
   // Grabación de ejemplos
   if (recording.phase === 'capture' && feat && now - recording.lastCapture >= CAPTURE_EVERY_MS) {
@@ -328,37 +355,31 @@ function updateReadout(feat, pred, stable, now) {
   const glyph = $('glyph');
   const label = $('readout-label');
 
-  if (stable !== current.label) current = { label: stable, since: now };
+  const moving = stable && MOTION_VARIANTS[stable] && settings.spell === 'letters' && movement() >= MOTION_MIN;
+  const step = typist.update({
+    now,
+    hand: Boolean(feat),
+    stable,
+    holdMs: settings.hold,
+    writing: mode === 'translate',
+    autoSpace: settings.autospace,
+    variant: moving ? MOTION_VARIANTS[stable] : undefined,
+  });
 
-  // Sin mano: permite repetir letra y, si dura, añade espacio.
-  if (!feat && now - lastHandAt >= HAND_GONE_MS) lastCommitted = null;
-  if (feat) autoSpaced = false;
-  if (
-    mode === 'translate' && settings.autospace && !feat && !autoSpaced &&
-    now - lastHandAt >= AUTO_SPACE_MS
-  ) {
-    autoSpaced = true;
-    addSpace();
-  }
-
-  // Letras con movimiento (CH, LL, Ñ, RR, J): forma estática + desplazamiento.
-  if (!feat || (stable && stable !== motionLock)) motionLock = null;
-  if (
-    mode === 'translate' && stable && MOTION_VARIANTS[stable] && settings.spell === 'letters' &&
-    motionLock !== stable && movement() >= MOTION_MIN
-  ) {
-    const variant = MOTION_VARIANTS[stable];
-    if (entries[entries.length - 1] === stable && now - lastEntryAt < 2500) {
-      entries[entries.length - 1] = variant;
+  if (step.space) addSpace();
+  if (step.variant) {
+    // La forma base ya escrita se convierte en la letra con movimiento (C → CH).
+    const { base, label: v } = step.variant;
+    if (entries[entries.length - 1] === base && now - lastEntryAt < 2500) {
+      entries[entries.length - 1] = v;
       lastEntryAt = now;
       renderTranscript();
     } else {
-      push(variant);
+      push(v);
     }
-    lastCommitted = stable;
-    motionLock = stable;
   }
-  const display = stable && motionLock === stable ? MOTION_VARIANTS[stable] : stable;
+  if (step.commit) commit(step.commit);
+  const display = step.display;
 
   // Texto del lector
   let shown = '·';
@@ -380,24 +401,8 @@ function updateReadout(feat, pred, stable, now) {
   }
   renderRanking(pred);
 
-  // Progreso y aceptación del signo
-  let progress = 0;
-  let done = false;
-  if (stable && mode === 'translate') {
-    if (stable === lastCommitted) {
-      progress = 1;
-      done = true;
-    } else {
-      progress = Math.min(1, (now - current.since) / settings.hold);
-      if (progress >= 1) {
-        commit(stable);
-        lastCommitted = stable;
-        done = true;
-      }
-    }
-  }
-  ringFg.style.strokeDashoffset = String(RING_LEN * (1 - progress));
-  ringFg.classList.toggle('done', done);
+  ringFg.style.strokeDashoffset = String(RING_LEN * (1 - step.progress));
+  ringFg.classList.toggle('done', step.done);
 }
 
 let lastRankingKey = '';
@@ -622,7 +627,7 @@ function setMode(next) {
   $('panel-dict').hidden = next !== 'dict';
   if (next === 'dict') renderDict();
   // El signo que ya estás haciendo al cambiar de modo no se escribe de golpe.
-  lastCommitted = current.label;
+  typist.suppressCurrent();
   refreshTrainUI();
 }
 
@@ -708,6 +713,7 @@ function refreshTrainUI() {
   $('train-how').textContent = info ? `${info.t ? `${info.t}: ` : ''}${info.h}` : '';
   $('hud-samples').textContent = classifier.samples.length;
   $('empty-note').hidden = classifier.samples.some((s) => isWord(s.label));
+  syncHandCount();
 }
 
 // ---------------------------------------------------------------------------
@@ -937,7 +943,8 @@ $('input-import').addEventListener('change', async (e) => {
 function bindSettings() {
   const hold = $('set-hold');
   const strict = $('set-strict');
-  const showHold = () => ($('out-hold').textContent = `${(settings.hold / 1000).toFixed(1).replace('.', ',')} s`);
+  const showHold = () =>
+    ($('out-hold').textContent = `${(settings.hold / 1000).toFixed(2).replace(/0$/, '').replace('.', ',')} s`);
   const showStrict = () => ($('out-strict').textContent = STRICTNESS[settings.strict].name);
 
   hold.value = settings.hold;
@@ -963,6 +970,7 @@ function bindSettings() {
     b.addEventListener('click', () => {
       settings.spell = b.dataset.spell;
       history.length = 0;
+      syncHandCount();
       showSpell();
       saveJSON(SETTINGS_KEY, settings);
     });

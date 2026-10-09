@@ -9,9 +9,10 @@ sin instalar nada. El vídeo se procesa en tu equipo y no se envía a ningún si
 1. Pulsa **Activar cámara** y acepta el permiso.
 2. En **Traducir**, elige **Letras** o **Números** y deletrea. La mayoría del
    abecedario, los números del 0 al 10 y BIEN / MAL se reconocen **sin entrenar**.
-   Mantén el signo hasta que se llene el círculo y se escribe en el texto.
+   Mantén el signo un instante (0,35 s, ajustable) y se escribe en el texto.
+   - Una letra escrita **no se repite** aunque mantengas la mano. Para repetirla
+     (por ejemplo, la doble C de *acción*), baja la mano casi un segundo.
    - CH, LL, Ñ, RR y J: haz la forma base (C, L, N, R, I) y muévela.
-   - Para repetir la misma letra (por ejemplo, la doble C de *acción*), baja la mano un momento.
    - Si retiras la mano más de 1 segundo, se añade un espacio.
 3. En **Entrenar**, elige un tema (saludos, familia, verbos…) y un signo, y pulsa
    **Grabar 3 s** (o la tecla `Espacio`). Haz 1–2 tandas moviendo un poco la mano.
@@ -36,8 +37,9 @@ archivo `.json` para usarlos en otro equipo o compartirlos.
 - Los puntos se normalizan respecto a la muñeca y al tamaño de la mano, así que
   da igual en qué parte de la imagen esté la mano o a qué distancia.
 - Un clasificador **k-vecinos** compara la postura con tus ejemplos y vota.
-  La predicción se suaviza durante varios fotogramas y solo se acepta si se
-  mantiene el tiempo configurado.
+- `src/typist.js` decide cuándo un signo se escribe: tras mantenerlo el tiempo
+  configurado, sin repetirlo mientras sigas con la mano. Se prueba con
+  `node signos/tests/typist.test.mjs`.
 
 ## Limitaciones
 
