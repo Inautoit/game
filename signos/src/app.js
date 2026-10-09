@@ -1,17 +1,34 @@
 import { FilesetResolver, HandLandmarker } from '../vendor/mediapipe/vision_bundle.mjs';
 import { extractFeatures } from './features.js';
 import { SignClassifier } from './classifier.js';
+import { recognize, MOTION_VARIANTS, AUTO_LABELS } from './rules.js';
+import {
+  LETTERS as LETTER_DATA, NUMBERS as NUMBER_DATA, COMMANDS as COMMAND_DATA,
+  CATEGORIES, GRAMMAR, PHRASES,
+} from './lse-data.js';
 
 // ---------------------------------------------------------------------------
 // Datos fijos
 // ---------------------------------------------------------------------------
 
-// Abecedario dactilológico de la Lengua de Signos Española.
-const LETTERS = [
-  'A', 'B', 'C', 'CH', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'LL', 'M',
-  'N', 'Ñ', 'O', 'P', 'Q', 'R', 'RR', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+const LETTERS = LETTER_DATA.map((x) => x.g);
+const NUMBERS = NUMBER_DATA.map((x) => x.g);
+const COMMANDS = COMMAND_DATA.map((x) => x.g);
+
+/** Glosa → { g, t, h } con la descripción de la guía. */
+const INFO = new Map();
+for (const x of [...LETTER_DATA, ...NUMBER_DATA, ...COMMAND_DATA, ...CATEGORIES.flatMap((c) => c.items)]) {
+  INFO.set(x.g, x);
+}
+
+const TRAIN_GROUPS = [
+  { id: 'letras', title: 'Abecedario', labels: LETTERS },
+  { id: 'numeros', title: 'Números', labels: NUMBERS },
+  ...CATEGORIES.map((c) => ({ id: c.id, title: c.title, labels: c.items.map((i) => i.g) })),
+  { id: 'comandos', title: 'Comandos de Signa', labels: COMMANDS },
+  { id: 'mias', title: 'Mis palabras', labels: null },
 ];
-const COMMANDS = ['ESPACIO', 'BORRAR'];
+const KNOWN = new Set(TRAIN_GROUPS.flatMap((g) => g.labels || []));
 
 // Exigencia: confianza mínima del voto y distancia máxima al ejemplo más cercano.
 const STRICTNESS = {
@@ -26,6 +43,8 @@ const SMOOTH_FRAMES = 8;     // fotogramas para suavizar la predicción
 const SMOOTH_MIN = 5;        // votos mínimos dentro de esa ventana
 const HAND_GONE_MS = 250;    // sin mano este tiempo = puedes repetir la misma letra
 const AUTO_SPACE_MS = 1200;  // sin mano este tiempo = espacio automático
+const MOTION_WINDOW_MS = 700;
+const MOTION_MIN = 1.2;      // recorrido mínimo (en largos de palma) para CH, LL, Ñ, RR, J
 const RECORD_MS = 3000;
 const CAPTURE_EVERY_MS = 60;
 const SETTINGS_KEY = 'signa.settings.v1';
@@ -52,6 +71,8 @@ classifier.restore();
 const settings = loadJSON(SETTINGS_KEY, {
   hold: 700,
   strict: 3,
+  auto: true,
+  spell: 'letters',
   autospace: true,
   voice: false,
   mirror: false,
@@ -61,6 +82,9 @@ let customWords = loadWords();
 let landmarker = null;
 let mode = 'translate';
 let selectedLabel = 'A';
+let trainGroup = 'letras';
+const motionBuf = [];
+let motionLock = null;
 let lastVideoTime = -1;
 let fps = { frames: 0, since: performance.now() };
 
@@ -123,13 +147,48 @@ function setStatus(text, kind = '') {
 }
 
 function isWord(label) {
-  return !LETTERS.includes(label);
+  return !LETTERS.includes(label) && !NUMBERS.includes(label);
 }
 
-function allWordLabels() {
-  const set = new Set([...COMMANDS, ...customWords]);
-  for (const s of classifier.samples) if (isWord(s.label)) set.add(s.label);
+/** Palabras propias: las añadidas a mano y las que vengan en un archivo importado. */
+function customLabels() {
+  const set = new Set(customWords);
+  for (const s of classifier.samples) if (!KNOWN.has(s.label)) set.add(s.label);
   return [...set];
+}
+
+function groupLabels(id) {
+  const g = TRAIN_GROUPS.find((x) => x.id === id);
+  return g?.labels ?? customLabels();
+}
+
+function kindOf(label) {
+  if (NUMBERS.includes(label)) return `Número ${label}`;
+  if (LETTERS.includes(label)) return `Letra ${label}`;
+  return 'Palabra';
+}
+
+// Movimiento de la mano en los últimos instantes, medido en largos de palma.
+function trackMotion(hands, aspect, now) {
+  if (!hands.length) {
+    motionBuf.length = 0;
+    return;
+  }
+  const lm = hands[0];
+  const size = Math.hypot((lm[9].x - lm[0].x) * aspect, lm[9].y - lm[0].y) || 1e-6;
+  motionBuf.push({ t: now, x: lm[5].x * aspect, y: lm[5].y, size });
+  while (motionBuf.length && now - motionBuf[0].t > MOTION_WINDOW_MS) motionBuf.shift();
+}
+
+function movement() {
+  if (motionBuf.length < 3) return 0;
+  let path = 0;
+  let size = 0;
+  for (let i = 1; i < motionBuf.length; i++) {
+    path += Math.hypot(motionBuf[i].x - motionBuf[i - 1].x, motionBuf[i].y - motionBuf[i - 1].y);
+    size += motionBuf[i].size;
+  }
+  return path / (size / (motionBuf.length - 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +273,7 @@ function loop() {
   const now = performance.now();
   const result = landmarker.detectForVideo(video, now);
   const hands = result.landmarks || [];
+  const worlds = result.worldLandmarks || [];
   const aspect = video.videoWidth / video.videoHeight || 16 / 9;
 
   // FPS
@@ -235,7 +295,16 @@ function loop() {
     $('rec-text').textContent = `Grabando ${recording.label} · ${recording.count}`;
   }
 
-  const pred = recording.active ? null : classifier.predict(feat);
+  trackMotion(hands, aspect, now);
+
+  // Primero tus ejemplos; si no encajan, las reglas automáticas de la guía.
+  let pred = recording.active ? null : classifier.predict(feat);
+  const th = STRICTNESS[settings.strict];
+  const knnOk = pred && pred.confidence >= th.conf && pred.distance <= th.dist;
+  if (!recording.active && !knnOk && settings.auto && hands.length) {
+    const rule = recognize(hands, worlds, aspect, settings.spell);
+    if (rule) pred = { label: rule, confidence: 1, distance: 0, ranking: [{ label: rule, share: 1 }], auto: true };
+  }
   const stable = smooth(pred);
   draw(hands, stable);
   updateReadout(feat, pred, stable, now);
@@ -272,27 +341,42 @@ function updateReadout(feat, pred, stable, now) {
     addSpace();
   }
 
+  // Letras con movimiento (CH, LL, Ñ, RR, J): forma estática + desplazamiento.
+  if (!feat || (stable && stable !== motionLock)) motionLock = null;
+  if (
+    mode === 'translate' && stable && MOTION_VARIANTS[stable] && settings.spell === 'letters' &&
+    motionLock !== stable && movement() >= MOTION_MIN
+  ) {
+    const variant = MOTION_VARIANTS[stable];
+    if (entries[entries.length - 1] === stable && now - lastEntryAt < 2500) {
+      entries[entries.length - 1] = variant;
+      lastEntryAt = now;
+      renderTranscript();
+    } else {
+      push(variant);
+    }
+    lastCommitted = stable;
+    motionLock = stable;
+  }
+  const display = stable && motionLock === stable ? MOTION_VARIANTS[stable] : stable;
+
   // Texto del lector
   let shown = '·';
   if (!feat) {
     label.textContent = 'Sin mano';
   } else if (recording.active) {
     label.textContent = 'Grabando ejemplos…';
-  } else if (classifier.samples.length === 0) {
-    label.textContent = 'Mano detectada';
-  } else if (!pred) {
-    label.textContent = `No hay ejemplos con ${feat.hands === 2 ? 'dos manos' : 'una mano'}`;
-    shown = '?';
   } else if (!stable) {
-    label.textContent = 'No lo reconozco';
+    label.textContent = pred || classifier.samples.length || settings.auto ? 'No lo reconozco' : 'Mano detectada';
     shown = '?';
   } else {
-    label.textContent = isWord(stable) ? 'Palabra' : `Letra ${stable}`;
-    shown = stable;
+    label.textContent = `${kindOf(display)}${pred?.auto ? ' · automático' : ''}`;
+    shown = display;
   }
   if (glyph.textContent !== shown) {
     glyph.textContent = shown;
     glyph.classList.toggle('long', shown.length > 3);
+    $('readout-help').textContent = display ? INFO.get(display)?.h ?? '' : '';
   }
   renderRanking(pred);
 
@@ -535,6 +619,8 @@ function setMode(next) {
   }
   $('panel-translate').hidden = next !== 'translate';
   $('panel-train').hidden = next !== 'train';
+  $('panel-dict').hidden = next !== 'dict';
+  if (next === 'dict') renderDict();
   // El signo que ya estás haciendo al cambiar de modo no se escribe de golpe.
   lastCommitted = current.label;
   refreshTrainUI();
@@ -557,6 +643,12 @@ function chip(label, extraClass = '') {
   const n = classifier.countFor(label);
   b.className = `chip ${extraClass} ${n > 0 ? 'trained' : ''}`.trim();
   b.setAttribute('aria-pressed', String(label === selectedLabel));
+  if (AUTO_LABELS.has(label)) {
+    const dot = document.createElement('span');
+    dot.className = 'auto-dot';
+    dot.title = 'Se reconoce sin entrenar';
+    b.append(dot);
+  }
   const name = document.createElement('span');
   name.className = isWord(label) ? 'word' : '';
   name.textContent = label;
@@ -570,25 +662,154 @@ function chip(label, extraClass = '') {
   return b;
 }
 
-function refreshTrainUI() {
-  $('grid-letters').replaceChildren(...LETTERS.map((l) => chip(l)));
-  $('grid-words').replaceChildren(
-    ...allWordLabels().map((w) => chip(w, COMMANDS.includes(w) ? 'cmd' : '')),
+function fillGroupSelect() {
+  const sel = $('train-cat');
+  sel.replaceChildren(
+    ...TRAIN_GROUPS.map((g) => {
+      const o = document.createElement('option');
+      o.value = g.id;
+      o.textContent = g.title;
+      return o;
+    }),
   );
+  sel.addEventListener('change', () => {
+    trainGroup = sel.value;
+    const labels = groupLabels(trainGroup);
+    if (!labels.includes(selectedLabel)) selectedLabel = labels[0] ?? selectedLabel;
+    refreshTrainUI();
+  });
+}
+
+function trainTip(label, n) {
+  if (label === 'ESPACIO') return 'Un gesto que uses para separar palabras.';
+  if (label === 'BORRAR') return 'Un gesto que uses para borrar lo último escrito.';
+  if (AUTO_LABELS.has(label) && n === 0) return 'Ya se reconoce sin entrenar. Si grabas ejemplos tuyos, tendrán prioridad.';
+  if (isWord(label) && n === 0) return 'Haz el signo completo durante la grabación. Signa aprende la forma de la mano.';
+  if (n === 0) return 'Graba al menos 30 ejemplos, moviendo un poco la mano.';
+  if (n < 30) return 'Graba otra tanda para que lo reconozca mejor.';
+  return 'Bien entrenado. Otra tanda desde otro ángulo lo hará más robusto.';
+}
+
+function refreshTrainUI() {
+  $('train-cat').value = trainGroup;
+  const labels = groupLabels(trainGroup);
+  const grid = $('grid-labels');
+  grid.classList.toggle('words', labels.some(isWord));
+  grid.replaceChildren(...labels.map((l) => chip(l, COMMANDS.includes(l) ? 'cmd' : '')));
+  $('form-word').hidden = trainGroup !== 'mias';
+
   const n = classifier.countFor(selectedLabel);
   const g = $('train-glyph');
   g.textContent = selectedLabel;
   g.classList.toggle('long', selectedLabel.length > 3);
   $('train-count').textContent = n;
-  $('train-tip').textContent =
-    selectedLabel === 'ESPACIO' ? 'Un gesto que uses para separar palabras.'
-    : selectedLabel === 'BORRAR' ? 'Un gesto que uses para borrar lo último escrito.'
-    : n === 0 ? 'Graba al menos 30 ejemplos, moviendo un poco la mano.'
-    : n < 30 ? 'Graba otra tanda para que lo reconozca mejor.'
-    : 'Bien entrenado. Otra tanda desde otro ángulo lo hará más robusto.';
+  $('train-tip').textContent = trainTip(selectedLabel, n);
+  const info = INFO.get(selectedLabel);
+  $('train-how').textContent = info ? `${info.t ? `${info.t}: ` : ''}${info.h}` : '';
   $('hud-samples').textContent = classifier.samples.length;
-  $('empty-note').hidden = classifier.samples.length > 0;
+  $('empty-note').hidden = classifier.samples.some((s) => isWord(s.label));
 }
+
+// ---------------------------------------------------------------------------
+// Diccionario
+// ---------------------------------------------------------------------------
+
+const fold = (t) => t.normalize('NFD').replace(/[\u0300-\u036f¿?¡!]/g, '').toLowerCase();
+
+const DICT_SECTIONS = [
+  { id: 'letras', title: 'Abecedario dactilológico', note: 'Con una sola mano, a la altura del hombro, palma hacia fuera.', items: LETTER_DATA },
+  { id: 'numeros', title: 'Números', note: 'Del 1 al 5 con una mano; del 6 al 9 se combinan las dos (5 + lo que falte).', items: NUMBER_DATA },
+  ...CATEGORIES,
+];
+
+function renderDict() {
+  const q = fold($('dict-search').value.trim());
+  const sections = [];
+  for (const sec of DICT_SECTIONS) {
+    const items = sec.items.filter((it) => !q || fold(`${it.t ?? it.g} ${it.h}`).includes(q));
+    if (!items.length) continue;
+    const wrap = document.createElement('section');
+    wrap.className = 'dict-cat';
+    const h = document.createElement('h2');
+    h.className = 'group-title';
+    h.textContent = sec.title;
+    wrap.append(h);
+    if (sec.note && !q) {
+      const p = document.createElement('p');
+      p.textContent = sec.note;
+      wrap.append(p);
+    }
+    for (const it of items) wrap.append(dictItem(it, sec.id));
+    sections.push(wrap);
+  }
+  if (!sections.length) {
+    const p = document.createElement('p');
+    p.className = 'dict-empty';
+    p.textContent = 'No hay ningún signo con ese nombre en la guía.';
+    sections.push(p);
+  }
+  $('dict-list').replaceChildren(...sections);
+}
+
+function dictItem(it, groupId) {
+  const el = document.createElement('article');
+  el.className = 'dict-item';
+  const h = document.createElement('h3');
+  h.textContent = it.t ?? it.g;
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.type = 'button';
+  btn.textContent = 'Entrenar';
+  btn.addEventListener('click', () => {
+    trainGroup = groupId;
+    selectedLabel = it.g;
+    setMode('train');
+    $('panel-train').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  const p = document.createElement('p');
+  p.textContent = it.h;
+  el.append(h, btn, p);
+
+  const n = classifier.countFor(it.g);
+  if (AUTO_LABELS.has(it.g) || n > 0) {
+    const badges = document.createElement('div');
+    badges.className = 'dict-badges';
+    if (AUTO_LABELS.has(it.g)) badges.append(badge('Automático', 'auto'));
+    if (n > 0) badges.append(badge(`Entrenado · ${n}`, 'trained'));
+    el.append(badges);
+  }
+  return el;
+}
+
+function badge(text, cls) {
+  const b = document.createElement('span');
+  b.className = `badge ${cls}`;
+  b.textContent = text;
+  return b;
+}
+
+function renderGuide() {
+  $('grammar').replaceChildren(
+    ...GRAMMAR.map(([title, text]) => {
+      const li = document.createElement('li');
+      const b = document.createElement('b');
+      b.textContent = `${title}. `;
+      li.append(b, text);
+      return li;
+    }),
+  );
+  $('phrases').replaceChildren(
+    ...PHRASES.flatMap(([es, lse]) => {
+      const dt = document.createElement('dt');
+      dt.textContent = es;
+      const dd = document.createElement('dd');
+      dd.textContent = lse;
+      return [dt, dd];
+    }),
+  );
+}
+
+$('dict-search').addEventListener('input', renderDict);
 
 async function record() {
   if (recording.active) return;
@@ -640,7 +861,7 @@ $('btn-forget').addEventListener('click', (e) =>
     if (customWords.includes(selectedLabel)) {
       customWords = customWords.filter((w) => w !== selectedLabel);
       saveJSON(WORDS_KEY, customWords);
-      selectedLabel = 'A';
+      selectedLabel = groupLabels(trainGroup)[0] ?? 'A';
     }
     classifier.save();
     refreshTrainUI();
@@ -654,6 +875,7 @@ $('btn-reset').addEventListener('click', (e) =>
     classifier.save();
     customWords = [];
     saveJSON(WORDS_KEY, customWords);
+    trainGroup = 'letras';
     selectedLabel = 'A';
     refreshTrainUI();
     toast('Todos los ejemplos borrados.');
@@ -665,10 +887,12 @@ $('form-word').addEventListener('submit', (e) => {
   const input = $('input-word');
   const word = input.value.trim().toUpperCase().replace(/\s+/g, ' ');
   if (!word) return;
-  if (!LETTERS.includes(word) && !allWordLabels().includes(word)) {
+  if (!KNOWN.has(word) && !customLabels().includes(word)) {
     customWords.push(word);
     saveJSON(WORDS_KEY, customWords);
   }
+  const home = TRAIN_GROUPS.find((g) => g.labels?.includes(word));
+  trainGroup = home ? home.id : 'mias';
   selectedLabel = word;
   input.value = '';
   refreshTrainUI();
@@ -730,7 +954,20 @@ function bindSettings() {
     showStrict();
     saveJSON(SETTINGS_KEY, settings);
   });
-  for (const key of ['autospace', 'voice', 'mirror']) {
+  const segs = document.querySelectorAll('.seg');
+  const showSpell = () => {
+    for (const b of segs) b.setAttribute('aria-checked', String(b.dataset.spell === settings.spell));
+  };
+  showSpell();
+  for (const b of segs) {
+    b.addEventListener('click', () => {
+      settings.spell = b.dataset.spell;
+      history.length = 0;
+      showSpell();
+      saveJSON(SETTINGS_KEY, settings);
+    });
+  }
+  for (const key of ['auto', 'autospace', 'voice', 'mirror']) {
     const box = $(`set-${key}`);
     box.checked = settings[key];
     box.addEventListener('change', () => {
@@ -750,12 +987,14 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
   e.preventDefault();
   if (mode === 'train') record();
-  else if (textValue()) push(' ');
+  else if (mode === 'translate' && textValue()) push(' ');
 });
 
 // Las voces del navegador se cargan con retraso.
 if ('speechSynthesis' in window) speechSynthesis.getVoices();
 
 bindSettings();
+fillGroupSelect();
+renderGuide();
 refreshTrainUI();
 renderTranscript();

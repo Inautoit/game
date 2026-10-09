@@ -21,6 +21,7 @@
     <nav class="tabs" role="tablist" aria-label="Modo">
       <button class="tab" id="tab-translate" role="tab" aria-selected="true" data-mode="translate">Traducir</button>
       <button class="tab" id="tab-train" role="tab" aria-selected="false" data-mode="train">Entrenar</button>
+      <button class="tab" id="tab-dict" role="tab" aria-selected="false" data-mode="dict">Diccionario</button>
     </nav>
     <div class="status" id="status"><span class="dot"></span><span id="status-text">Cámara apagada</span></div>
   </header>
@@ -48,8 +49,8 @@
         <div class="start" id="start">
           <div class="start-card">
             <h1>Signa lee tus manos</h1>
-            <p>Enciende la cámara, enséñale tus signos en el modo <b>Entrenar</b>
-              y después signa en <b>Traducir</b>: el texto se irá escribiendo solo.</p>
+            <p>Enciende la cámara y deletrea: Signa ya reconoce <b>la mayoría de letras y los números</b>
+              de la LSE sin entrenar. Las palabras se las enseñas tú en <b>Entrenar</b>.</p>
             <p class="privacy">El vídeo se procesa en tu navegador. No se envía ni se guarda en ningún sitio.</p>
             <button class="btn primary big" id="btn-start">Activar cámara</button>
             <p class="start-error" id="start-error" hidden></p>
@@ -61,7 +62,7 @@
       <div class="transcript-wrap">
         <div class="transcript-label">
           <span>Texto</span>
-          <span class="hint">Mantén el signo quieto hasta que se llene el círculo</span>
+          <span class="hint">Se escribe en glosa LSE (p. ej. YO MANZANA COMER). Mantén el signo hasta que se llene el círculo.</span>
         </div>
         <p class="transcript" id="transcript" aria-live="polite"><span class="caret"></span></p>
         <div class="transcript-actions">
@@ -93,10 +94,17 @@
           </div>
         </div>
 
+        <div class="segmented" role="radiogroup" aria-label="Qué deletreas">
+          <button class="seg" id="spell-letters" role="radio" aria-checked="true" data-spell="letters">Letras</button>
+          <button class="seg" id="spell-numbers" role="radio" aria-checked="false" data-spell="numbers">Números</button>
+        </div>
+
+        <p class="readout-help" id="readout-help"></p>
+
         <div class="empty-note" id="empty-note">
-          <b>Todavía no has enseñado ningún signo.</b>
-          Ve a <button class="link" data-goto="train">Entrenar</button>, elige una letra y graba
-          unos segundos haciendo el signo. Con 4 o 5 letras ya puedes probar.
+          <b>Las palabras se aprenden entrenando.</b>
+          Las letras y los números funcionan solos. Para palabras como HOLA o GRACIAS, ve a
+          <button class="link" data-goto="train">Entrenar</button> y graba unos segundos cada una.
         </div>
 
         <details class="settings" open>
@@ -109,6 +117,7 @@
             <span>Exigencia <output id="out-strict">media</output></span>
             <input type="range" id="set-strict" min="1" max="5" step="1" value="3" />
           </label>
+          <label class="check"><input type="checkbox" id="set-auto" checked /> Reconocer letras y números sin entrenar</label>
           <label class="check"><input type="checkbox" id="set-autospace" checked /> Espacio automático al retirar la mano</label>
           <label class="check"><input type="checkbox" id="set-voice" /> Leer cada palabra al terminarla</label>
           <label class="check"><input type="checkbox" id="set-mirror" /> Signo con la mano izquierda</label>
@@ -126,6 +135,7 @@
               <span class="train-tip" id="train-tip">Graba al menos 30 ejemplos, moviendo un poco la mano.</span>
             </div>
           </div>
+          <p class="how" id="train-how"></p>
           <div class="train-actions">
             <button class="btn primary" id="btn-record">Grabar 3 s</button>
             <button class="btn danger" id="btn-forget">Borrar este signo</button>
@@ -133,11 +143,11 @@
           <p class="hint">Tecla <kbd>Espacio</kbd>: grabar. Antes de empezar hay una cuenta atrás.</p>
         </div>
 
-        <h2 class="group-title">Abecedario (LSE)</h2>
-        <div class="label-grid" id="grid-letters"></div>
-
-        <h2 class="group-title">Palabras y comandos</h2>
-        <div class="label-grid" id="grid-words"></div>
+        <label class="field">
+          <span>Tema</span>
+          <select id="train-cat"></select>
+        </label>
+        <div class="label-grid" id="grid-labels"></div>
         <form class="add-word" id="form-word">
           <input type="text" id="input-word" maxlength="24" placeholder="Nueva palabra, p. ej. HOLA" aria-label="Nueva palabra" />
           <button class="btn" type="submit">Añadir</button>
@@ -152,6 +162,25 @@
             <input type="file" id="input-import" accept="application/json,.json" hidden />
             <button class="btn danger" id="btn-reset">Borrar todo</button>
           </div>
+        </details>
+      </div>
+
+      <!-- Diccionario -->
+      <div id="panel-dict" hidden>
+        <input type="search" id="dict-search" class="search" placeholder="Buscar un signo, p. ej. gracias" aria-label="Buscar en el diccionario" />
+        <p class="hint">Descripciones de la guía de LSE. Son orientativas: compruébalas en vídeo en
+          <a href="https://fundacioncnse-dilse.org/" target="_blank" rel="noopener">DILSE</a> o
+          <a href="https://www.spreadthesign.com/es.es/search/" target="_blank" rel="noopener">Spread The Sign</a>.
+          <span class="badge auto">Automático</span> se reconoce sin entrenar.</p>
+        <div id="dict-list" class="dict-list"></div>
+
+        <details class="settings">
+          <summary>Gramática básica</summary>
+          <ol class="grammar" id="grammar"></ol>
+        </details>
+        <details class="settings">
+          <summary>Frases útiles</summary>
+          <dl class="phrases" id="phrases"></dl>
         </details>
       </div>
     </aside>
