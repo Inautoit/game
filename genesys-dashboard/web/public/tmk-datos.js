@@ -214,3 +214,29 @@ async function resumenDia(dia) {
   return res;
 }
 
+
+// Series de la "carrera" (gestiones acumuladas por franja): hoy, cada uno de los otros días y su media.
+// La usan /tmk y /tv para dibujar hoy en rojo y el resto de días en gris punteado.
+function seriesCarrera(hoy, ultHoy, otros) {
+  const g = (x) => (x ? x.con + x.reg : 0);
+  const labels = [...new Set([hoy, ...otros].flatMap((d) => Object.keys(d?.fr ?? {}).filter((f) => g(d.fr[f]) > 0)))].sort();
+  const acumulada = (d, hasta) => { let s = 0; return labels.map((f) => (hasta && f > hasta ? null : (s += g(d.fr?.[f])))); };
+  const lineas = otros.map((d) => ({ dia: d.dia, data: acumulada(d) }));
+  const media = lineas.length ? labels.map((_, i) => lineas.reduce((s, l) => s + l.data[i], 0) / lineas.length) : null;
+  return { labels, hoy: hoy ? acumulada(hoy, ultHoy || "00:00") : null, lineas, media };
+}
+// Último día guardado anterior a "antesDe" que tuvo actividad (se salta festivos y días vacíos)
+async function diaAnteriorConDatos(dias, antesDe, maxIntentos = 10) {
+  const g = (x) => (x ? x.con + x.reg : 0);
+  for (const d of dias.filter((x) => x < antesDe).reverse().slice(0, maxIntentos)) {
+    const r = await resumenDia(d);
+    if (r && Object.values(r.fr ?? {}).some((x) => g(x) > 0)) return r;
+  }
+  return null;
+}
+const conAlfa = (color, a) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(color).trim());
+  if (!m) return color;
+  const n = parseInt(m[1], 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+};

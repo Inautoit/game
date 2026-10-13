@@ -2,7 +2,7 @@
 // Sin botones ni menús: se actualiza sola cada minuto y todo cabe en una pantalla.
 // Los cálculos son los de tmk-datos.js, así que las cifras coinciden con /tmk.
 
-const tv = { hoy: null, etag: null, ayer: undefined, pasados: null, diasComp: 0, ultCargaHist: 0 };
+const tv = { otros: [], hoy: null, etag: null, ayer: undefined, pasados: null, diasComp: 0, ultCargaHist: 0 };
 const graficosTv = {};
 
 const gFr = (x) => (x ? x.con + x.reg : 0);
@@ -33,14 +33,17 @@ async function cargarHistorico() {
     const l = await (await fetch("/api/dias", { cache: "no-cache" })).json();
     const hoyDia = tv.hoy?.dia || l.hoy;
     const pasados = l.dias.map((d) => d.dia).filter((d) => d < hoyDia);
-    const antDia = pasados.at(-1);
-    tv.ayer = antDia ? await resumenDia(antDia) : null;
-    let suma = 0, n = 0;
+    // para comparar: el último día con actividad (los festivos o días vacíos se saltan)
+    tv.ayer = await diaAnteriorConDatos(pasados, hoyDia);
+    // días de la competición con actividad: para el acumulado y las líneas grises de la carrera
+    let suma = 0;
+    tv.otros = [];
     for (const d of pasados.filter((d) => !CONFIG.desde || d >= CONFIG.desde)) {
-      const x = d === antDia ? tv.ayer : await resumenDia(d);
-      if (x) { suma += totalFr(x.fr); n++; }
+      const x = await resumenDia(d);
+      const t = x ? totalFr(x.fr) : 0;
+      if (t > 0) { suma += t; tv.otros.push(x); }
     }
-    tv.pasados = suma; tv.diasComp = n;
+    tv.pasados = suma; tv.diasComp = tv.otros.length;
     tv.ultCargaHist = Date.now();
   } catch {}
 }
@@ -84,7 +87,7 @@ function pintarTv() {
   $("#tv-heroes").innerHTML = [
     `<div class="hero principal"><div class="et">Gestiones de hoy</div><div class="num">${fmtN(tot)}</div>` +
       `<div class="nota">TMK ${fmtN(tmk)} · RBE Auto ${fmtN(rbe)}</div></div>`,
-    `<div class="hero"><div class="et">Vs. día anterior</div>${comp}</div>`,
+    `<div class="hero"><div class="et">Vs. ${ayer ? "último día (" + fmtFecha(ayer.dia) + ")" : "día anterior"}</div>${comp}</div>`,
     `<div class="hero"><div class="et">Ritmo última hora</div><div class="num">${fmtN(ritmo)}<small> /h</small></div>` +
       `<div class="nota">${Number.isFinite(proy) ? `Proyección del día: <b>${fmtN(proy)}</b>` : "&nbsp;"}</div></div>`,
     `<div class="hero"><div class="et">Acumulado</div><div class="num">${Number.isFinite(acum) ? fmtN(acum) : "–"}</div>` +
@@ -107,23 +110,29 @@ function pintarTv() {
 
 function pintarCarrera(h, ayer, ult) {
   if (!window.Chart) return;
-  const todas = [...new Set([...Object.keys(h.fr), ...Object.keys(ayer?.fr ?? {})])].sort();
-  let sh = 0, sa = 0;
-  const serieHoy = todas.map((f) => (ult && f <= ult ? (sh += gFr(h.fr[f])) : null));
-  const serieAyer = todas.map((f) => (sa += gFr(ayer?.fr?.[f])));
-  $("#tv-carrera-sub").textContent = ayer ? `Gestiones acumuladas: hoy frente al ${fmtFecha(ayer.dia)}` : "Gestiones acumuladas de hoy";
+  // hoy en rojo grueso; cada día de la competición en gris punteado; la media de esos días, discontinua
+  const otros = (tv.otros ?? []).length ? tv.otros : ayer ? [ayer] : [];
+  const sc = seriesCarrera(h, ult, otros);
+  $("#tv-carrera-sub").textContent = otros.length
+    ? `Gestiones acumuladas: hoy frente a ${otros.length === 1 ? "el " + fmtFecha(otros[0].dia) : `los otros ${otros.length} días de la competición`}`
+    : "Gestiones acumuladas de hoy";
   const texto = css("--text-secondary"), rejilla = css("--grid"), letra = Math.round(innerHeight * 0.018);
+  const gris = css("--c-gris");
   const datasets = [
-    { label: "Hoy", data: serieHoy, borderColor: css("--c-marca"), backgroundColor: css("--c-marca"), borderWidth: 4, pointRadius: 0, tension: 0.2 },
-    ...(ayer ? [{ label: `Día anterior (${fmtFecha(ayer.dia)})`, data: serieAyer, borderColor: css("--c-gris"), backgroundColor: css("--c-gris"),
-      borderWidth: 3, borderDash: [10, 7], pointRadius: 0, tension: 0.2 }] : []),
+    ...sc.lineas.map((l, i) => ({ label: i === 0 ? "Otros días" : "", data: l.data, borderColor: conAlfa(gris, 0.55), backgroundColor: conAlfa(gris, 0.55),
+      borderWidth: 2, borderDash: [2, 5], pointRadius: 0, tension: 0.2, order: 3 })),
+    ...(sc.media && sc.lineas.length > 1 ? [{ label: "Media de esos días", data: sc.media, borderColor: css("--c-oscuro"), backgroundColor: css("--c-oscuro"),
+      borderWidth: 3, borderDash: [12, 8], pointRadius: 0, tension: 0.2, order: 2 }] : []),
+    { label: "Hoy", data: sc.hoy, borderColor: css("--c-marca"), backgroundColor: css("--c-marca"), borderWidth: 6, tension: 0.2, order: 1,
+      pointRadius: (c) => (c.dataIndex === sc.hoy.findLastIndex((v) => v != null) ? 9 : 0), pointBackgroundColor: css("--c-marca") },
   ];
   graficosTv.c?.destroy();
   graficosTv.c = new Chart($("#tv-carrera"), {
-    type: "line", data: { labels: todas, datasets },
+    type: "line", data: { labels: sc.labels, datasets },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
-      plugins: { legend: { position: "top", align: "start", labels: { color: texto, font: { size: letra }, boxWidth: letra, boxHeight: letra, usePointStyle: true, pointStyle: "rectRounded" } },
+      plugins: { legend: { position: "top", align: "start", reverse: true,
+                           labels: { color: texto, font: { size: letra }, boxWidth: letra * 2, boxHeight: 3, filter: (it) => it.text !== "" } },
                  tooltip: { enabled: false } },
       scales: {
         x: { ticks: { color: texto, font: { size: letra }, maxRotation: 0, autoSkipPadding: 24 }, grid: { display: false } },

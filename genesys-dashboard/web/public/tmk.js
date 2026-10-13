@@ -33,8 +33,8 @@ async function cargarAyer() {
   try {
     const l = await (await fetch("/api/dias", { cache: "no-cache" })).json();
     const hoyDia = estado.hoy?.dia || l.hoy;
-    const ant = l.dias.map((d) => d.dia).filter((d) => d < hoyDia).at(-1);
-    if (ant) estado.ayer = (await resumenDia(ant)) ?? false; else estado.ayer = false;
+    // el último día con actividad (los festivos o días vacíos se saltan)
+    estado.ayer = (await diaAnteriorConDatos(l.dias.map((d) => d.dia), hoyDia)) ?? false;
   } catch { estado.ayer = null; }
 }
 
@@ -47,8 +47,9 @@ async function cargarAcumulado() {
     const hoyDia = estado.hoy?.dia || l.hoy;
     const pasados = l.dias.map((d) => d.dia).filter((d) => d < hoyDia && (!CONFIG.desde || d >= CONFIG.desde));
     const res = [];
-    for (const d of pasados) { const x = await resumenDia(d); if (x) res.push(x); } // uno a uno: no satura la red
-    estado.dias = [...pasados, hoyDia];
+    for (const d of pasados) { const x = await resumenDia(d); if (x && Object.values(x.fr ?? {}).some((f) => f.con + f.reg > 0)) res.push(x); } // uno a uno; sin días vacíos (festivos)
+    estado.dias = [...res.map((x) => x.dia), hoyDia];
+    estado.resComp = res.filter((x) => Object.values(x.fr ?? {}).some((f) => f.con + f.reg > 0)); // días con actividad (carrera)
     estado.acum = acumular([...res, estado.hoy]);
   } finally { estado.cargandoAcum = false; }
 }
@@ -77,8 +78,7 @@ async function cargarDia(dia) {
   if (!r.ok) throw new Error("no hay datos guardados del " + fmtFecha(dia));
   const vista = resumir(await r.json(), true);
   vista.dia ||= dia;
-  const antDia = estado.listaDias.map((x) => x.dia).filter((x) => x < dia).at(-1);
-  const ant = antDia ? await resumenDia(antDia) : null;
+  const ant = await diaAnteriorConDatos(estado.listaDias.map((x) => x.dia), dia);
   estado.cacheDia[dia] = { vista, ant };
 }
 
@@ -284,7 +284,7 @@ function pintarMarcador(lista, t, d) {
   const tot = totalFr(hoy.fr);
   if (pasado) return marcadorDiaPasado(hoy, ayer, tot, fs, ult, reparto);
   $("#marcador-tit").textContent = "Marcador del equipo · hoy";
-  $("#g-carrera-tit").textContent = "Carrera del día: hoy frente a ayer";
+  $("#g-carrera-tit").textContent = "Carrera del día: hoy frente a los otros días";
   $("#g-carrera-sub").textContent = "Gestiones acumuladas a lo largo del día";
   $("#marcador-sub").textContent = ult ? `Datos hasta la franja de las ${ult} (subidos a las ${fmtHora(hoy.subido)})` : "Todavía sin actividad hoy";
   html.push(dato("Gestiones de hoy", fmtN(tot), reparto, "principal"));
@@ -301,7 +301,7 @@ function pintarMarcador(lista, t, d) {
   let proy = NaN;
   if (ayer && ult) {
     const aMisma = hastaFranja(ayer.fr, ult), aTot = totalFr(ayer.fr);
-    html.push(dato(`Ayer (${fmtFecha(ayer.dia)}) a esta hora`, fmtN(aMisma), `${variacion(tot, aMisma)} hoy · ayer cerró con ${fmtN(aTot)}`));
+    html.push(dato(`Último día (${fmtFecha(ayer.dia)}) a esta hora`, fmtN(aMisma), `${variacion(tot, aMisma)} hoy · ese día cerró con ${fmtN(aTot)}`));
     if (aMisma > 0 && aTot > 0) proy = tot / (aMisma / aTot);
   }
   if (!Number.isFinite(proy) && ult) {
@@ -309,7 +309,7 @@ function pintarMarcador(lista, t, d) {
     const jornada = minutos(CONFIG.fin) - minutos(fs[0] < CONFIG.inicio ? fs[0] : CONFIG.inicio);
     if (trans > 0) proy = tot * Math.max(1, jornada / trans);
   }
-  if (Number.isFinite(proy)) html.push(dato("Proyección fin del día", fmtN(proy), ayer ? "si se mantiene el ritmo, con el perfil horario de ayer" : `a este ritmo hasta las ${CONFIG.fin}`));
+  if (Number.isFinite(proy)) html.push(dato("Proyección fin del día", fmtN(proy), ayer ? "si se mantiene el ritmo, con el perfil horario del último día" : `a este ritmo hasta las ${CONFIG.fin}`));
 
   if (CONFIG.objetivoDia) {
     const p = Math.min(1, tot / CONFIG.objetivoDia);
@@ -333,8 +333,8 @@ function pintarMarcador(lista, t, d) {
   if (ayer && fs.length >= 2) {
     const f = fs.at(-2); // última franja completa
     const h = gFr(hoy.fr[f]), a = gFr(ayer.fr?.[f]);
-    if (a >= 10 && h < a * 0.7) alertas.push(["mal", `Franja de las ${f}: ${fmtN(h)} gestiones, un ${fmtPct(1 - h / a)} menos que ayer a esa hora (${fmtN(a)}).`]);
-    else if (a >= 10 && h > a * 1.2) alertas.push(["bien", `Franja de las ${f}: ${fmtN(h)} gestiones, un ${fmtPct(h / a - 1)} más que ayer (${fmtN(a)}).`]);
+    if (a >= 10 && h < a * 0.7) alertas.push(["mal", `Franja de las ${f}: ${fmtN(h)} gestiones, un ${fmtPct(1 - h / a)} menos que el ${fmtFecha(ayer.dia)} a esa hora (${fmtN(a)}).`]);
+    else if (a >= 10 && h > a * 1.2) alertas.push(["bien", `Franja de las ${f}: ${fmtN(h)} gestiones, un ${fmtPct(h / a - 1)} más que el ${fmtFecha(ayer.dia)} (${fmtN(a)}).`]);
   }
   if (fs.length >= 2) {
     const ult2 = fs.slice(-2).reduce((s, f) => ({ m: s.m + hoy.fr[f].marc, c: s.c + hoy.fr[f].con }), { m: 0, c: 0 });
@@ -356,15 +356,28 @@ function pintarMarcador(lista, t, d) {
   }
   $("#alertas").innerHTML = alertas.length ? alertas.map(([c, x]) => `<li class="${c}">${x}</li>`).join("") : `<li class="bien">Sin alertas: el equipo va a su ritmo.</li>`;
 
-  // ---- carrera: acumulado del día hoy frente a ayer
-  const todas = [...new Set([...Object.keys(hoy.fr), ...Object.keys(ayer?.fr ?? {})])].sort();
-  let sh = 0, sa = 0;
-  const serieHoy = todas.map((f) => (ult && f <= ult ? (sh += gFr(hoy.fr[f])) : null));
-  const serieAyer = todas.map((f) => (sa += gFr(ayer?.fr?.[f])));
-  grafico("g-carrera", "line", todas, [
-    { label: "Hoy", data: serieHoy, color: "--c-marca" },
-    ...(ayer ? [{ label: `Ayer (${fmtFecha(ayer.dia)})`, data: serieAyer, color: "--c-gris", discontinua: true }] : []),
-  ]);
+  // ---- carrera: hoy en rojo; los otros días de la competición en gris punteado y su media discontinua
+  const otros = estado.resComp?.length ? estado.resComp : ayer ? [ayer] : [];
+  const sc = seriesCarrera(hoy, ult, otros);
+  $("#g-carrera-sub").textContent = otros.length > 1 ? `Gestiones acumuladas: hoy frente a los otros ${otros.length} días de la competición`
+    : otros.length ? `Gestiones acumuladas: hoy frente al ${fmtFecha(otros[0].dia)}` : "Gestiones acumuladas a lo largo del día";
+  if (window.Chart) {
+    const gris = css("--c-gris");
+    const datasets = [
+      ...sc.lineas.map((l, i) => ({ label: i === 0 ? "Otros días" : "", data: l.data, borderColor: conAlfa(gris, 0.6), backgroundColor: conAlfa(gris, 0.6),
+        borderWidth: 1.5, borderDash: [2, 4], pointRadius: 0, tension: 0.2, order: 3 })),
+      ...(sc.lineas.length > 1 ? [{ label: "Media de esos días", data: sc.media, borderColor: css("--c-oscuro"), backgroundColor: css("--c-oscuro"),
+        borderWidth: 2, borderDash: [8, 6], pointRadius: 0, tension: 0.2, order: 2 }] : []),
+      { label: "Hoy", data: sc.hoy, borderColor: css("--c-marca"), backgroundColor: css("--c-marca"), borderWidth: 3.5, tension: 0.2, order: 1,
+        pointRadius: (c) => (c.dataIndex === sc.hoy.findLastIndex((v) => v != null) ? 6 : 0), pointHoverRadius: 6 },
+    ];
+    const op = opcionesGrafico();
+    op.plugins.legend.reverse = true;
+    op.plugins.legend.labels = { ...op.plugins.legend.labels, filter: (it) => it.text !== "", usePointStyle: false, boxWidth: 22, boxHeight: 2 };
+    op.plugins.tooltip.filter = (it) => it.dataset.label !== "";
+    graficos["g-carrera"]?.destroy();
+    graficos["g-carrera"] = new Chart(document.getElementById("g-carrera"), { type: "line", data: { labels: sc.labels, datasets }, options: op });
+  }
 }
 
 function opcionesGrafico({ apilado = false, horizontal = false } = {}) {
