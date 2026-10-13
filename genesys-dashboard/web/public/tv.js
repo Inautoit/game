@@ -180,6 +180,12 @@ $("#form-login").addEventListener("submit", async (e) => {
   const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clave: $("#clave").value }) });
   if (r.ok) { $("#clave").value = ""; cargarTv(); } else $("#login-error").textContent = "Clave incorrecta.";
 });
+// Botón de pantalla completa (arriba a la derecha). Se oculta en pantalla completa; Esc para salir.
+$("#tv-full").addEventListener("click", () => {
+  const el = document.documentElement;
+  (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el).catch?.(() => {});
+});
+document.addEventListener("fullscreenchange", () => setTimeout(() => tv.hoy && pintarTv(), 300));
 if (new URLSearchParams(location.search).has("claro")) document.documentElement.dataset.theme = "light";
 
 const reloj = () => { $("#tv-hora").textContent = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }); };

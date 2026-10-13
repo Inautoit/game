@@ -21,6 +21,12 @@
     .tv-titulo { font-size: 3.4vh; font-weight: 800; line-height: 1.1; }
     .tv-sub { font-size: 1.9vh; opacity: .9; }
     .tv-reloj { text-align: right; }
+    .tv-derecha { display: flex; align-items: center; gap: 1.6vw; }
+    .tv-full { display: inline-flex; align-items: center; gap: .6vw; background: rgb(255 255 255 / 16%); color: #fff;
+      border: 1px solid rgb(255 255 255 / 55%); border-radius: 1vh; padding: 1vh 1.2vw; font-size: 2vh; font-weight: 700; cursor: pointer; }
+    .tv-full:hover { background: rgb(255 255 255 / 30%); }
+    .tv-full svg { width: 3vh; height: 3vh; }
+    :fullscreen .tv-full { display: none; }   /* en pantalla completa el botón se oculta (Esc para salir) */
     .tv-reloj .hora { font-size: 4.6vh; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
     .tv-reloj .fresco { font-size: 1.8vh; opacity: .95; display: inline-flex; align-items: center; gap: .5vw; }
     .punto { width: 1.3vh; height: 1.3vh; border-radius: 50%; display: inline-block; background: var(--good); }
@@ -101,9 +107,15 @@
           <div class="tv-sub" id="tv-sub">Equipo RBE_Out_TMK_Piloto</div>
         </div>
       </div>
+      <div class="tv-derecha">
+      <button id="tv-full" class="tv-full" type="button" title="Pantalla completa (F11)" aria-label="Pantalla completa">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Pantalla completa</span>
+      </button>
       <div class="tv-reloj">
         <div class="hora" id="tv-hora">--:--</div>
         <div class="fresco"><i class="punto" id="tv-punto"></i><span id="tv-fresco">Cargando…</span></div>
+      </div>
       </div>
     </header>
 
