@@ -192,4 +192,5 @@ const reloj = () => { $("#tv-hora").textContent = new Date().toLocaleTimeString(
 reloj(); setInterval(reloj, 15e3);
 cargarTv(); setInterval(cargarTv, 60e3);
 addEventListener("resize", () => tv.hoy && pintarTv());
-setTimeout(() => location.reload(), 6 * 3600e3); // una recarga cada 6 h para que la pantalla no acumule memoria
+// recarga cada 6 h para no acumular memoria, pero nunca en pantalla completa (la recarga la quitaría)
+setInterval(() => { if (!document.fullscreenElement) location.reload(); }, 6 * 3600e3);
