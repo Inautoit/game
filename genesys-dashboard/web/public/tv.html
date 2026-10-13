@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Competición TMK · Pantalla</title>
+  <meta name="description" content="Pantalla fija de la competición TMK para el departamento: marcador del equipo, ritmo, carrera del día y gestores. Se actualiza sola.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ed002f'/%3E%3Cpath d='M9 24h14M11 24V14h4v10M17 24V9h4v15' stroke='white' stroke-width='2.5' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Pantalla fija: todo cabe en el alto de la pantalla, sin scroll; tamaños en vh/vw */
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--bg); color: var(--text-primary); overflow: hidden; }
+    #tv { height: 100vh; overflow: hidden; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 1.4vh; padding: 0 1.6vw 1.4vh; box-sizing: border-box; }
+    .tv-barra { background: var(--marca); color: #fff; margin: 0 -1.6vw; padding: 1.2vh 1.6vw;
+      display: flex; align-items: center; justify-content: space-between; gap: 2vw; }
+    .tv-barra .izq { display: flex; align-items: center; gap: 1.4vw; min-width: 0; }
+    .tv-barra img { height: 5vh; width: auto; }
+    .tv-barra .sep { width: 2px; align-self: stretch; background: rgb(255 255 255 / 45%); }
+    .tv-titulo { font-size: 3.4vh; font-weight: 800; line-height: 1.1; }
+    .tv-sub { font-size: 1.9vh; opacity: .9; }
+    .tv-reloj { text-align: right; }
+    .tv-reloj .hora { font-size: 4.6vh; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+    .tv-reloj .fresco { font-size: 1.8vh; opacity: .95; display: inline-flex; align-items: center; gap: .5vw; }
+    .punto { width: 1.3vh; height: 1.3vh; border-radius: 50%; display: inline-block; background: var(--good); }
+    .punto.mal { background: var(--warning); }
+
+    .tv-heroes { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 1.2vw; }
+    .hero { background: var(--surface-1); border: 1px solid var(--border); border-radius: 1.4vh; padding: 1.6vh 1.4vw; min-width: 0; }
+    .hero.principal { background: var(--marca); border-color: var(--marca); color: #fff; }
+    .hero .et { font-size: 2.1vh; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
+    .hero.principal .et, .hero.principal .nota { color: #fff; }
+    .hero .et { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hero .num { font-size: min(9vh, 4.4vw); font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .hero.principal .num { font-size: min(12vh, 7vw); }
+    .hero .num small { font-size: .38em; font-weight: 700; }
+    .hero .num.var { font-size: min(8vh, 3.4vw); }
+    .hero .nota { font-size: 2vh; color: var(--text-secondary); margin-top: .4vh; }
+    .sube { color: #2fd16b; } .baja { color: #ff6b6b; }
+
+    .tv-centro { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.2vw; min-height: 0; }
+    .panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: 1.4vh; padding: 1.4vh 1.4vw; display: flex; flex-direction: column; min-height: 0; }
+    .panel h2 { margin: 0 0 .6vh; font-size: 2.6vh; }
+    .panel .sub { font-size: 1.7vh; color: var(--text-secondary); margin: 0 0 1vh; }
+    .lienzo-tv { position: relative; flex: 1; min-height: 0; }
+
+    .ranking { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-rows: minmax(0, 1fr); gap: .6vh; flex: 1; min-height: 0; }
+    .fila { display: grid; grid-template-columns: 4.2vh minmax(0, 1fr) 9vh; align-items: center; column-gap: 1vw; min-height: 0; }
+    .fila .pos { font-size: 3.4vh; font-weight: 800; color: var(--text-secondary); text-align: center; }
+    .fila.p1 .pos { color: var(--marca); }
+    .fila .quien { min-width: 0; }
+    .fila .nombre { font-size: 2.5vh; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: .6vw; }
+    .fila .info { font-size: 1.7vh; color: var(--text-secondary); }
+    .tvbar { height: 1.5vh; border-radius: .75vh; background: var(--surface-2); margin: .4vh 0; display: flex; gap: 2px; overflow: hidden; }
+    .tvbar i { display: block; height: 100%; }
+    .fila .total { font-size: 4.2vh; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+    .dot { width: 1.4vh; height: 1.4vh; border-radius: 50%; flex: none; display: inline-block; }
+    .dot.on { background: var(--good); } .dot.off { background: var(--c-gris); }
+    .leyenda { display: flex; gap: 1.6vw; font-size: 1.7vh; color: var(--text-secondary); margin: 0 0 .6vh; flex-wrap: wrap; }
+    .leyenda span { display: inline-flex; align-items: center; gap: .4vw; }
+    .leyenda b { width: 1.4vh; height: 1.4vh; border-radius: .3vh; display: inline-block; }
+
+    .tv-pie { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.2vw; align-items: stretch; }
+    .pie-caja { background: var(--surface-1); border: 1px solid var(--border); border-radius: 1.4vh; padding: 1vh 1.2vw; display: flex; align-items: center; gap: 1.2vw; flex-wrap: nowrap; overflow: hidden; min-width: 0; }
+    .pie-caja .et { white-space: nowrap; font-size: 1.8vh; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
+    .chip-tv { font-size: 2.1vh; white-space: nowrap; }
+    .chip-tv b { font-size: 2.6vh; font-variant-numeric: tabular-nums; }
+    .aviso-tv { color: var(--warning); font-weight: 700; font-size: 2.1vh; }
+    #login .login-caja { font-size: 18px; }
+  </style>
+  <script src="chart.umd.min.js" defer></script>
+  <script src="tmk-datos.js" defer></script>
+  <script src="tv.js" defer></script>
+</head>
+<body>
+  <section id="login" class="login" hidden>
+    <div class="login-caja">
+      <h1>Competición TMK · Pantalla</h1>
+      <div id="login-ms" hidden>
+        <p class="muted">Entra con tu cuenta corporativa.</p>
+        <a class="boton-ms" href="/auth/login?volver=/tv">Iniciar sesión con Microsoft</a>
+      </div>
+      <form id="form-login" hidden>
+        <p class="muted">Introduce la clave una vez; la pantalla se queda abierta 30 días.</p>
+        <label for="clave">Clave</label>
+        <input id="clave" name="clave" type="password" autocomplete="current-password" required>
+        <button type="submit">Entrar</button>
+      </form>
+      <p id="login-error" class="error" role="alert"></p>
+    </div>
+  </section>
+
+  <div id="tv" hidden>
+    <header class="tv-barra">
+      <div class="izq">
+        <img src="verisure-logo-blanco.png" alt="Verisure">
+        <span class="sep" aria-hidden="true"></span>
+        <div>
+          <div class="tv-titulo">Competición TMK</div>
+          <div class="tv-sub" id="tv-sub">Equipo RBE_Out_TMK_Piloto</div>
+        </div>
+      </div>
+      <div class="tv-reloj">
+        <div class="hora" id="tv-hora">--:--</div>
+        <div class="fresco"><i class="punto" id="tv-punto"></i><span id="tv-fresco">Cargando…</span></div>
+      </div>
+    </header>
+
+    <section class="tv-heroes" id="tv-heroes" aria-label="Marcador del equipo"></section>
+
+    <section class="tv-centro">
+      <div class="panel">
+        <h2>Carrera del día</h2>
+        <p class="sub" id="tv-carrera-sub">Gestiones acumuladas: hoy frente al día anterior</p>
+        <div class="lienzo-tv"><canvas id="tv-carrera" role="img" aria-label="Gestiones acumuladas de hoy frente al día anterior"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>Gestores</h2>
+        <div class="leyenda" id="tv-leyenda"></div>
+        <ol class="ranking" id="tv-ranking" aria-label="Gestiones de cada gestor hoy"></ol>
+      </div>
+    </section>
+
+    <footer class="tv-pie">
+      <div class="pie-caja" id="tv-tmk"></div>
+      <div class="pie-caja" id="tv-codif"></div>
+    </footer>
+  </div>
+</body>
+</html>
