@@ -9,9 +9,12 @@
 // ============ CONFIGURACIÓN DE LA COMPETICIÓN ============
 const CONFIG = {
   colasOut: ["RBE_Outbound_TMK"],   // skills de la cola outbound que cuentan (Service Outbound Call)
-  // gestores de la competición (grupo RBE_Out_TMK_Piloto): solo cuentan estos; vacío = todos
-  gestores: { AE0534: "Adrián Valero García", 356245: "Ángel Vidal Martín", 271471: "Carmen Zárate Sánchez",
-              CK6293: "Carolina Pérez Martínez", CD7581: "Cristina María Muñiz Fernández", 289317: "Sheila Carrascosa Ambite" },
+  // gestores que cuentan, por fechas: cada tramo vale desde su fecha hasta el siguiente
+  gestoresPorFecha: [
+    { desde: "2026-09-28", gestores: { AE0534: "Adrián Valero García", 356245: "Ángel Vidal Martín", 271471: "Carmen Zárate Sánchez",
+                                       CK6293: "Carolina Pérez Martínez", CD7581: "Cristina María Muñiz Fernández", 289317: "Sheila Carrascosa Ambite" } },
+    { desde: "2026-10-14", gestores: { 271471: "Carmen Zárate Sánchez", 289317: "Sheila Carrascosa Ambite", 356245: "Ángel Vidal Martín" } },
+  ],
   campanasAuto: ["C_OC_RBE_Auto"], // campañas del automarcador que cuentan; vacío = todas
   desde: "2026-09-28",              // primer día de la competición "AAAA-MM-DD"; null = todos los guardados
   objetivoDia: null,                // objetivo de gestiones por día (número) o null
@@ -20,6 +23,15 @@ const CONFIG = {
   etiquetas: { C_Vencimiento_Push_High: "High", C_OC_RBE_Auto: "RBE Auto" },
 };
 const etq = (c) => CONFIG.etiquetas[c] ?? c;
+const diaLocalHoy = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+// gestores de la competición en un día concreto (AAAA-MM-DD); sin día = hoy
+function gestoresDe(dia) {
+  const d = dia || diaLocalHoy();
+  const tramos = [...CONFIG.gestoresPorFecha].sort((a, b) => a.desde.localeCompare(b.desde));
+  return (tramos.filter((t) => t.desde <= d).at(-1) ?? tramos[0]).gestores;
+}
+// todos los que han estado en algún momento (nombres para el acumulado)
+const todosLosGestores = () => Object.assign({}, ...CONFIG.gestoresPorFecha.map((t) => t.gestores));
 const vuelta = (n) => (n >= 3 ? "3+" : n >= 2 ? "2" : "1"); // columna "attempt" del automarcador
 const nuevoAuto = () => ({ reg: 0, llam: 0, dur: 0, gest: 0, cod: {}, v: {} });
 function sumarAuto(x, y) {
@@ -92,7 +104,7 @@ const buscarHoja = (inf, re) => inf?.hojas.find((h) => re.test(h.nombre));
 
 // La versión de la configuración forma parte de la clave de los resúmenes guardados: si se cambian
 // las colas o campañas, los días cerrados se recalculan con el nuevo criterio.
-const VERSION = "tmk4-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto, CONFIG.gestores])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
+const VERSION = "tmk5-" + [...JSON.stringify([CONFIG.colasOut, CONFIG.campanasAuto, CONFIG.gestoresPorFecha])].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7).toString(36);
 
 // ----------------------------------------------------------------- resumen de un paquete (un día)
 const nuevoG = (nombre) => ({ n: nombre || "", marc: 0, con: 0, cortas: 0, tOut: 0, talk: 0, acw: 0,
@@ -102,7 +114,7 @@ function resumir(paquete, conRegistro) {
   const auto = buscarInforme(paquete, /automarcador/i);
   const skill = buscarInforme(paquete, /agent group|skill/i);
   const G = {}, fr = {}, camp = {};
-  const permitidos = new Set(Object.keys(CONFIG.gestores).map((x) => x.trim().toUpperCase()));
+  const permitidos = new Set(Object.keys(gestoresDe(paquete.dia)).map((x) => x.trim().toUpperCase())); // los de ese día
   const g = (id, nombre) => {
     id = idLimpio(id); if (!id) return null;
     if (permitidos.size && !permitidos.has(id.toUpperCase())) return null; // no es de la competición
@@ -207,7 +219,9 @@ async function resumenDia(dia) {
   if (r.ok) return r.json();
   const p = await fetch("/api/datos?dia=" + dia, { cache: "no-cache" });
   if (!p.ok) return null;
-  const res = resumir(await p.json(), false);
+  const paq = await p.json();
+  paq.dia ||= dia;
+  const res = resumir(paq, false);
   res.dia ||= dia;
   delete res.registro; delete res.registroOut;
   fetch("/api/resumen?clave=" + encodeURIComponent(clave), { method: "PUT", body: JSON.stringify(res) }).catch(() => {});

@@ -76,7 +76,9 @@ async function cargarDia(dia) {
   $("#periodo-info").textContent = `Cargando el ${fmtFecha(dia)}…`;
   const r = await fetch("/api/datos?dia=" + dia, { cache: "no-cache" });
   if (!r.ok) throw new Error("no hay datos guardados del " + fmtFecha(dia));
-  const vista = resumir(await r.json(), true);
+  const paq = await r.json();
+  paq.dia ||= dia;
+  const vista = resumir(paq, true);
   vista.dia ||= dia;
   const ant = await diaAnteriorConDatos(estado.listaDias.map((x) => x.dia), dia);
   estado.cacheDia[dia] = { vista, ant };
@@ -107,9 +109,10 @@ async function cargarListaDias() {
 function gestoresLista(G) {
   // los gestores de la competición salen siempre, aunque aún no tengan actividad
   const todos = { ...G };
-  for (const [id, n] of Object.entries(CONFIG.gestores)) if (!todos[id]) todos[id] = nuevoG(n);
+  // los gestores de la competición salen siempre (los del día que se ve; en el acumulado, solo los que tienen actividad)
+  if (estado.periodo !== "acum") for (const [id, n] of Object.entries(gestoresDe(vistaActual()?.dia))) if (!todos[id]) todos[id] = nuevoG(n);
   return Object.entries(todos).map(([id, a]) => ({
-    ...a, id, nombre: CONFIG.gestores[id] || a.n || id,
+    ...a, id, nombre: todosLosGestores()[id] || a.n || id,
     gestiones: a.con + a.reg,
     ...Object.fromEntries(campanasVista().map((c) => ["r:" + c, a.camp[c]?.reg ?? 0])),
     sel: estado.auto ? (a.camp[estado.auto] ?? nuevoAuto()) : a, // lo que se ve en las columnas del automarcador
@@ -428,7 +431,7 @@ const cN = (k, t, ayuda) => ({ k, t, ayuda, f: (a) => cero(a[k], fmtN) });
 const cM = (k, t, ayuda) => ({ k, t, ayuda, f: (a) => fmtM(a[k]) });
 const cT = (k, t, ayuda) => ({ k, t, ayuda, f: (a) => cero(a[k], fmtT) });
 const cP = (k, t, ayuda) => ({ k, t, ayuda, f: (a) => fmtPct(a[k]) });
-const nombreDe = (id) => { const a = datosVista().G[id] ?? estado.hoy?.G[id]; return CONFIG.gestores[id] || a?.n || id; };
+const nombreDe = (id) => { const a = datosVista().G[id] ?? estado.hoy?.G[id]; return todosLosGestores()[id] || a?.n || id; };
 
 let columnasRanking = [];
 function pintarRanking(lista, top) {

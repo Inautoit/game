@@ -148,7 +148,7 @@ function pintarRankingTv(h) {
   for (const r of h.registro) if (r.hora > (ultAct[r.id] ?? "")) ultAct[r.id] = r.hora;
   for (const r of h.registroOut) { const fin = hhmm(minutos(r.f) + 30); if (fin > (ultAct[r.id] ?? "")) ultAct[r.id] = fin; }
   const ahora = Object.values(ultAct).sort().at(-1) ?? "00:00";
-  const filas = Object.entries(CONFIG.gestores).map(([id, nombre]) => {
+  const filas = Object.entries(gestoresDe(h.dia)).map(([id, nombre]) => {
     const a = h.G[id] ?? { con: 0, reg: 0 };
     return { id, nombre, tmk: a.con, rbe: a.reg, total: a.con + a.reg, ult: ultAct[id] };
   }).sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre, "es"));
