@@ -11,8 +11,9 @@ export function clasificar(key4) {
   return 'contacto';
 }
 
+// En commlogs ins_no viene con ceros a la izquierda (030567) y en la BBDD no (30567).
 export function normId(v) {
-  return String(v ?? '').trim().toUpperCase().replace(/\.0+$/, '');
+  return String(v ?? '').trim().toUpperCase().replace(/\.0+$/, '').replace(/^0+(?=.)/, '');
 }
 
 // Acepta Date, 'YYYY-MM-DD[ hh:mm]', 'DD/MM/YYYY[ hh:mm]' o serial de Excel.

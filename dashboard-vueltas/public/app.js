@@ -25,11 +25,13 @@ async function leerFichero(file) {
 
 function rellenarSelect(sel, cols, patrones) {
   sel.innerHTML = cols.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
-  const hit = cols.find((c) => patrones.some((p) => p.test(c)));
+  // Se elige por prioridad de patrón (el primero que encaje gana).
+  let hit;
+  for (const p of patrones) if ((hit = cols.find((c) => p.test(c.trim())))) break;
   if (hit) sel.value = hit;
 }
 
-const P_ID = [/^id[_ ]?inst/i, /instalaci/i, /installation/i, /^inst/i, /^id$/i];
+const P_ID = [/^ins_no$/i, /^numero_de_instalacion$/i, /^id[_ ]?inst/i, /instalaci/i, /installation/i, /^inst/i, /^id$/i];
 const P_FECHA = [/^fecha$/i, /fecha/i, /date/i, /creat/i];
 const P_KEY4 = [/^key4$/i, /key\s*4/i];
 

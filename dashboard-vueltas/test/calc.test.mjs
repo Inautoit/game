@@ -32,4 +32,7 @@ assert.equal(r.detalle.find((x) => x.id === 'B').intentos, 0);
 assert.equal(r.resumen.vueltasCompletas, 0);
 assert.deepEqual(rangoPorDefecto('2026-07', new Date(2026, 6, 19)), { desde: '2026-06-15', hasta: '2026-07-18' });
 assert.deepEqual(rangoPorDefecto('2026-07', new Date(2026, 9, 19)), { desde: '2026-06-15', hasta: '2026-07-31' });
+// ins_no con ceros a la izquierda cruza con la BBDD sin ellos
+const r2 = calcular(['30567'], [{ id: '030567', fecha: d('04/08/2026 11:43'), key4: 'R_RIMP01' }], '2026-07-15', '2026-08-31');
+assert.equal(r2.resumen.contactadas, 1);
 console.log('OK');
