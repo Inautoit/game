@@ -222,14 +222,8 @@
       <summary>Gestión de datos</summary>
       <div class="blk">
         <h3>Actualizar commlogs</h3>
-        <p class="status">Exportación de commlogs (CSV o Excel, siempre el mismo formato). Se añaden a los guardados sin duplicar: puedes subir el histórico completo o solo los últimos días.</p>
-        <div class="row"><label>Fichero(s) <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label></div>
-        <div class="map">
-          <label>Columna instalación <select id="colLogId"></select></label>
-          <label>Columna fecha <select id="colLogFecha"></select></label>
-          <label>Columna key4 <select id="colLogKey4"></select></label>
-        </div>
-        <div class="row" style="margin-top:12px"><button id="btnGuardarLogs" disabled>Guardar commlogs</button></div>
+        <p class="status">Sube el <b>Libro.xlsx</b> de commlogs tal cual (se usan sus columnas ins_no, fecha y key4). Se guarda solo al elegirlo y se añaden únicamente los commlogs nuevos, sin duplicar.</p>
+        <div class="row"><label>Fichero de commlogs <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label></div>
         <div class="status" id="stSubida"></div>
       </div>
       <div class="blk">

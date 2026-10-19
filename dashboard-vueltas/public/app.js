@@ -7,7 +7,6 @@ const pct = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '–');
 let bbdd = null; // {mes, campanas: {nombre: [ids]}}
 let carga = null;
 let resultados = {};
-let logRows = [];
 let ultimo = null;
 
 // ---------- utilidades ----------
@@ -21,14 +20,6 @@ async function leerFichero(file) {
   const wb = XLSX.read(buf, { cellDates: true, dense: true, raw: csv });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
-}
-
-function rellenarSelect(sel, cols, patrones) {
-  sel.innerHTML = cols.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
-  // Se elige por prioridad de patrón (el primero que encaje gana).
-  let hit;
-  for (const p of patrones) if ((hit = cols.find((c) => p.test(c.trim())))) break;
-  if (hit) sel.value = hit;
 }
 
 const P_ID = [/^ins_no$/i, /^numero_de_instalacion$/i, /^id[_ ]?inst/i, /instalaci/i, /installation/i, /^inst/i, /^id$/i];
@@ -205,39 +196,42 @@ const logsListos = cargarIndiceLogs();
 
 const fmtTs = (d) => `${isoDia(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
+// Columnas fijas del fichero de commlogs (Libro.xlsx de SharePoint): ins_no, fecha y key4.
+function buscarCol(cols, patrones) {
+  for (const p of patrones) {
+    const c = cols.find((x) => p.test(String(x).trim()));
+    if (c) return c;
+  }
+  return null;
+}
+
+// Al elegir el fichero se lee y se guarda directamente, sin más pasos.
 $('fLogs').addEventListener('change', async (e) => {
   const files = [...e.target.files];
-  logRows = [];
-  $('btnGuardarLogs').disabled = true;
   if (!files.length) return;
+  $('fLogs').disabled = true;
   $('stSubida').textContent = 'Leyendo el fichero… (con ficheros grandes puede tardar un minuto)';
   try {
     // concat: con cientos de miles de filas, push(...filas) desborda la pila.
-    for (const f of files) logRows = logRows.concat(await leerFichero(f));
-    setColsLogs(Object.keys(logRows[0] || {}));
-    $('stSubida').textContent = `${fmt(logRows.length)} filas en ${files.length} fichero(s). Revisa las columnas y pulsa Guardar.`;
-    $('btnGuardarLogs').disabled = !logRows.length;
+    let filas = [];
+    for (const f of files) filas = filas.concat(await leerFichero(f));
+    const cols = Object.keys(filas[0] || {});
+    const ci = buscarCol(cols, P_ID), cf = buscarCol(cols, P_FECHA), ck = buscarCol(cols, P_KEY4);
+    const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
+    if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en el fichero`);
+    await guardarLogs(filas, ci, cf, ck);
   } catch (err) {
-    $('stSubida').textContent = 'Error leyendo commlogs: ' + err.message;
+    $('stSubida').textContent = 'Error: ' + err.message;
+  } finally {
+    $('fLogs').value = '';
+    $('fLogs').disabled = false;
   }
 });
 
-function setColsLogs(cols) {
-  rellenarSelect($('colLogId'), cols, P_ID);
-  rellenarSelect($('colLogFecha'), cols, P_FECHA);
-  rellenarSelect($('colLogKey4'), cols, P_KEY4);
-  // El formato es siempre el mismo: se recuerda la última elección.
-  for (const [sel, k] of [['colLogId', 'cId'], ['colLogFecha', 'cFecha'], ['colLogKey4', 'cKey4']]) {
-    if (cols.includes(load(k))) $(sel).value = load(k);
-  }
-}
-
-$('btnGuardarLogs').addEventListener('click', async () => {
-  const ci = $('colLogId').value, cf = $('colLogFecha').value, ck = $('colLogKey4').value;
-  store('cId', ci); store('cFecha', cf); store('cKey4', ck);
+async function guardarLogs(filas, ci, cf, ck) {
   const porMes = {};
   let malas = 0;
-  for (const r of logRows) {
+  for (const r of filas) {
     const d = parseFecha(r[cf]);
     const id = String(r[ci] ?? '').trim().replace(/\.0+$/, '');
     if (!d || !id) { malas++; continue; }
@@ -245,34 +239,27 @@ $('btnGuardarLogs').addEventListener('click', async () => {
     (porMes[ts.slice(0, 7)] ||= []).push([id, ts, String(r[ck] ?? '').trim()]);
   }
   const meses = Object.keys(porMes).sort();
-  if (!meses.length) { $('stSubida').textContent = 'No hay filas con instalación y fecha válidas. Revisa las columnas.'; return; }
-  $('btnGuardarLogs').disabled = true;
-  try {
-    // El fichero es acumulativo: se fusiona con lo guardado (sin duplicar) y se reemplaza el mes.
-    for (const [i, mes] of meses.entries()) {
-      $('stSubida').textContent = `Guardando ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
-      const actuales = await api('/api/commlogs?mes=' + mes);
-      const vistos = new Set(actuales.map((l) => l.join('|')));
-      for (const l of porMes[mes]) {
-        const k = l.join('|');
-        if (!vistos.has(k)) { vistos.add(k); actuales.push(l); }
-      }
-      const max = actuales.reduce((m, l) => (l[1] > m ? l[1] : m), '');
-      await api(`/api/commlogs?mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(actuales) });
-      delete cacheLogs[mes];
+  if (!meses.length) throw new Error('el fichero no tiene filas con instalación y fecha válidas');
+  // El fichero es acumulativo: se fusiona con lo guardado (sin duplicar) y se reemplaza el mes.
+  let nuevos = 0;
+  for (const [i, mes] of meses.entries()) {
+    $('stSubida').textContent = `Guardando ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
+    const actuales = await api('/api/commlogs?mes=' + mes);
+    const vistos = new Set(actuales.map((l) => l.join('|')));
+    for (const l of porMes[mes]) {
+      const k = l.join('|');
+      if (!vistos.has(k)) { vistos.add(k); actuales.push(l); nuevos++; }
     }
-    $('stSubida').textContent = `Guardados ${fmt(logRows.length - malas)} commlogs (${meses.map(nombreMes).join(', ')})` +
-      (malas ? ` · ${fmt(malas)} filas sin instalación o fecha ignoradas` : '');
-    $('fLogs').value = '';
-    logRows = [];
-    await cargarIndiceLogs();
-    recalcular();
-  } catch (err) {
-    $('stSubida').textContent = 'Error guardando: ' + err.message;
-    $('btnGuardarLogs').disabled = false;
+    const max = actuales.reduce((m, l) => (l[1] > m ? l[1] : m), '');
+    await api(`/api/commlogs?mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(actuales) });
+    delete cacheLogs[mes];
   }
-});
+  $('stSubida').textContent = `Listo: ${fmt(filas.length - malas)} commlogs leídos, ${fmt(nuevos)} nuevos guardados` +
+    (malas ? ` · ${fmt(malas)} filas sin instalación o fecha ignoradas` : '');
+  await cargarIndiceLogs();
+  recalcular();
+}
 
 // ---------- cálculo ----------
 async function recalcular() {
