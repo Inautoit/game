@@ -8,6 +8,8 @@ const pct = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '–');
 let bbdd = null; // {mes, campanas: {nombre: [ids]}}
 let carga = null;
 let resultados = {};
+let logsRango = [];
+let cacheComp = {};
 let ultimo = null;
 
 // ---------- utilidades ----------
@@ -403,6 +405,8 @@ async function recalcular() {
   for (const mes of mesesEntre(desde, hasta)) {
     for (const [id, ts, key4] of await logsDeMes(mes)) logs.push({ id, fecha: parseFecha(ts), key4 });
   }
+  logsRango = logs;
+  cacheComp = {};
   resultados = {};
   for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta);
   const f = (d) => d.split('-').reverse().join('/');
@@ -437,6 +441,7 @@ function pintarCampana() {
   $('tituloCamp').textContent = `Campaña ${sel}`;
   ultimo = resultados[sel];
   pintar(ultimo);
+  comparar();
 }
 
 function pintar(r) {
@@ -566,3 +571,71 @@ async function pintarDatos() {
     $('tablaDatos').innerHTML = `<tbody><tr><td>Error: ${escapeHtml(err.message)}</td></tr></tbody>`;
   }
 }
+
+// ---------- comparador de días ----------
+// Situación al cierre de un día: mismos commlogs, pero el rango termina ese día.
+const sumarDias = (iso, n) => { const d = parseFecha(iso); d.setDate(d.getDate() + n); return isoDia(d); };
+const fDia = (iso) => iso.split('-').reverse().join('/');
+
+function resultadoAl(camp, dia) {
+  const k = camp + '|' + dia;
+  if (!cacheComp[k]) cacheComp[k] = calcular(bbdd.campanas[camp], logsRango, $('desde').value, dia).resumen;
+  return cacheComp[k];
+}
+
+function ajustarDias(forzar) {
+  const desde = $('desde').value, hasta = $('hasta').value;
+  const fuera = (d) => !d || d < desde || d > hasta;
+  if (forzar || fuera($('diaB').value)) $('diaB').value = hasta;
+  if (forzar || fuera($('diaA').value) || $('diaA').value > $('diaB').value) {
+    const a = sumarDias($('diaB').value, -7);
+    $('diaA').value = a < desde ? desde : a;
+  }
+  for (const id of ['diaA', 'diaB']) { $(id).min = desde; $(id).max = hasta; }
+}
+
+const pctDe = (a, b) => (b ? (100 * a) / b : 0);
+const METRICAS = [
+  ['Nº de vueltas', (s) => s.mediaIntentos, 2, ''],
+  ['Vueltas completas', (s) => s.vueltasCompletas, 0, ''],
+  ['Contactación', (s) => pctDe(s.contactadas, s.gestionables), 1, ' %'],
+  ['Contactadas', (s) => s.contactadas, 0, ''],
+  ['Ilocalizadas', (s) => s.ilocalizadas, 0, ''],
+  ['Sin intentos', (s) => s.sinIntentos, 0, ''],
+  ['Excluidas', (s) => s.excluidas, 0, ''],
+  ['Intentos totales', (s) => s.totalIntentos, 0, ''],
+  ['Contactadas en 1er intento', (s) => s.contacto1, 0, ''],
+  ['Contactadas en 2º intento', (s) => s.contacto2, 0, ''],
+  ['Contactadas en 3er intento o más', (s) => s.contacto3mas, 0, ''],
+  ['Ilocalizados antes de contactar', (s) => s.mediaIlocAntes, 2, ''],
+];
+
+function delta(a, b, dec, suf) {
+  const d = b - a;
+  const cls = Math.abs(d) < 1e-9 ? 'eq' : d > 0 ? 'up' : 'down';
+  const signo = d > 0 ? '▲ +' : d < 0 ? '▼ ' : '';
+  return `<td class="n"><span class="delta ${cls}">${signo}${fmt(d, dec)}${suf === ' %' ? ' p.p.' : suf}</span></td>`;
+}
+
+function comparar() {
+  if (!bbdd || !resultados[$('campana').value]) return;
+  ajustarDias(false);
+  const A = $('diaA').value, B = $('diaB').value;
+  const sel = $('campana').value;
+  const sa = resultadoAl(sel, A), sb = resultadoAl(sel, B);
+  $('tituloComp').textContent = `Campaña ${sel}: ${fDia(A)} frente a ${fDia(B)}`;
+  $('tablaComp').innerHTML = `<thead><tr><th>Medida</th><th class="n">Día A · ${fDia(A)}</th><th class="n">Día B · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
+    METRICAS.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${fmt(f(sa), dec)}${suf}</td><td class="n"><b>${fmt(f(sb), dec)}${suf}</b></td>${delta(f(sa), f(sb), dec, suf)}</tr>`).join('')
+  }</tbody>`;
+  $('tablaCompCamp').innerHTML = `<thead><tr><th>Campaña</th><th class="n">Nº vueltas A</th><th class="n">Nº vueltas B</th><th class="n">Dif.</th>
+    <th class="n">Contactación A</th><th class="n">Contactación B</th><th class="n">Dif.</th></tr></thead><tbody>${
+    Object.keys(bbdd.campanas).map((c) => {
+      const a = resultadoAl(c, A), b = resultadoAl(c, B);
+      const ca = pctDe(a.contactadas, a.gestionables), cb = pctDe(b.contactadas, b.gestionables);
+      return `<tr class="${c === sel ? 'sel' : ''}"><td>${escapeHtml(c)}</td><td class="n">${fmt(a.mediaIntentos, 2)}</td><td class="n"><b>${fmt(b.mediaIntentos, 2)}</b></td>${delta(a.mediaIntentos, b.mediaIntentos, 2, '')}
+        <td class="n">${fmt(ca, 1)} %</td><td class="n"><b>${fmt(cb, 1)} %</b></td>${delta(ca, cb, 1, ' %')}</tr>`;
+    }).join('')
+  }</tbody>`;
+}
+for (const id of ['diaA', 'diaB']) $(id).addEventListener('change', comparar);
+$('btnCompHoy').addEventListener('click', () => { ajustarDias(true); comparar(); });

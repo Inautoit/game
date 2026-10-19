@@ -140,6 +140,9 @@
     .map { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 10px; }
     .empty { text-align: center; padding: 48px 16px; color: var(--text-2); }
     .empty strong { display: block; font-size: 16px; color: var(--text); margin-bottom: 4px; }
+    .delta { font-weight: 600; }
+    .delta.up { color: var(--brand); }
+    .delta.down, .delta.eq { color: var(--muted); }
     .glos summary { cursor: pointer; }
     .glos dl { margin: 14px 0 0; display: grid; grid-template-columns: minmax(160px, 240px) 1fr; gap: 8px 18px; font-size: 13px; }
     .glos dt { font-weight: 600; }
@@ -199,6 +202,19 @@
       <div class="section-title"><h2>¿En qué intento contactamos?</h2><span>Instalaciones contactadas según el intento del primer contacto válido</span></div>
       <div class="hero" id="porIntento"></div>
 
+      <div class="section-title"><h2>Comparador de días</h2><span>Cómo estaba la BBDD al cierre de cada día (commlogs desde el inicio del rango hasta ese día incluido)</span></div>
+      <section class="card">
+        <div class="row">
+          <label>Día A <input type="date" id="diaA" /></label>
+          <label>Día B <input type="date" id="diaB" /></label>
+          <button class="sec" id="btnCompHoy">Última semana</button>
+        </div>
+        <h3 style="margin:16px 0 6px;font-size:13.5px" id="tituloComp"></h3>
+        <div class="tablewrap" style="max-height:none"><table id="tablaComp"></table></div>
+        <h3 style="margin:18px 0 6px;font-size:13.5px">Todas las campañas</h3>
+        <div class="tablewrap"><table id="tablaCompCamp"></table></div>
+      </section>
+
       <div class="grid2">
         <section class="card">
           <h2>Cobertura por vuelta</h2>
@@ -254,6 +270,7 @@
           <dt>Cobertura por vuelta</dt><dd>Vuelta N cubierta = % de gestionables con al menos N intentos o ya contactadas (una vez contactada no hace falta volver a llamar).</dd>
           <dt>Vueltas completas</dt><dd>Número de vueltas cubiertas al 100 %: todas las gestionables tienen al menos N intentos o están contactadas. Debajo se ve cómo va la siguiente vuelta.</dd>
           <dt>Intentos por instalación</dt><dd>Cuántas gestionables tienen 0, 1, 2… intentos.</dd>
+          <dt>Comparador de días</dt><dd>Recalcula todo como si fuera el cierre del día elegido: solo cuenta commlogs desde el inicio del rango hasta ese día. Así se ve, por ejemplo, cuántas vueltas llevábamos el día 5 frente al día 12 y cuánto ha avanzado.</dd>
           <dt>Intentos por día</dt><dd>Commlogs de gestionables por día, separados en contacto válido y no contacto.</dd>
         </dl>
       </details>
