@@ -59,7 +59,8 @@ async function cargarIndice(preferido) {
     const idx = await api('/api/bbdd');
     if (!idx.length) {
       $('mes').innerHTML = '';
-      $('stBbdd').textContent = 'Todavía no hay BBDD guardadas. Cárgalas abajo.';
+      $('stBbdd').textContent = 'Sin BBDD guardadas';
+      $('admin').open = true;
       return;
     }
     $('mes').innerHTML = idx.map((i) => `<option value="${i.mes}">${nombreMes(i.mes)}</option>`).join('');
@@ -80,9 +81,10 @@ async function cambiarMes() {
   const camps = Object.keys(bbdd.campanas);
   $('campana').innerHTML = camps.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
   if (camps.includes(load('campana'))) $('campana').value = load('campana');
-  $('stBbdd').textContent = `BBDD de ${nombreMes(mes)}: ` +
-    camps.map((c) => `${c} ${fmt(bbdd.campanas[c].length)}`).join(' · ');
+  const tot = camps.reduce((a, c) => a + bbdd.campanas[c].length, 0);
+  $('stBbdd').textContent = `BBDD ${nombreMes(mes)}: ${fmt(tot)} instalaciones en ${camps.length} campañas`;
   actualizarBoton();
+  await logsListos;
   recalcular();
 }
 $('mes').addEventListener('change', () => cambiarMes().catch((e) => ($('stBbdd').textContent = 'Error: ' + e.message)));
@@ -164,6 +166,7 @@ cargarIndice();
 // ---------- commlogs guardados (Cloudflare) ----------
 // Se guardan por mes de la fecha del commlog: logs:<AAAA-MM> -> [[id, 'AAAA-MM-DD HH:MM', key4], ...]
 const cacheLogs = {};
+let hayLogs = false;
 async function logsDeMes(mes) {
   if (!cacheLogs[mes]) cacheLogs[mes] = api('/api/commlogs?mes=' + mes).then((d) => d.logs).catch(() => []);
   return cacheLogs[mes];
@@ -186,14 +189,17 @@ async function cargarIndiceLogs() {
     const idx = await api('/api/commlogs');
     const total = idx.reduce((s, i) => s + i.n, 0);
     const ult = idx.map((i) => i.max).sort().pop();
-    $('stLogs').textContent = idx.length
-      ? `${fmt(total)} commlogs guardados · último commlog ${ult} · actualizado ${new Date(Math.max(...idx.map((i) => i.actualizado))).toLocaleString('es-ES')}`
-      : 'Todavía no hay commlogs guardados. Súbelos abajo.';
+    hayLogs = idx.length > 0;
+    $('stLogs').textContent = hayLogs
+      ? `Commlogs hasta ${ult.slice(8, 10)}/${ult.slice(5, 7)}/${ult.slice(0, 4)} · actualizado ${new Date(Math.max(...idx.map((i) => i.actualizado))).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}`
+      : 'Sin commlogs cargados';
+    $('vacio').classList.toggle('hidden', hayLogs);
+    if (!hayLogs) { $('res').classList.add('hidden'); $('admin').open = true; }
   } catch (err) {
     $('stLogs').textContent = 'Error cargando commlogs: ' + err.message;
   }
 }
-cargarIndiceLogs();
+const logsListos = cargarIndiceLogs();
 
 const fmtTs = (d) => `${isoDia(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
@@ -259,7 +265,7 @@ $('btnGuardarLogs').addEventListener('click', async () => {
 
 // ---------- cálculo ----------
 async function recalcular() {
-  if (!bbdd) return;
+  if (!bbdd || !hayLogs) return;
   const desde = $('desde').value, hasta = $('hasta').value;
   $('stCalc').textContent = 'Calculando…';
   const t0 = performance.now();
@@ -269,7 +275,8 @@ async function recalcular() {
   }
   resultados = {};
   for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta);
-  $('stCalc').textContent = `BBDD ${nombreMes(bbdd.mes)} · commlogs ${desde} → ${hasta} · ${fmt(logs.length)} commlogs leídos · ${fmt(performance.now() - t0)} ms`;
+  const f = (d) => d.split('-').reverse().join('/');
+  $('stCalc').textContent = `BBDD ${nombreMes(bbdd.mes)} · commlogs del ${f(desde)} al ${f(hasta)}`;
   $('res').classList.remove('hidden');
   pintarCampana();
 }
@@ -279,19 +286,23 @@ function pintarCampana() {
   const sel = $('campana').value;
   const filas = Object.entries(resultados).map(([c, r]) => {
     const s = r.resumen;
-    return `<tr data-c="${escapeHtml(c)}" class="${c === sel ? 'sel' : ''}"><td>${escapeHtml(c)}</td><td>${fmt(s.total)}</td><td>${fmt(s.excluidas)}</td>
-      <td>${fmt(s.gestionables)}</td><td>${fmt(s.vueltasCompletas)}</td><td>${fmt(s.mediaIntentos, 2)}</td>
-      <td>${fmt(s.contactadas)} (${pct(s.contactadas, s.gestionables)})</td><td>${fmt(s.ilocalizadas)} (${pct(s.ilocalizadas, s.gestionables)})</td>
-      <td>${fmt(s.sinIntentos)} (${pct(s.sinIntentos, s.gestionables)})</td><td>${fmt(s.mediaIlocAntes, 2)}</td><td>${fmt(s.logsEnRango)}</td></tr>`;
+    const pc = s.gestionables ? (100 * s.contactadas) / s.gestionables : 0;
+    return `<tr data-c="${escapeHtml(c)}" class="${c === sel ? 'sel' : ''}"><td>${escapeHtml(c)}</td>
+      <td class="n">${fmt(s.total)}</td><td class="n">${fmt(s.excluidas)}</td><td class="n">${fmt(s.gestionables)}</td>
+      <td><span class="minibar"><i style="width:${pc}%"></i></span><b>${fmt(pc, 1)} %</b></td>
+      <td class="n">${fmt(s.vueltasCompletas)}</td><td class="n">${fmt(s.mediaIntentos, 2)}</td>
+      <td class="n">${fmt(s.ilocalizadas)}</td><td class="n">${fmt(s.sinIntentos)}</td>
+      <td class="n">${fmt(s.mediaIlocAntes, 2)}</td><td class="n">${fmt(s.logsEnRango)}</td></tr>`;
   }).join('');
-  $('tablaCamp').innerHTML = `<thead><tr><th>Campaña</th><th>BBDD</th><th>Excluidas</th><th>Gestionables</th><th>Vueltas completas</th>
-    <th>Intentos medios</th><th>Contactadas</th><th>Ilocalizadas</th><th>Sin intentos</th><th>Iloc. antes de contacto</th><th>Commlogs</th></tr></thead><tbody>${filas}</tbody>`;
+  $('tablaCamp').innerHTML = `<thead><tr><th>Campaña</th><th class="n">BBDD</th><th class="n">Excluidas</th><th class="n">Gestionables</th>
+    <th>Contactación</th><th class="n">Vueltas completas</th><th class="n">Intentos medios</th><th class="n">Ilocalizadas</th>
+    <th class="n">Sin intentos</th><th class="n">Iloc. antes contacto</th><th class="n">Commlogs</th></tr></thead><tbody>${filas}</tbody>`;
   $('tablaCamp').querySelectorAll('tbody tr').forEach((tr) => tr.addEventListener('click', () => {
     $('campana').value = tr.dataset.c;
     store('campana', tr.dataset.c);
     pintarCampana();
   }));
-  $('tituloCamp').textContent = `Detalle · ${sel}`;
+  $('tituloCamp').textContent = `Campaña ${sel}`;
   ultimo = resultados[sel];
   pintar(ultimo);
 }
@@ -299,16 +310,24 @@ function pintarCampana() {
 function pintar(r) {
   const s = r.resumen;
   $('res').classList.remove('hidden');
+  const pc = s.gestionables ? (100 * s.contactadas) / s.gestionables : 0;
+  const sig = r.vueltas[s.vueltasCompletas];
+  const hero = [
+    ['main', 'Contactación', fmt(pc, 1) + ' %', `${fmt(s.contactadas)} de ${fmt(s.gestionables)} gestionables`, pc],
+    ['', 'Vueltas completas', fmt(s.vueltasCompletas),
+      sig ? `Vuelta ${sig.n} al ${fmt(sig.pct * 100, 1)} %` : '', sig ? sig.pct * 100 : 100],
+    ['', 'Intentos medios', fmt(s.mediaIntentos, 2), `${fmt(s.totalIntentos)} intentos en total`, null],
+    ['', 'Ilocalizados antes de contactar', fmt(s.mediaIlocAntes, 2), `media por contactada · ${fmt(s.ilocAntesTotal)} en total`, null],
+  ];
+  $('hero').innerHTML = hero.map(([cls, l, v, sub, m]) => `<div class="hk ${cls}"><div class="l">${l}</div><div class="v">${v}</div>
+    <div class="s">${sub}</div>${m == null ? '' : `<div class="meter"><i style="width:${Math.min(100, m)}%"></i></div>`}</div>`).join('');
   const kpis = [
     ['Instalaciones BBDD', fmt(s.total), ''],
     ['Excluidas', fmt(s.excluidas), pct(s.excluidas, s.total) + ' de la BBDD'],
     ['Gestionables', fmt(s.gestionables), 'BBDD sin excluidas'],
-    ['Vueltas completas', fmt(s.vueltasCompletas), 'todas con ≥N intentos o contactadas'],
-    ['Intentos medios', fmt(s.mediaIntentos, 2), fmt(s.totalIntentos) + ' intentos'],
     ['Contactadas', fmt(s.contactadas), pct(s.contactadas, s.gestionables)],
-    ['Ilocalizadas', fmt(s.ilocalizadas), pct(s.ilocalizadas, s.gestionables) + ' · llamadas sin contacto'],
+    ['Ilocalizadas', fmt(s.ilocalizadas), pct(s.ilocalizadas, s.gestionables) + ' · sin contacto aún'],
     ['Sin intentos', fmt(s.sinIntentos), pct(s.sinIntentos, s.gestionables)],
-    ['Iloc. antes de contacto', fmt(s.mediaIlocAntes, 2), `media · ${fmt(s.ilocAntesTotal)} en total`],
   ];
   $('kpis').innerHTML = kpis.map(([l, v, sub]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${sub}</div></div>`).join('');
 
@@ -326,8 +345,8 @@ function pintar(r) {
   })));
   barras($('chDia'), r.porDia.map((d) => ({
     label: d.dia.slice(8),
-    segs: [{ v: d.no_contacto, c: 'var(--s2)' }, { v: d.contacto, c: 'var(--s1)' }],
-    tip: `${d.dia}\nNo contacto: ${fmt(d.no_contacto)}\nContacto válido: ${fmt(d.contacto)}\nTotal: ${fmt(d.no_contacto + d.contacto)}`,
+    segs: [{ v: d.contacto, c: 'var(--s1)' }, { v: d.no_contacto, c: 'var(--s2)' }],
+    tip: `${d.dia.split('-').reverse().join('/')}\nContacto válido: ${fmt(d.contacto)}\nNo contacto: ${fmt(d.no_contacto)}\nTotal: ${fmt(d.no_contacto + d.contacto)}`,
   })));
   tabla();
 }
@@ -367,7 +386,7 @@ function filas() {
 function tabla() {
   const rows = filas();
   $('tabla').innerHTML = `<thead><tr>${COLS.map((c) => `<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${
-    rows.slice(0, 500).map((d) => `<tr>${COLS.map(([k]) => `<td>${escapeHtml(k === 'estado' ? ESTADOS[d[k]] : d[k] ?? '')}</td>`).join('')}</tr>`).join('')
+    rows.slice(0, 500).map((d) => `<tr>${COLS.map(([k]) => (k === 'estado' ? `<td><span class="pill ${d[k]}">${ESTADOS[d[k]]}</span></td>` : `<td>${escapeHtml(d[k] ?? '')}</td>`)).join('')}</tr>`).join('')
   }</tbody>${rows.length > 500 ? `<caption style="caption-side:bottom;padding:8px;color:var(--muted)">Mostrando 500 de ${fmt(rows.length)} — exporta a CSV para verlas todas</caption>` : ''}`;
 }
 $('filtro').addEventListener('change', () => ultimo && tabla());

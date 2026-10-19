@@ -3,162 +3,208 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vueltas BBDD</title>
+  <title>Contactación y vueltas BBDD</title>
+  <link rel="icon" href="./logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root {
       color-scheme: light;
-      --bg: #f4f4f2; --surface: #fcfcfb; --border: #e2e1dc;
-      --text: #0b0b0b; --text-2: #52514e; --muted: #8a8984;
-      --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --gray: #a9a8a2;
-      --accent: #2a78d6;
+      --brand: #e4002b; --brand-ink: #b80023; --brand-soft: #fde8ec;
+      --bg: #f5f5f4; --surface: #ffffff; --surface-2: #fafaf9; --border: #e7e5e4;
+      --text: #1d1d1b; --text-2: #57534e; --muted: #8a8580;
+      --s1: #e4002b; --s2: #a8a29e; --track: #f0eeec;
+      --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
     }
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
         color-scheme: dark;
-        --bg: #111110; --surface: #1a1a19; --border: #2e2e2c;
-        --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e88;
-        --s1: #3987e5; --s2: #d95926; --s3: #199e70; --gray: #6d6c67; --accent: #3987e5;
+        --brand: #ff2d55; --brand-ink: #ff5c7a; --brand-soft: #3a1018;
+        --bg: #121212; --surface: #1c1c1c; --surface-2: #232323; --border: #2f2f2f;
+        --text: #f5f5f4; --text-2: #c7c3be; --muted: #8f8a85;
+        --s1: #ff2d55; --s2: #6b6764; --track: #2a2a2a; --shadow: none;
       }
     }
     :root[data-theme="dark"] {
       color-scheme: dark;
-      --bg: #111110; --surface: #1a1a19; --border: #2e2e2c;
-      --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e88;
-      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --gray: #6d6c67; --accent: #3987e5;
+      --brand: #ff2d55; --brand-ink: #ff5c7a; --brand-soft: #3a1018;
+      --bg: #121212; --surface: #1c1c1c; --surface-2: #232323; --border: #2f2f2f;
+      --text: #f5f5f4; --text-2: #c7c3be; --muted: #8f8a85;
+      --s1: #ff2d55; --s2: #6b6764; --track: #2a2a2a; --shadow: none;
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text);
-      font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-    header { padding: 20px 16px 8px; max-width: 1200px; margin: 0 auto; }
-    h1 { margin: 0; font-size: 22px; }
-    header p { margin: 4px 0 0; color: var(--text-2); }
-    main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 40px; display: grid; gap: 16px; }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
-    .card h2 { margin: 0 0 12px; font-size: 15px; }
+      font: 14px/1.5 Poppins, system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+    /* Cabecera corporativa */
+    .top { background: var(--surface); border-bottom: 1px solid var(--border); }
+    .top-in { max-width: 1240px; margin: 0 auto; padding: 14px 16px; display: flex; align-items: center; gap: 18px; }
+    .top img { height: 44px; width: auto; display: block; }
+    .top .sep { width: 1px; align-self: stretch; background: var(--border); }
+    .top h1 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.25; }
+    .top p { margin: 0; font-size: 12.5px; color: var(--text-2); }
+    .tag { margin-left: auto; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--brand); background: var(--brand-soft); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+    .stripe { height: 4px; background: var(--brand); }
+
+    /* Barra de filtros */
+    .filters { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+    .filters-in { max-width: 1240px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+    .filters .info { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+
+    main { max-width: 1240px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; min-width: 0; box-shadow: var(--shadow); }
+    .card h2 { margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+    .card .sub { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+    .section-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin: 6px 0 -6px; }
+    .section-title h2 { margin: 0; font-size: 20px; font-weight: 600; }
+    .section-title h2::before { content: ""; display: inline-block; width: 4px; height: 18px; background: var(--brand);
+      border-radius: 2px; margin-right: 10px; vertical-align: -2px; }
+    .section-title span { color: var(--muted); font-size: 12.5px; }
+
     .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
-    label { display: grid; gap: 4px; font-size: 12px; color: var(--text-2); }
-    input, select, button { font: inherit; color: var(--text); background: var(--bg);
-      border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
-    button { cursor: pointer; background: var(--accent); color: #fff; border-color: transparent; }
-    button.sec { background: var(--bg); color: var(--text); border-color: var(--border); }
-    button:disabled { opacity: .5; cursor: default; }
-    .status { color: var(--text-2); font-size: 13px; min-height: 1.4em; }
-    .grid2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-    .kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-    .kpi .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; }
-    .kpi .l { font-size: 12px; color: var(--text-2); }
-    .kpi .s { font-size: 12px; color: var(--muted); }
+    label { display: grid; gap: 4px; font-size: 11.5px; font-weight: 500; color: var(--text-2); }
+    input, select, button { font: inherit; font-size: 13.5px; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-height: 38px; }
+    select:focus, input:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+    button { cursor: pointer; background: var(--brand); color: #fff; border-color: transparent; font-weight: 500; padding: 7px 16px; }
+    button:hover { background: var(--brand-ink); }
+    button.sec { background: var(--surface); color: var(--text); border-color: var(--border); }
+    button.sec:hover { background: var(--surface-2); }
+    button:disabled { opacity: .45; cursor: default; }
+    .status { color: var(--text-2); font-size: 12.5px; min-height: 1.4em; }
+    .grid2 { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
     .hidden { display: none !important; }
-    details summary { cursor: pointer; color: var(--text-2); }
-    .map { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 8px; }
-    /* barras */
-    .bars { display: flex; align-items: flex-end; gap: 2px; height: 200px; padding-top: 20px; border-bottom: 1px solid var(--border); position: relative; }
+
+    /* KPIs */
+    .hero { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .hk { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow); }
+    .hk.main { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .hk .l { font-size: 12.5px; font-weight: 500; color: var(--text-2); }
+    .hk.main .l, .hk.main .s { color: rgba(255,255,255,.9); }
+    .hk .v { font-size: 34px; font-weight: 700; line-height: 1.15; margin-top: 6px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+    .hk .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .meter { height: 6px; border-radius: 3px; background: var(--track); margin-top: 12px; overflow: hidden; }
+    .meter i { display: block; height: 100%; background: var(--brand); border-radius: 3px; }
+    .hk.main .meter { background: rgba(255,255,255,.25); }
+    .hk.main .meter i { background: #fff; }
+    .kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+    .kpi .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .kpi .l { font-size: 12px; color: var(--text-2); }
+    .kpi .s { font-size: 11.5px; color: var(--muted); }
+
+    /* Gráficos de barras */
+    .bars { display: flex; align-items: flex-end; gap: 4px; height: 210px; padding-top: 22px; border-bottom: 1px solid var(--border); position: relative; }
     .bar { flex: 1; min-width: 3px; display: flex; flex-direction: column-reverse; gap: 2px; height: 100%; position: relative; }
     .bar > i { display: block; border-radius: 4px 4px 0 0; }
-    .bar:hover > i { filter: brightness(1.12); }
-    .xl { display: flex; gap: 2px; font-size: 11px; color: var(--muted); margin-top: 4px; }
-    .xl span { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; }
-    .vl { position: absolute; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--text-2); }
-    .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); margin-bottom: 8px; flex-wrap: wrap; }
-    .legend b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+    .bar:hover > i { filter: brightness(1.1); }
+    .xl { display: flex; gap: 4px; font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .xl span { flex: 1; min-width: 0; text-align: center; overflow: visible; white-space: nowrap; }
+    .vl { position: absolute; left: -4px; right: -4px; text-align: center; font-size: 11px; font-weight: 500; color: var(--text-2); }
+    .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-2); margin-bottom: 8px; flex-wrap: wrap; }
+    .legend b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
     #tip { position: fixed; pointer-events: none; background: var(--text); color: var(--surface);
-      padding: 6px 8px; border-radius: 6px; font-size: 12px; z-index: 10; white-space: pre; }
-    tr.sel td { background: var(--bg); font-weight: 600; }
-    #tablaCamp tbody tr { cursor: pointer; }
+      padding: 7px 10px; border-radius: 8px; font-size: 12px; z-index: 10; white-space: pre; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+
+    /* Tablas */
     table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
-    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-    th { color: var(--text-2); font-weight: 600; }
-    .tablewrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    td.n, th.n { text-align: right; }
+    #tablaCamp tbody tr { cursor: pointer; }
+    #tablaCamp tbody tr:hover td { background: var(--surface-2); }
+    tr.sel td { background: var(--brand-soft) !important; }
+    tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--brand); font-weight: 600; }
+    .minibar { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: var(--track); vertical-align: middle; margin-right: 8px; overflow: hidden; }
+    .minibar i { display: block; height: 100%; background: var(--brand); }
+    .tablewrap { overflow-x: auto; max-height: 440px; overflow-y: auto; }
+    .pill { display: inline-block; font-size: 11.5px; font-weight: 500; padding: 2px 9px; border-radius: 999px; background: var(--track); color: var(--text-2); }
+    .pill.contactada { background: var(--brand-soft); color: var(--brand-ink); }
+    .pill.excluida { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+
+    /* Gestión de datos */
+    details.admin { background: var(--surface); border: 1px dashed var(--border); border-radius: 14px; padding: 14px 20px; }
+    details.admin summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+    details.admin .blk { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 14px; }
+    details.admin h3 { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; }
+    .map { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 10px; }
+    .empty { text-align: center; padding: 48px 16px; color: var(--text-2); }
+    .empty strong { display: block; font-size: 16px; color: var(--text); margin-bottom: 4px; }
+    footer { max-width: 1240px; margin: 0 auto; padding: 0 16px 32px; color: var(--muted); font-size: 11.5px; }
+    @media (max-width: 640px) {
+      .top img { height: 34px; } .top h1 { font-size: 15px; } .tag, .top .sep { display: none; }
+      .hk .v { font-size: 28px; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Vueltas de BBDD</h1>
-    <p>Intentos por instalación, exclusiones e ilocalizados antes de contacto</p>
+  <div class="stripe"></div>
+  <header class="top">
+    <div class="top-in">
+      <img src="./logo.png" alt="Verisure" />
+      <div class="sep"></div>
+      <div>
+        <h1>Contactación y vueltas de BBDD</h1>
+        <p>Seguimiento de intentos, exclusiones e ilocalizados por campaña</p>
+      </div>
+      <span class="tag">Uso interno</span>
+    </div>
   </header>
+
+  <div class="filters">
+    <div class="filters-in">
+      <label>Mes de la BBDD <select id="mes"></select></label>
+      <label>Campaña <select id="campana"></select></label>
+      <label>Commlogs desde <input type="date" id="desde" /></label>
+      <label>Hasta <input type="date" id="hasta" /></label>
+      <button class="sec" id="btnRango" title="Del día 15 del mes anterior hasta ayer">Rango por defecto</button>
+      <button id="btnCalc" disabled>Recalcular</button>
+      <div class="info"><span id="stBbdd"></span> · <span id="stLogs"></span></div>
+    </div>
+  </div>
+
   <main>
-    <section class="card">
-      <h2>1 · BBDD del mes</h2>
-      <div class="row">
-        <label>Mes de la BBDD <select id="mes"></select></label>
-        <label>Campaña <select id="campana"></select></label>
-      </div>
-      <div class="status" id="stBbdd"></div>
-      <details style="margin-top:12px">
-        <summary>Cargar o actualizar una BBDD mensual</summary>
-        <p class="status">Sube el Excel exportado (Exportadas_&lt;Mes&gt;&lt;AA&gt;.xlsx). Cada pestaña es una campaña y se mide por separado. Solo se guarda el número de instalación.</p>
-        <div class="row">
-          <label>Excel BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv" /></label>
-          <label>Mes de la BBDD <input type="month" id="mesCarga" /></label>
-          <button id="btnGuardar" disabled>Guardar en Cloudflare</button>
-        </div>
-        <div class="status" id="stCarga"></div>
-      </details>
-    </section>
+    <div id="vacio" class="card empty hidden"><strong>Aún no hay commlogs cargados</strong>Súbelos en «Gestión de datos», al final de la página, y el informe se calculará solo.</div>
 
-    <section class="card">
-      <h2>2 · Commlogs</h2>
-      <div class="status" id="stLogs"></div>
-      <div class="row" style="margin-top:8px">
-        <label>Desde <input type="date" id="desde" /></label>
-        <label>Hasta <input type="date" id="hasta" /></label>
-        <button class="sec" id="btnRango">Rango por defecto</button>
-      </div>
-      <p class="status">Por defecto: desde el día 15 del mes anterior a la BBDD hasta ayer (sin pasar de fin de mes).</p>
-      <details style="margin-top:12px">
-        <summary>Actualizar commlogs</summary>
-        <p class="status">Sube la exportación de commlogs (CSV o Excel, siempre con el mismo formato). Se añaden a los ya guardados sin duplicar, así que puedes subir el histórico completo o solo los últimos días.</p>
-        <div class="row">
-          <label>Fichero(s) commlogs <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label>
-        </div>
-        <div class="map">
-          <label>Columna instalación <select id="colLogId"></select></label>
-          <label>Columna fecha <select id="colLogFecha"></select></label>
-          <label>Columna key4 <select id="colLogKey4"></select></label>
-        </div>
-        <div class="row" style="margin-top:12px"><button id="btnGuardarLogs" disabled>Guardar commlogs</button></div>
-        <div class="status" id="stSubida"></div>
-      </details>
-    </section>
-
-    <div class="row"><button id="btnCalc" disabled>Recalcular</button> <span class="status" id="stCalc"></span></div>
-
-    <div id="res" class="hidden" style="display:grid; gap:16px">
-      <section class="card">
-        <h2>Resumen por campaña</h2>
+    <div id="res" class="hidden" style="display:grid; gap:20px">
+      <div class="section-title"><h2>Resumen por campaña</h2><span id="stCalc"></span></div>
+      <section class="card" style="padding:8px 8px 4px">
         <div class="tablewrap"><table id="tablaCamp"></table></div>
       </section>
-      <h2 style="margin:8px 0 0;font-size:17px" id="tituloCamp"></h2>
+
+      <div class="section-title"><h2 id="tituloCamp"></h2></div>
+      <div class="hero" id="hero"></div>
       <div class="kpis" id="kpis"></div>
+
       <div class="grid2">
         <section class="card">
           <h2>Cobertura por vuelta</h2>
-          <p class="status">% de instalaciones gestionables con al menos N intentos o ya contactadas.</p>
+          <p class="sub">% de instalaciones gestionables con al menos N intentos o ya contactadas</p>
           <div id="chVueltas"></div>
         </section>
         <section class="card">
           <h2>Ilocalizados antes de contactar</h2>
-          <p class="status">Instalaciones contactadas según los no-contacto previos al primer contacto.</p>
+          <p class="sub">Instalaciones contactadas según los intentos sin contacto previos</p>
           <div id="chIloc"></div>
         </section>
       </div>
       <div class="grid2">
         <section class="card">
           <h2>Intentos por instalación</h2>
-          <p class="status">Instalaciones gestionables (sin excluidas) por número de intentos.</p>
+          <p class="sub">Instalaciones gestionables (sin excluidas) por número de intentos</p>
           <div id="chIntentos"></div>
         </section>
         <section class="card">
           <h2>Intentos por día</h2>
-          <div class="legend"><span><b style="background:var(--s2)"></b>No contacto</span><span><b style="background:var(--s1)"></b>Contacto válido</span></div>
+          <div class="legend"><span><b style="background:var(--s1)"></b>Contacto válido</span><span><b style="background:var(--s2)"></b>No contacto</span></div>
           <div id="chDia"></div>
         </section>
       </div>
       <section class="card">
-        <div class="row" style="justify-content:space-between">
-          <h2 style="margin:0">Detalle por instalación</h2>
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <h2>Detalle por instalación</h2>
           <div class="row">
             <select id="filtro">
               <option value="">Todas</option><option value="contactada">Contactadas</option>
@@ -171,7 +217,34 @@
         <div class="tablewrap" style="margin-top:12px"><table id="tabla"></table></div>
       </section>
     </div>
+
+    <details class="admin" id="admin">
+      <summary>Gestión de datos</summary>
+      <div class="blk">
+        <h3>Actualizar commlogs</h3>
+        <p class="status">Exportación de commlogs (CSV o Excel, siempre el mismo formato). Se añaden a los guardados sin duplicar: puedes subir el histórico completo o solo los últimos días.</p>
+        <div class="row"><label>Fichero(s) <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label></div>
+        <div class="map">
+          <label>Columna instalación <select id="colLogId"></select></label>
+          <label>Columna fecha <select id="colLogFecha"></select></label>
+          <label>Columna key4 <select id="colLogKey4"></select></label>
+        </div>
+        <div class="row" style="margin-top:12px"><button id="btnGuardarLogs" disabled>Guardar commlogs</button></div>
+        <div class="status" id="stSubida"></div>
+      </div>
+      <div class="blk">
+        <h3>Añadir o actualizar BBDD mensual</h3>
+        <p class="status">Excel exportado (Exportadas_&lt;Mes&gt;&lt;AA&gt;.xlsx). Cada pestaña es una campaña y se mide por separado. Solo se guarda el número de instalación.</p>
+        <div class="row">
+          <label>Excel BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv" /></label>
+          <label>Mes de la BBDD <input type="month" id="mesCarga" /></label>
+          <button id="btnGuardar" disabled>Guardar BBDD</button>
+        </div>
+        <div class="status" id="stCarga"></div>
+      </div>
+    </details>
   </main>
+  <footer>Clasificación key4 · No contacto: R_ILOC01, R_ILOC02, R_TRA006 · Exclusión: R_NOU_02, R_NOU_03, R_NOU_04 · Contacto válido: resto. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.</footer>
   <div id="tip" class="hidden"></div>
   <script type="module" src="./app.js"></script>
 </body>
