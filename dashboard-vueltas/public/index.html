@@ -48,6 +48,14 @@
       color: var(--brand); background: var(--brand-soft); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
     .stripe { height: 4px; background: var(--brand); }
 
+    /* Pestañas */
+    .tabs { background: var(--surface); border-bottom: 1px solid var(--border); }
+    .tabs-in { max-width: 1240px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; }
+    .tabs a { padding: 10px 14px; font-size: 13.5px; font-weight: 500; color: var(--text-2); text-decoration: none; border-bottom: 3px solid transparent; }
+    .tabs a:hover { color: var(--text); }
+    .tabs a.on { color: var(--brand); border-bottom-color: var(--brand); }
+    .tabs a.right { margin-left: auto; }
+
     /* Barra de filtros */
     .filters { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
     .filters-in { max-width: 1240px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
@@ -152,7 +160,12 @@
       <span class="tag">Uso interno</span>
     </div>
   </header>
+  <nav class="tabs"><div class="tabs-in">
+    <a href="#" id="tabDash" class="on">Dashboard</a>
+    <a href="#origenes" id="tabOrig" class="right">＋ Añadir orígenes</a>
+  </div></nav>
 
+  <div id="vistaDash">
   <div class="filters">
     <div class="filters-in">
       <label>Mes de la BBDD <select id="mes"></select></label>
@@ -161,13 +174,12 @@
       <label>Hasta <input type="date" id="hasta" /></label>
       <button class="sec" id="btnRango" title="Del día 15 del mes anterior hasta ayer">Rango por defecto</button>
       <button id="btnCalc" disabled>Recalcular</button>
-      <button class="sec hidden" id="btnSync" title="Lee de nuevo el Commlogs.xlsx vinculado">↻ Actualizar commlogs</button>
-      <div class="info"><span id="stBbdd"></span> · <span id="stLogs"></span> <span id="stBar" style="color:var(--brand)"></span></div>
+      <div class="info"><span id="stBbdd"></span> · <span id="stLogs"></span></div>
     </div>
   </div>
 
   <main>
-    <div id="vacio" class="card empty hidden"><strong>Aún no hay commlogs cargados</strong>Súbelos en «Gestión de datos», al final de la página, y el informe se calculará solo.</div>
+    <div id="vacio" class="card empty hidden"><strong>Aún no hay commlogs cargados</strong>Añádelos en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a> y el informe se calculará solo.</div>
 
     <div id="res" class="hidden" style="display:grid; gap:20px">
       <div class="section-title"><h2>Resumen por campaña</h2><span id="stCalc"></span></div>
@@ -219,33 +231,44 @@
       </section>
     </div>
 
-    <details class="admin" id="admin">
-      <summary>Gestión de datos</summary>
-      <div class="blk">
-        <h3>Actualizar commlogs</h3>
-        <div id="vinculo" class="hidden">
-          <p class="status">Vincula el <b>Commlogs.xlsx</b> de tu carpeta de OneDrive sincronizada con SharePoint. La web lo recordará y, cada vez que la abras, leerá los commlogs nuevos sin tener que subirlo.</p>
-          <div class="row">
-            <button id="btnVincular">Vincular Commlogs.xlsx</button>
-          </div>
-          <div class="status" id="stVinculo" style="margin-top:6px"></div>
-          <p class="status" style="margin-top:12px">O súbelo manualmente:</p>
-        </div>
-        <div class="row"><label>Fichero de commlogs <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label></div>
-        <div class="status" id="stSubida"></div>
-      </div>
-      <div class="blk">
-        <h3>Añadir o actualizar BBDD mensual</h3>
-        <p class="status">Excel exportado (Exportadas_&lt;Mes&gt;&lt;AA&gt;.xlsx). Cada pestaña es una campaña y se mide por separado. Solo se guarda el número de instalación.</p>
-        <div class="row">
-          <label>Excel BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv" /></label>
-          <label>Mes de la BBDD <input type="month" id="mesCarga" /></label>
-          <button id="btnGuardar" disabled>Guardar BBDD</button>
-        </div>
-        <div class="status" id="stCarga"></div>
-      </div>
-    </details>
   </main>
+  </div>
+
+  <div id="vistaOrig" class="hidden">
+  <main>
+    <div class="section-title"><h2>Añadir orígenes</h2><span>Los datos que añadas aquí quedan guardados para todos y el dashboard se calcula solo.</span></div>
+    <section class="card">
+      <h2>Commlogs</h2>
+      <p class="sub" id="stLogs2"></p>
+      <div id="vinculo" class="hidden">
+        <p class="status">Vincula el <b>Commlogs.xlsx</b> de tu carpeta de OneDrive sincronizada con SharePoint: la web lo recordará y leerá los commlogs nuevos al abrirse, sin preguntarte nada.</p>
+        <div class="row">
+          <button id="btnVincular">Vincular Commlogs.xlsx</button>
+          <button class="sec hidden" id="btnSync">↻ Leer ahora</button>
+        </div>
+        <div class="status" id="stVinculo" style="margin-top:6px"></div>
+        <p class="status" style="margin-top:14px">O súbelo manualmente:</p>
+      </div>
+      <div class="row"><label>Fichero de commlogs (pestaña Query, columnas ins_no, fecha y key4) <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label></div>
+      <div class="status" id="stSubida" style="margin-top:6px"></div>
+    </section>
+    <section class="card">
+      <h2>BBDD mensual</h2>
+      <p class="sub">Excel exportado (Exportadas_&lt;Mes&gt;&lt;AA&gt;.xlsx). Cada pestaña es una campaña y se mide por separado. Solo se guarda el número de instalación.</p>
+      <div class="row">
+        <label>Excel BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv" /></label>
+        <label>Mes de la BBDD <input type="month" id="mesCarga" /></label>
+        <button id="btnGuardar" disabled>Guardar BBDD</button>
+      </div>
+      <div class="status" id="stCarga"></div>
+    </section>
+    <section class="card">
+      <h2>Datos guardados</h2>
+      <div class="tablewrap"><table id="tablaDatos"></table></div>
+    </section>
+    <div><a href="#" style="color:var(--brand); font-weight:500">← Volver al dashboard</a></div>
+  </main>
+  </div>
   <footer>Clasificación key4 · No contacto: R_ILOC01, R_ILOC02, R_TRA006 · Exclusión: R_NOU_02, R_NOU_03, R_NOU_04 · Contacto válido: resto. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.</footer>
   <div id="tip" class="hidden"></div>
   <script type="module" src="./app.js"></script>

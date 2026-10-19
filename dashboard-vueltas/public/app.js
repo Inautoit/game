@@ -13,36 +13,49 @@ let ultimo = null;
 function store(k, v) { try { localStorage.setItem('vueltas.' + k, v); } catch {} }
 function load(k) { try { return localStorage.getItem('vueltas.' + k) || ''; } catch { return ''; } }
 
+const normCol = (c) => String(c ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const esCabeceraLogs = (fila) => {
+  const n = fila.map(normCol);
+  return n.some((c) => c === 'insno' || c.endsWith('insno')) && n.some((c) => c === 'key4' || c.endsWith('key4'));
+};
+
 async function leerFichero(file) {
   const buf = await file.arrayBuffer();
+  const cab = new Uint8Array(buf.slice(0, 4));
+  // Un .xlsx normal es un ZIP (PK). Si empieza por D0 CF 11 E0 está cifrado
+  // (etiqueta de confidencialidad / contraseña) y no se puede leer en el navegador.
+  if (/\.xlsx$/i.test(file.name) && cab[0] === 0xd0 && cab[1] === 0xcf) {
+    throw new Error('el Excel está protegido (etiqueta de confidencialidad o contraseña). Ábrelo y guárdalo como CSV, o quita la protección, y súbelo de nuevo');
+  }
   // En CSV se leen las celdas como texto: SheetJS interpretaría dd/mm/aaaa como mm/dd/aaaa.
   const csv = /\.(csv|txt)$/i.test(file.name);
   const wb = XLSX.read(buf, { cellDates: true, dense: true, raw: csv });
-  // El libro de commlogs tiene varias pestañas: se usa la que tiene las columnas
-  // ins_no y key4 (la de la query), mirando las primeras filas por si la cabecera no está en la 1.
+  // El libro de commlogs puede tener varias pestañas: se usa la que tiene las columnas
+  // ins_no y key4 (la Query), mirando las primeras filas por si la cabecera no está en la 1.
   const nombres = [...wb.SheetNames].sort((a, b) => /query/i.test(b) - /query/i.test(a));
+  const vistas = [];
   for (const nombre of nombres) {
     const ws = wb.Sheets[nombre];
-    const primeras = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, range: 0, blankrows: false }).slice(0, 20);
-    const fila = primeras.findIndex((r) => r.some((c) => /^ins_no$/i.test(String(c).trim())) && r.some((c) => /^key4$/i.test(String(c).trim())));
-    if (fila >= 0) return XLSX.utils.sheet_to_json(ws, { defval: '', raw: true, range: rangoDesde(ws, primeras, fila) });
+    if (!ws || !ws['!ref']) { vistas.push(`${nombre} (vacía)`); continue; }
+    const primeras = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true }).slice(0, 30);
+    const fila = primeras.findIndex(esCabeceraLogs);
+    if (fila >= 0) {
+      const rango = XLSX.utils.decode_range(ws['!ref']);
+      rango.s.r += fila;
+      return XLSX.utils.sheet_to_json(ws, { defval: '', raw: true, range: rango });
+    }
+    const cabecera = primeras.find((r) => r.some((c) => String(c).trim())) || [];
+    vistas.push(`${nombre} (${cabecera.slice(0, 6).map((c) => String(c).trim()).join(', ') || 'sin datos'}${cabecera.length > 6 ? '…' : ''})`);
   }
-  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: true });
+  // Para la BBDD u otros ficheros: primera pestaña tal cual.
+  const filas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: true });
+  filas.pestanasVistas = vistas;
+  return filas;
 }
 
-// Rango de la hoja empezando en la fila de cabecera (las filas en blanco no cuentan en `primeras`).
-function rangoDesde(ws, primeras, fila) {
-  const rango = XLSX.utils.decode_range(ws['!ref']);
-  const todas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true }).slice(0, 40);
-  const objetivo = JSON.stringify(primeras[fila]);
-  const real = todas.findIndex((r) => JSON.stringify(r) === objetivo);
-  rango.s.r += Math.max(0, real);
-  return rango;
-}
-
-const P_ID = [/^ins_no$/i, /^numero_de_instalacion$/i, /^id[_ ]?inst/i, /instalaci/i, /installation/i, /^inst/i, /^id$/i];
+const P_ID = [/^ins_no$/i, /^insno$/i, /insno$/i, /^numero_de_instalacion$/i, /^id[_ ]?inst/i, /instalaci/i, /installation/i, /^inst/i, /^id$/i];
 const P_FECHA = [/^fecha$/i, /fecha/i, /date/i, /creat/i];
-const P_KEY4 = [/^key4$/i, /key\s*4/i];
+const P_KEY4 = [/^key4$/i, /key4$/i];
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -71,7 +84,6 @@ async function cargarIndice(preferido) {
     if (!idx.length) {
       $('mes').innerHTML = '';
       $('stBbdd').textContent = 'Sin BBDD guardadas';
-      $('admin').open = true;
       return;
     }
     $('mes').innerHTML = idx.map((i) => `<option value="${i.mes}">${nombreMes(i.mes)}</option>`).join('');
@@ -205,7 +217,9 @@ async function cargarIndiceLogs() {
       ? `Commlogs hasta ${ult.slice(8, 10)}/${ult.slice(5, 7)}/${ult.slice(0, 4)} · actualizado ${new Date(Math.max(...idx.map((i) => i.actualizado))).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}`
       : 'Sin commlogs cargados';
     $('vacio').classList.toggle('hidden', hayLogs);
-    if (!hayLogs) { $('res').classList.add('hidden'); $('admin').open = true; }
+    if (!hayLogs) $('res').classList.add('hidden');
+    $('stLogs2').textContent = $('stLogs').textContent;
+    pintarDatos();
   } catch (err) {
     $('stLogs').textContent = 'Error cargando commlogs: ' + err.message;
   }
@@ -217,7 +231,7 @@ const fmtTs = (d) => `${isoDia(d)} ${String(d.getHours()).padStart(2, '0')}:${St
 // Columnas fijas del fichero de commlogs (Libro.xlsx de SharePoint): ins_no, fecha y key4.
 function buscarCol(cols, patrones) {
   for (const p of patrones) {
-    const c = cols.find((x) => p.test(String(x).trim()));
+    const c = cols.find((x) => p.test(String(x).trim()) || p.test(normCol(x)));
     if (c) return c;
   }
   return null;
@@ -228,11 +242,19 @@ async function procesarFicheros(files) {
   $('stSubida').textContent = 'Leyendo el fichero… (con ficheros grandes puede tardar un minuto)';
   // concat: con cientos de miles de filas, push(...filas) desborda la pila.
   let filas = [];
-  for (const f of files) filas = filas.concat(await leerFichero(f));
+  let vistas = [];
+  for (const f of files) {
+    const leidas = await leerFichero(f);
+    vistas = vistas.concat(leidas.pestanasVistas || []);
+    filas = filas.concat(leidas);
+  }
   const cols = Object.keys(filas[0] || {});
   const ci = buscarCol(cols, P_ID), cf = buscarCol(cols, P_FECHA), ck = buscarCol(cols, P_KEY4);
   const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
-  if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en el fichero`);
+  if (faltan.length) {
+    throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')}.` +
+      (vistas.length ? ` Pestañas que veo: ${vistas.join(' · ')}` : ` Columnas que veo: ${cols.slice(0, 8).join(', ')}`));
+  }
   await guardarLogs(filas, ci, cf, ck);
 }
 
@@ -257,11 +279,6 @@ $('fLogs').addEventListener('change', async (e) => {
 // y la web lo vuelve a leer al abrirse, guardando únicamente si ha cambiado.
 const soportaVinculo = 'showOpenFilePicker' in window;
 
-// El progreso de la subida también se ve en la barra superior.
-new MutationObserver(() => {
-  const t = $('stSubida').textContent;
-  $('stBar').textContent = /^(Leyendo|Guardando|Error)/.test(t) ? '· ' + t : '';
-}).observe($('stSubida'), { childList: true, characterData: true, subtree: true });
 
 function idb(modo, fn) {
   return new Promise((ok, ko) => {
@@ -496,3 +513,30 @@ $('btnCsv').addEventListener('click', () => {
   a.click();
 });
 for (const id of ['desde', 'hasta']) $(id).addEventListener('change', () => recalcular());
+
+// ---------- pestañas: Dashboard / Añadir orígenes ----------
+function vista() {
+  const orig = location.hash === '#origenes';
+  $('vistaDash').classList.toggle('hidden', orig);
+  $('vistaOrig').classList.toggle('hidden', !orig);
+  $('tabDash').classList.toggle('on', !orig);
+  $('tabOrig').classList.toggle('on', orig);
+  scrollTo(0, 0);
+}
+addEventListener('hashchange', vista);
+vista();
+
+async function pintarDatos() {
+  try {
+    const [bb, lg] = await Promise.all([api('/api/bbdd'), api('/api/commlogs')]);
+    const meses = [...new Set([...bb.map((b) => b.mes), ...lg.map((l) => l.mes)])].sort().reverse();
+    $('tablaDatos').innerHTML = `<thead><tr><th>Mes</th><th>BBDD (campañas · instalaciones)</th><th class="n">Commlogs con fecha de ese mes</th><th>Último commlog</th></tr></thead><tbody>${
+      meses.map((m) => {
+        const b = bb.find((x) => x.mes === m), l = lg.find((x) => x.mes === m);
+        const camp = b ? Object.entries(b.campanas).map(([c, n]) => `${escapeHtml(c)} ${fmt(n)}`).join(' · ') : '—';
+        return `<tr><td>${nombreMes(m)}</td><td>${camp}</td><td class="n">${l ? fmt(l.n) : '—'}</td><td>${l ? l.max : '—'}</td></tr>`;
+      }).join('')}</tbody>`;
+  } catch (err) {
+    $('tablaDatos').innerHTML = `<tbody><tr><td>Error: ${escapeHtml(err.message)}</td></tr></tbody>`;
+  }
+}
