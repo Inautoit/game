@@ -8,7 +8,6 @@ const pct = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '–');
 let bbdd = null; // {mes, campanas: {nombre: [ids]}}
 let carga = null;
 let resultados = {};
-let logsRango = [];
 let cacheComp = {};
 let ultimo = null;
 
@@ -167,6 +166,7 @@ $('btnGuardar').addEventListener('click', async () => {
   $('btnGuardar').disabled = true;
   $('stCarga').textContent = 'Guardando…';
   try {
+    delete cacheBbdd[mes];
     await api('/api/bbdd?mes=' + mes, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mes, campanas: carga }) });
     $('stCarga').textContent = `Guardada la BBDD de ${nombreMes(mes)}.`;
@@ -388,6 +388,7 @@ async function guardarLogs(filas, ci, cf, ck) {
     await api(`/api/commlogs?mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(actuales) });
     delete cacheLogs[mes];
+    delete cacheParsed[mes];
   }
   $('stSubida').textContent = `Listo: ${fmt(filas.length - malas)} commlogs leídos, ${fmt(nuevos)} nuevos guardados` +
     (malas ? ` · ${fmt(malas)} filas sin instalación o fecha ignoradas` : '');
@@ -405,7 +406,6 @@ async function recalcular() {
   for (const mes of mesesEntre(desde, hasta)) {
     for (const [id, ts, key4] of await logsDeMes(mes)) logs.push({ id, fecha: parseFecha(ts), key4 });
   }
-  logsRango = logs;
   cacheComp = {};
   resultados = {};
   for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta);
@@ -573,25 +573,54 @@ async function pintarDatos() {
 }
 
 // ---------- comparador de días ----------
-// Situación al cierre de un día: mismos commlogs, pero el rango termina ese día.
+// Cada lado: un día y una BBDD. Situación al cierre de ese día con la regla de rango
+// de esa BBDD (desde el 15 del mes anterior hasta el día, sin pasar del fin de mes).
 const sumarDias = (iso, n) => { const d = parseFecha(iso); d.setDate(d.getDate() + n); return isoDia(d); };
+const sumarMeses = (iso, n) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const ult = new Date(y, m - 1 + n + 1, 0).getDate();
+  return isoDia(new Date(y, m - 1 + n, Math.min(d, ult)));
+};
 const fDia = (iso) => iso.split('-').reverse().join('/');
+const cacheBbdd = {};
+const cacheParsed = {};
+const bbddDe = (mes) => (cacheBbdd[mes] ||= api('/api/bbdd?mes=' + mes));
+const logsParseados = (mes) => (cacheParsed[mes] ||= logsDeMes(mes).then((l) => l.map(([id, ts, key4]) => ({ id, fecha: parseFecha(ts), key4 }))));
 
-function resultadoAl(camp, dia) {
-  const k = camp + '|' + dia;
-  if (!cacheComp[k]) cacheComp[k] = calcular(bbdd.campanas[camp], logsRango, $('desde').value, dia).resumen;
-  return cacheComp[k];
+async function estadoAl(mes, dia) {
+  const k = mes + '|' + dia;
+  if (cacheComp[k]) return cacheComp[k];
+  const { desde } = rangoPorDefecto(mes);
+  const finMes = rangoPorDefecto(mes, new Date(2999, 0, 1)).hasta;
+  const hasta = dia > finMes ? finMes : dia;
+  if (hasta < desde) return (cacheComp[k] = { vacio: true, desde, hasta });
+  const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(desde, hasta).map(logsParseados)]);
+  const logs = [].concat(...porMes);
+  const res = {};
+  for (const [camp, ids] of Object.entries(bb.campanas)) res[camp] = calcular(ids, logs, desde, hasta).resumen;
+  return (cacheComp[k] = { res, desde, hasta, recortado: hasta !== dia });
 }
 
-function ajustarDias(forzar) {
-  const desde = $('desde').value, hasta = $('hasta').value;
-  const fuera = (d) => !d || d < desde || d > hasta;
-  if (forzar || fuera($('diaB').value)) $('diaB').value = hasta;
-  if (forzar || fuera($('diaA').value) || $('diaA').value > $('diaB').value) {
-    const a = sumarDias($('diaB').value, -7);
-    $('diaA').value = a < desde ? desde : a;
+const mesesDisponibles = () => [...$('mes').options].map((o) => o.value);
+function mesParaDia(dia, preferido) {
+  const ms = mesesDisponibles();
+  if (preferido && ms.includes(preferido)) return preferido;
+  return ms.includes(dia.slice(0, 7)) ? dia.slice(0, 7) : ms[ms.length - 1];
+}
+function rellenarMesesComp() {
+  const html = mesesDisponibles().map((m) => `<option value="${m}">${nombreMes(m)}</option>`).join('');
+  for (const id of ['mesA', 'mesB']) {
+    const v = $(id).value;
+    $(id).innerHTML = html;
+    if (v && mesesDisponibles().includes(v)) $(id).value = v;
   }
-  for (const id of ['diaA', 'diaB']) { $(id).min = desde; $(id).max = hasta; }
+}
+function fijarDias(modo) {
+  const hoyB = $('hasta').value;
+  $('diaB').value = hoyB;
+  $('mesB').value = $('mes').value;
+  $('diaA').value = modo === 'semana' ? sumarDias(hoyB, -7) : sumarMeses(hoyB, -1);
+  $('mesA').value = modo === 'semana' ? $('mes').value : mesParaDia($('diaA').value);
 }
 
 const pctDe = (a, b) => (b ? (100 * a) / b : 0);
@@ -599,6 +628,8 @@ const METRICAS = [
   ['Nº de vueltas', (s) => s.mediaIntentos, 2, ''],
   ['Vueltas completas', (s) => s.vueltasCompletas, 0, ''],
   ['Contactación', (s) => pctDe(s.contactadas, s.gestionables), 1, ' %'],
+  ['Instalaciones BBDD', (s) => s.total, 0, ''],
+  ['Gestionables', (s) => s.gestionables, 0, ''],
   ['Contactadas', (s) => s.contactadas, 0, ''],
   ['Ilocalizadas', (s) => s.ilocalizadas, 0, ''],
   ['Sin intentos', (s) => s.sinIntentos, 0, ''],
@@ -611,31 +642,57 @@ const METRICAS = [
 ];
 
 function delta(a, b, dec, suf) {
+  if (a == null || b == null) return '<td class="n">—</td>';
   const d = b - a;
   const cls = Math.abs(d) < 1e-9 ? 'eq' : d > 0 ? 'up' : 'down';
   const signo = d > 0 ? '▲ +' : d < 0 ? '▼ ' : '';
   return `<td class="n"><span class="delta ${cls}">${signo}${fmt(d, dec)}${suf === ' %' ? ' p.p.' : suf}</span></td>`;
 }
+const val = (s, f, dec, suf) => (s ? `${fmt(f(s), dec)}${suf}` : '—');
 
-function comparar() {
-  if (!bbdd || !resultados[$('campana').value]) return;
-  ajustarDias(false);
-  const A = $('diaA').value, B = $('diaB').value;
+let compId = 0;
+async function comparar() {
+  if (!$('mes').options.length || !hayLogs) return;
+  rellenarMesesComp();
+  if (!$('diaA').value || !$('diaB').value || !$('mesA').value || !$('mesB').value) fijarDias('mes');
+  const A = $('diaA').value, B = $('diaB').value, mA = $('mesA').value, mB = $('mesB').value;
+  const id = ++compId;
+  $('notaComp').textContent = 'Calculando…';
+  let ea, eb;
+  try {
+    [ea, eb] = await Promise.all([estadoAl(mA, A), estadoAl(mB, B)]);
+  } catch (err) {
+    $('notaComp').textContent = 'Error: ' + err.message;
+    return;
+  }
+  if (id !== compId) return; // llegó otra comparación más reciente
+  const nota = (e, d, m, l) => e.vacio
+    ? `${l}: el ${fDia(d)} es anterior al inicio de la BBDD de ${nombreMes(m)} (${fDia(e.desde)}), no hay datos.`
+    : `${l}: BBDD ${nombreMes(m)}, commlogs del ${fDia(e.desde)} al ${fDia(e.hasta)}${e.recortado ? ' (cierre de mes)' : ''}.`;
+  $('notaComp').textContent = `${nota(ea, A, mA, 'A')} ${nota(eb, B, mB, 'B')}`;
+
   const sel = $('campana').value;
-  const sa = resultadoAl(sel, A), sb = resultadoAl(sel, B);
-  $('tituloComp').textContent = `Campaña ${sel}: ${fDia(A)} frente a ${fDia(B)}`;
-  $('tablaComp').innerHTML = `<thead><tr><th>Medida</th><th class="n">Día A · ${fDia(A)}</th><th class="n">Día B · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
-    METRICAS.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${fmt(f(sa), dec)}${suf}</td><td class="n"><b>${fmt(f(sb), dec)}${suf}</b></td>${delta(f(sa), f(sb), dec, suf)}</tr>`).join('')
+  const camps = [...new Set([...Object.keys(ea.res || {}), ...Object.keys(eb.res || {})])];
+  const campSel = camps.includes(sel) ? sel : camps[0];
+  const sa = ea.res?.[campSel], sb = eb.res?.[campSel];
+  $('tituloComp').textContent = `Campaña ${campSel}: ${fDia(A)} (${nombreMes(mA)}) frente a ${fDia(B)} (${nombreMes(mB)})`;
+  $('tablaComp').innerHTML = `<thead><tr><th>Medida</th><th class="n">A · ${fDia(A)}</th><th class="n">B · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
+    METRICAS.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${val(sa, f, dec, suf)}</td><td class="n"><b>${val(sb, f, dec, suf)}</b></td>${delta(sa && f(sa), sb && f(sb), dec, suf)}</tr>`).join('')
   }</tbody>`;
   $('tablaCompCamp').innerHTML = `<thead><tr><th>Campaña</th><th class="n">Nº vueltas A</th><th class="n">Nº vueltas B</th><th class="n">Dif.</th>
     <th class="n">Contactación A</th><th class="n">Contactación B</th><th class="n">Dif.</th></tr></thead><tbody>${
-    Object.keys(bbdd.campanas).map((c) => {
-      const a = resultadoAl(c, A), b = resultadoAl(c, B);
-      const ca = pctDe(a.contactadas, a.gestionables), cb = pctDe(b.contactadas, b.gestionables);
-      return `<tr class="${c === sel ? 'sel' : ''}"><td>${escapeHtml(c)}</td><td class="n">${fmt(a.mediaIntentos, 2)}</td><td class="n"><b>${fmt(b.mediaIntentos, 2)}</b></td>${delta(a.mediaIntentos, b.mediaIntentos, 2, '')}
-        <td class="n">${fmt(ca, 1)} %</td><td class="n"><b>${fmt(cb, 1)} %</b></td>${delta(ca, cb, 1, ' %')}</tr>`;
+    camps.map((c) => {
+      const a = ea.res?.[c], b = eb.res?.[c];
+      const ca = a && pctDe(a.contactadas, a.gestionables), cb = b && pctDe(b.contactadas, b.gestionables);
+      return `<tr class="${c === campSel ? 'sel' : ''}"><td>${escapeHtml(c)}</td><td class="n">${a ? fmt(a.mediaIntentos, 2) : '—'}</td><td class="n"><b>${b ? fmt(b.mediaIntentos, 2) : '—'}</b></td>${delta(a && a.mediaIntentos, b && b.mediaIntentos, 2, '')}
+        <td class="n">${a ? fmt(ca, 1) + ' %' : '—'}</td><td class="n"><b>${b ? fmt(cb, 1) + ' %' : '—'}</b></td>${delta(ca, cb, 1, ' %')}</tr>`;
     }).join('')
   }</tbody>`;
 }
-for (const id of ['diaA', 'diaB']) $(id).addEventListener('change', comparar);
-$('btnCompHoy').addEventListener('click', () => { ajustarDias(true); comparar(); });
+for (const l of ['A', 'B']) {
+  // Al cambiar el día se propone la BBDD del mes de ese día.
+  $('dia' + l).addEventListener('change', () => { $('mes' + l).value = mesParaDia($('dia' + l).value); comparar(); });
+  $('mes' + l).addEventListener('change', comparar);
+}
+$('btnCompMes').addEventListener('click', () => { fijarDias('mes'); comparar(); });
+$('btnCompHoy').addEventListener('click', () => { fijarDias('semana'); comparar(); });
