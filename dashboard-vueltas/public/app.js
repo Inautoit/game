@@ -587,17 +587,30 @@ const cacheParsed = {};
 const bbddDe = (mes) => (cacheBbdd[mes] ||= api('/api/bbdd?mes=' + mes));
 const logsParseados = (mes) => (cacheParsed[mes] ||= logsDeMes(mes).then((l) => l.map(([id, ts, key4]) => ({ id, fecha: parseFecha(ts), key4 }))));
 
-// Solo los commlogs del día elegido, cruzados con la BBDD elegida.
-async function estadoAl(mes, dia) {
-  const k = mes + '|' + dia;
+// Dos modos:
+//  - 'dia':  solo los commlogs del día elegido, cruzados con la BBDD elegida.
+//  - 'acum': situación a ese día = commlogs desde el inicio del rango de esa BBDD
+//            (15 del mes anterior) hasta el día elegido, sin pasar del fin de mes.
+let modoComp = load('modoComp') === 'acum' ? 'acum' : 'dia';
+
+async function estadoAl(mes, dia, modo) {
+  const k = modo + '|' + mes + '|' + dia;
   if (cacheComp[k]) return cacheComp[k];
-  const [bb, logsMes] = await Promise.all([bbddDe(mes), logsParseados(dia.slice(0, 7))]);
-  const delDiaLogs = logsMes.filter((l) => l.fecha && isoDia(l.fecha) === dia);
-  const dias = {};
-  for (const [camp, ids] of Object.entries(bb.campanas)) dias[camp] = delDia(ids, delDiaLogs, dia);
   const { desde } = rangoPorDefecto(mes);
   const finMes = rangoPorDefecto(mes, new Date(2999, 0, 1)).hasta;
-  return (cacheComp[k] = { dias, fueraVentana: dia < desde || dia > finMes, desde, finMes });
+  const datos = {};
+  if (modo === 'dia') {
+    const [bb, logsMes] = await Promise.all([bbddDe(mes), logsParseados(dia.slice(0, 7))]);
+    const delDiaLogs = logsMes.filter((l) => l.fecha && isoDia(l.fecha) === dia);
+    for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = delDia(ids, delDiaLogs, dia);
+    return (cacheComp[k] = { datos, fueraVentana: dia < desde || dia > finMes, desde, finMes });
+  }
+  const hasta = dia > finMes ? finMes : dia;
+  if (hasta < desde) return (cacheComp[k] = { datos, vacio: true, desde, hasta });
+  const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(desde, hasta).map(logsParseados)]);
+  const logs = [].concat(...porMes);
+  for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = calcular(ids, logs, desde, hasta).resumen;
+  return (cacheComp[k] = { datos, desde, hasta, recortado: hasta !== dia });
 }
 
 const mesesDisponibles = () => [...$('mes').options].map((o) => o.value);
@@ -623,6 +636,22 @@ function fijarDias(modo) {
 }
 
 const pctDe = (a, b) => (b ? (100 * a) / b : 0);
+const METRICAS_ACUM = [
+  ['Nº de vueltas', (s) => s.mediaIntentos, 2, ''],
+  ['Vueltas completas', (s) => s.vueltasCompletas, 0, ''],
+  ['Contactación', (s) => pctDe(s.contactadas, s.gestionables), 1, ' %'],
+  ['Instalaciones BBDD', (s) => s.total, 0, ''],
+  ['Gestionables', (s) => s.gestionables, 0, ''],
+  ['Contactadas', (s) => s.contactadas, 0, ''],
+  ['Ilocalizadas', (s) => s.ilocalizadas, 0, ''],
+  ['Sin intentos', (s) => s.sinIntentos, 0, ''],
+  ['Excluidas', (s) => s.excluidas, 0, ''],
+  ['Intentos totales', (s) => s.totalIntentos, 0, ''],
+  ['Contactadas en 1er intento', (s) => s.contacto1, 0, ''],
+  ['Contactadas en 2º intento', (s) => s.contacto2, 0, ''],
+  ['Contactadas en 3er intento o más', (s) => s.contacto3mas, 0, ''],
+  ['Ilocalizados antes de contactar', (s) => s.mediaIlocAntes, 2, ''],
+];
 const METRICAS_DIA = [
   ['Instalaciones llamadas', (d) => d.instLlamadas, 0, ''],
   ['Contactadas ese día', (d) => d.contactadas, 0, ''],
@@ -651,37 +680,53 @@ async function comparar() {
   rellenarMesesComp();
   if (!$('diaA').value || !$('diaB').value || !$('mesA').value || !$('mesB').value) fijarDias('mes');
   const A = $('diaA').value, B = $('diaB').value, mA = $('mesA').value, mB = $('mesB').value;
+  const modo = modoComp;
+  for (const [btn, m] of [['btnModoDia', 'dia'], ['btnModoAcum', 'acum']]) $(btn).classList.toggle('sec', modo !== m);
+  $('ayudaModo').textContent = modo === 'dia'
+    ? 'Día único: solo los commlogs del día elegido, cruzados con la BBDD que elijas.'
+    : 'Situación a ese día: cómo íbamos con esa BBDD hasta ese día (commlogs desde el 15 del mes anterior hasta el día elegido, sin pasar del fin de mes).';
   const id = ++compId;
   $('notaComp').textContent = 'Calculando…';
   let ea, eb;
   try {
-    [ea, eb] = await Promise.all([estadoAl(mA, A), estadoAl(mB, B)]);
+    [ea, eb] = await Promise.all([estadoAl(mA, A, modo), estadoAl(mB, B, modo)]);
   } catch (err) {
     $('notaComp').textContent = 'Error: ' + err.message;
     return;
   }
   if (id !== compId) return; // llegó otra comparación más reciente
-  const nota = (e, d, m, l) => `${l}: commlogs del ${fDia(d)} cruzados con la BBDD de ${nombreMes(m)}` +
-    (e.fueraVentana ? ` (ojo: ese día está fuera del rango de esa BBDD, ${fDia(e.desde)}–${fDia(e.finMes)})` : '') + '.';
+  const nota = modo === 'dia'
+    ? (e, d, m, l) => `${l}: commlogs del ${fDia(d)} cruzados con la BBDD de ${nombreMes(m)}` +
+      (e.fueraVentana ? ` (ojo: ese día está fuera del rango de esa BBDD, ${fDia(e.desde)}–${fDia(e.finMes)})` : '') + '.'
+    : (e, d, m, l) => e.vacio
+      ? `${l}: el ${fDia(d)} es anterior al inicio de la BBDD de ${nombreMes(m)} (${fDia(e.desde)}), no hay datos.`
+      : `${l}: BBDD ${nombreMes(m)}, commlogs del ${fDia(e.desde)} al ${fDia(e.hasta)}${e.recortado ? ' (cierre de mes)' : ''}.`;
   $('notaComp').textContent = `${nota(ea, A, mA, 'A')} ${nota(eb, B, mB, 'B')}`;
 
   const sel = $('campana').value;
-  const camps = [...new Set([...Object.keys(ea.dias), ...Object.keys(eb.dias)])];
+  const camps = [...new Set([...Object.keys(ea.datos), ...Object.keys(eb.datos)])];
   const campSel = camps.includes(sel) ? sel : camps[0];
-  const da = ea.dias[campSel], db = eb.dias[campSel];
-  $('tituloCompDia').textContent = `Campaña ${campSel}: ${fDia(A)} frente a ${fDia(B)}`;
-  $('tablaCompDia').innerHTML = `<thead><tr><th>Medida (solo commlogs de ese día)</th><th class="n">A · ${fDia(A)}</th><th class="n">B · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
-    METRICAS_DIA.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${val(da, f, dec, suf)}</td><td class="n"><b>${val(db, f, dec, suf)}</b></td>${delta(da && f(da), db && f(db), dec, suf)}</tr>`).join('')
+  const da = ea.datos[campSel], db = eb.datos[campSel];
+  const metricas = modo === 'dia' ? METRICAS_DIA : METRICAS_ACUM;
+  const cab = modo === 'dia' ? 'Medida (solo commlogs de ese día)' : 'Medida (acumulado hasta ese día)';
+  $('tituloCompDia').textContent = `Campaña ${campSel}: ${fDia(A)} (${nombreMes(mA)}) frente a ${fDia(B)} (${nombreMes(mB)})`;
+  $('tablaCompDia').innerHTML = `<thead><tr><th>${cab}</th><th class="n">A · ${fDia(A)}</th><th class="n">B · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
+    metricas.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${val(da, f, dec, suf)}</td><td class="n"><b>${val(db, f, dec, suf)}</b></td>${delta(da && f(da), db && f(db), dec, suf)}</tr>`).join('')
   }</tbody>`;
   const celdas3 = (x, y, f, dec, suf) => `<td class="n">${val(x, f, dec, suf)}</td><td class="n"><b>${val(y, f, dec, suf)}</b></td>${delta(x && f(x), y && f(y), dec, suf)}`;
-  $('tablaCompCamp').innerHTML = `<thead><tr><th>Campaña</th><th class="n">Inst. llamadas A</th><th class="n">Inst. llamadas B</th><th class="n">Dif.</th>
-    <th class="n">Contactadas A</th><th class="n">Contactadas B</th><th class="n">Dif.</th>
-    <th class="n">% contacto A</th><th class="n">% contacto B</th><th class="n">Dif.</th></tr></thead><tbody>${
+  const cols = modo === 'dia'
+    ? [['Inst. llamadas', (d) => d.instLlamadas, 0, ''], ['Contactadas', (d) => d.contactadas, 0, ''], ['% contacto', (d) => d.pctContactoDia, 1, ' %']]
+    : [['Nº vueltas', (s) => s.mediaIntentos, 2, ''], ['Contactación', (s) => pctDe(s.contactadas, s.gestionables), 1, ' %'], ['Contactadas', (s) => s.contactadas, 0, '']];
+  $('tablaCompCamp').innerHTML = `<thead><tr><th>Campaña</th>${
+    cols.map(([l]) => `<th class="n">${l} A</th><th class="n">${l} B</th><th class="n">Dif.</th>`).join('')}</tr></thead><tbody>${
     camps.map((c) => {
-      const x = ea.dias[c], y = eb.dias[c];
-      return `<tr class="${c === campSel ? 'sel' : ''}"><td>${escapeHtml(c)}</td>${celdas3(x, y, (d) => d.instLlamadas, 0, '')}${celdas3(x, y, (d) => d.contactadas, 0, '')}${celdas3(x, y, (d) => d.pctContactoDia, 1, ' %')}</tr>`;
+      const x = ea.datos[c], y = eb.datos[c];
+      return `<tr class="${c === campSel ? 'sel' : ''}"><td>${escapeHtml(c)}</td>${cols.map(([, f, dec, suf]) => celdas3(x, y, f, dec, suf)).join('')}</tr>`;
     }).join('')
   }</tbody>`;
+}
+for (const [btn, m] of [['btnModoDia', 'dia'], ['btnModoAcum', 'acum']]) {
+  $(btn).addEventListener('click', () => { modoComp = m; store('modoComp', m); comparar(); });
 }
 for (const l of ['A', 'B']) {
   // Al cambiar el día se propone la BBDD del mes de ese día.
