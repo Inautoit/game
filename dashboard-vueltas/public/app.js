@@ -18,8 +18,26 @@ async function leerFichero(file) {
   // En CSV se leen las celdas como texto: SheetJS interpretaría dd/mm/aaaa como mm/dd/aaaa.
   const csv = /\.(csv|txt)$/i.test(file.name);
   const wb = XLSX.read(buf, { cellDates: true, dense: true, raw: csv });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
+  // El libro de commlogs tiene varias pestañas: se usa la que tiene las columnas
+  // ins_no y key4 (la de la query), mirando las primeras filas por si la cabecera no está en la 1.
+  const nombres = [...wb.SheetNames].sort((a, b) => /query/i.test(b) - /query/i.test(a));
+  for (const nombre of nombres) {
+    const ws = wb.Sheets[nombre];
+    const primeras = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, range: 0, blankrows: false }).slice(0, 20);
+    const fila = primeras.findIndex((r) => r.some((c) => /^ins_no$/i.test(String(c).trim())) && r.some((c) => /^key4$/i.test(String(c).trim())));
+    if (fila >= 0) return XLSX.utils.sheet_to_json(ws, { defval: '', raw: true, range: rangoDesde(ws, primeras, fila) });
+  }
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: true });
+}
+
+// Rango de la hoja empezando en la fila de cabecera (las filas en blanco no cuentan en `primeras`).
+function rangoDesde(ws, primeras, fila) {
+  const rango = XLSX.utils.decode_range(ws['!ref']);
+  const todas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true }).slice(0, 40);
+  const objetivo = JSON.stringify(primeras[fila]);
+  const real = todas.findIndex((r) => JSON.stringify(r) === objetivo);
+  rango.s.r += Math.max(0, real);
+  return rango;
 }
 
 const P_ID = [/^ins_no$/i, /^numero_de_instalacion$/i, /^id[_ ]?inst/i, /instalaci/i, /installation/i, /^inst/i, /^id$/i];
