@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Vueltas BBDD</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.39.0/lib/msal-browser.min.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -77,7 +76,7 @@
 <body>
   <header>
     <h1>Vueltas de BBDD</h1>
-    <p>Intentos por instalación, exclusiones e ilocalizados antes de contacto.</p>
+    <p>Intentos por instalación, exclusiones e ilocalizados antes de contacto · <a href="/logout" style="color:inherit">Salir</a></p>
   </header>
   <main>
     <section class="card">
@@ -101,38 +100,30 @@
 
     <section class="card">
       <h2>2 · Commlogs</h2>
-      <div class="row">
+      <div class="status" id="stLogs"></div>
+      <div class="row" style="margin-top:8px">
         <label>Desde <input type="date" id="desde" /></label>
         <label>Hasta <input type="date" id="hasta" /></label>
         <button class="sec" id="btnRango">Rango por defecto</button>
       </div>
-      <p class="status">Por defecto: desde el día 15 del mes anterior hasta ayer (sin pasar de fin de mes).</p>
-      <div class="row">
-        <label>Fichero commlogs (CSV / Excel) <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label>
-        <button id="btnPbi">Leer del dataflow (Microsoft)</button>
-      </div>
-      <div class="map">
-        <label>Columna instalación <select id="colLogId"></select></label>
-        <label>Columna fecha <select id="colLogFecha"></select></label>
-        <label>Columna key4 <select id="colLogKey4"></select></label>
-      </div>
+      <p class="status">Por defecto: desde el día 15 del mes anterior a la BBDD hasta ayer (sin pasar de fin de mes).</p>
       <details style="margin-top:12px">
-        <summary>Configuración de conexión a Power BI / dataflow</summary>
-        <div class="map">
-          <label>Tenant ID <input id="cfgTenant" placeholder="xxxxxxxx-…" /></label>
-          <label>Client ID (app registrada) <input id="cfgClient" placeholder="xxxxxxxx-…" /></label>
-          <label>Workspace ID <input id="cfgGroup" placeholder="xxxxxxxx-…" /></label>
-          <label>Dataset (modelo) ID <input id="cfgDataset" placeholder="xxxxxxxx-…" /></label>
-          <label>Tabla commlogs <input id="cfgTabla" placeholder="Commlogs" /></label>
-          <label>Col. instalación <input id="cfgColId" placeholder="Instalacion" /></label>
-          <label>Col. fecha <input id="cfgColFecha" placeholder="Fecha" /></label>
-          <label>Col. key4 <input id="cfgColKey4" placeholder="key4" /></label>
+        <summary>Actualizar commlogs</summary>
+        <p class="status">Sube la exportación de commlogs (CSV o Excel, siempre con el mismo formato). Se añaden a los ya guardados sin duplicar, así que puedes subir el histórico completo o solo los últimos días.</p>
+        <div class="row">
+          <label>Fichero(s) commlogs <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label>
         </div>
+        <div class="map">
+          <label>Columna instalación <select id="colLogId"></select></label>
+          <label>Columna fecha <select id="colLogFecha"></select></label>
+          <label>Columna key4 <select id="colLogKey4"></select></label>
+        </div>
+        <div class="row" style="margin-top:12px"><button id="btnGuardarLogs" disabled>Guardar commlogs</button></div>
+        <div class="status" id="stSubida"></div>
       </details>
-      <div class="status" id="stLogs"></div>
     </section>
 
-    <div class="row"><button id="btnCalc" disabled>Calcular</button> <span class="status" id="stCalc"></span></div>
+    <div class="row"><button id="btnCalc" disabled>Recalcular</button> <span class="status" id="stCalc"></span></div>
 
     <div id="res" class="hidden" style="display:grid; gap:16px">
       <section class="card">

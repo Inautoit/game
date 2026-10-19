@@ -39,7 +39,14 @@ Solo se guarda el número de instalación.
 El dashboard está protegido con contraseña: secreto `DASHBOARD_PASSWORD` del
 proyecto de Pages (Settings → Variables and Secrets).
 
-## Fuentes de datos
+## Commlogs guardados
+
+*Actualizar commlogs* → sube la exportación (CSV/Excel, siempre el mismo formato).
+Se guardan en KV por mes de la fecha (`logs:<AAAA-MM>`) y se añaden sin duplicar,
+así que vale subir el histórico completo o solo los últimos días. Al abrir la
+web se calcula sola con la BBDD y los commlogs guardados.
+
+## Fuentes de datos (versión anterior)
 
 1. **Ficheros** CSV/Excel de commlogs (se procesan en el navegador, no se suben
    a ningún servidor).

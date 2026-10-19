@@ -16,7 +16,9 @@ function load(k) { try { return localStorage.getItem('vueltas.' + k) || ''; } ca
 
 async function leerFichero(file) {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { cellDates: true, dense: true });
+  // En CSV se leen las celdas como texto: SheetJS interpretaría dd/mm/aaaa como mm/dd/aaaa.
+  const csv = /\.(csv|txt)$/i.test(file.name);
+  const wb = XLSX.read(buf, { cellDates: true, dense: true, raw: csv });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
 }
@@ -36,7 +38,7 @@ function escapeHtml(s) {
 }
 
 function actualizarBoton() {
-  $('btnCalc').disabled = !(bbdd && logRows.length);
+  $('btnCalc').disabled = !bbdd;
 }
 
 // ---------- BBDD fijas (guardadas en Cloudflare) ----------
@@ -81,6 +83,7 @@ async function cambiarMes() {
   $('stBbdd').textContent = `BBDD de ${nombreMes(mes)}: ` +
     camps.map((c) => `${c} ${fmt(bbdd.campanas[c].length)}`).join(' · ');
   actualizarBoton();
+  recalcular();
 }
 $('mes').addEventListener('change', () => cambiarMes().catch((e) => ($('stBbdd').textContent = 'Error: ' + e.message)));
 $('campana').addEventListener('change', () => {
@@ -155,124 +158,122 @@ function aplicarRango() {
   $('desde').value = r.desde;
   $('hasta').value = r.hasta;
 }
-$('btnRango').addEventListener('click', aplicarRango);
+$('btnRango').addEventListener('click', () => { aplicarRango(); recalcular(); });
 cargarIndice();
 
-// ---------- commlogs desde fichero ----------
+// ---------- commlogs guardados (Cloudflare) ----------
+// Se guardan por mes de la fecha del commlog: logs:<AAAA-MM> -> [[id, 'AAAA-MM-DD HH:MM', key4], ...]
+const cacheLogs = {};
+async function logsDeMes(mes) {
+  if (!cacheLogs[mes]) cacheLogs[mes] = api('/api/commlogs?mes=' + mes).then((d) => d.logs).catch(() => []);
+  return cacheLogs[mes];
+}
+const mesesEntre = (desde, hasta) => {
+  const out = [];
+  let [y, m] = desde.slice(0, 7).split('-').map(Number);
+  const fin = hasta.slice(0, 7);
+  for (;;) {
+    const k = `${y}-${String(m).padStart(2, '0')}`;
+    out.push(k);
+    if (k >= fin) break;
+    if (++m > 12) { m = 1; y++; }
+  }
+  return out;
+};
+
+async function cargarIndiceLogs() {
+  try {
+    const idx = await api('/api/commlogs');
+    const total = idx.reduce((s, i) => s + i.n, 0);
+    const ult = idx.map((i) => i.max).sort().pop();
+    $('stLogs').textContent = idx.length
+      ? `${fmt(total)} commlogs guardados · último commlog ${ult} · actualizado ${new Date(Math.max(...idx.map((i) => i.actualizado))).toLocaleString('es-ES')}`
+      : 'Todavía no hay commlogs guardados. Súbelos abajo.';
+  } catch (err) {
+    $('stLogs').textContent = 'Error cargando commlogs: ' + err.message;
+  }
+}
+cargarIndiceLogs();
+
+const fmtTs = (d) => `${isoDia(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
 $('fLogs').addEventListener('change', async (e) => {
   const files = [...e.target.files];
+  logRows = [];
+  $('btnGuardarLogs').disabled = true;
   if (!files.length) return;
-  $('stLogs').textContent = 'Leyendo…';
+  $('stSubida').textContent = 'Leyendo…';
   try {
-    logRows = [];
     for (const f of files) logRows.push(...(await leerFichero(f)));
     setColsLogs(Object.keys(logRows[0] || {}));
-    $('stLogs').textContent = `${fmt(logRows.length)} commlogs en ${files.length} fichero(s)`;
+    $('stSubida').textContent = `${fmt(logRows.length)} filas en ${files.length} fichero(s). Revisa las columnas y pulsa Guardar.`;
+    $('btnGuardarLogs').disabled = !logRows.length;
   } catch (err) {
-    $('stLogs').textContent = 'Error leyendo commlogs: ' + err.message;
+    $('stSubida').textContent = 'Error leyendo commlogs: ' + err.message;
   }
-  actualizarBoton();
 });
 
 function setColsLogs(cols) {
   rellenarSelect($('colLogId'), cols, P_ID);
   rellenarSelect($('colLogFecha'), cols, P_FECHA);
   rellenarSelect($('colLogKey4'), cols, P_KEY4);
-}
-
-// ---------- commlogs desde Power BI (dataflow) con tu usuario Microsoft ----------
-const CFG = ['Tenant', 'Client', 'Group', 'Dataset', 'Tabla', 'ColId', 'ColFecha', 'ColKey4'];
-for (const k of CFG) {
-  const el = $('cfg' + k);
-  el.value = load('cfg' + k);
-  el.addEventListener('change', () => store('cfg' + k, el.value.trim()));
-}
-const cfg = (k) => $('cfg' + k).value.trim() || $('cfg' + k).placeholder;
-
-const msal_browser_ns = window.msal;
-let msal = null;
-async function tokenPowerBI() {
-  const tenant = $('cfgTenant').value.trim();
-  const client = $('cfgClient').value.trim();
-  if (!tenant || !client) throw new Error('Rellena Tenant ID y Client ID en la configuración de conexión.');
-  if (!msal || msal.__cfg !== tenant + client) {
-    msal = new msal_browser_ns.PublicClientApplication({
-      auth: { clientId: client, authority: `https://login.microsoftonline.com/${tenant}`, redirectUri: location.origin + location.pathname },
-      cache: { cacheLocation: 'localStorage' },
-    });
-    msal.__cfg = tenant + client;
-    if (msal.initialize) await msal.initialize();
-  }
-  const scopes = ['https://analysis.windows.net/powerbi/api/Dataset.Read.All'];
-  let account = msal.getAllAccounts()[0];
-  if (!account) account = (await msal.loginPopup({ scopes })).account;
-  try {
-    return (await msal.acquireTokenSilent({ scopes, account })).accessToken;
-  } catch {
-    return (await msal.acquireTokenPopup({ scopes, account })).accessToken;
+  // El formato es siempre el mismo: se recuerda la última elección.
+  for (const [sel, k] of [['colLogId', 'cId'], ['colLogFecha', 'cFecha'], ['colLogKey4', 'cKey4']]) {
+    if (cols.includes(load(k))) $(sel).value = load(k);
   }
 }
-const daxCol = (t, c) => `'${t.replace(/'/g, "''")}'[${c.replace(/]/g, ']]')}]`;
 
-// executeQueries devuelve como máximo 100.000 filas por consulta, así que se
-// pide día a día.
-async function consultarDia(token, dia) {
-  const t = cfg('Tabla');
-  const [y, m, d] = dia.split('-').map(Number);
-  const fecha = daxCol(t, cfg('ColFecha'));
-  const dax = `EVALUATE SELECTCOLUMNS(
-    FILTER('${t.replace(/'/g, "''")}', ${fecha} >= DATE(${y},${m},${d}) && ${fecha} < DATE(${y},${m},${d}) + 1),
-    "id", ${daxCol(t, cfg('ColId'))}, "fecha", ${fecha}, "key4", ${daxCol(t, cfg('ColKey4'))})`;
-  const url = `https://api.powerbi.com/v1.0/myorg/groups/${cfg('Group')}/datasets/${cfg('Dataset')}/executeQueries`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ queries: [{ query: dax }], serializerSettings: { includeNulls: true } }),
-  });
-  if (!res.ok) throw new Error(`Power BI ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const json = await res.json();
-  const rows = json.results?.[0]?.tables?.[0]?.rows || [];
-  return rows.map((r) => ({ id: r['[id]'], fecha: r['[fecha]'], key4: r['[key4]'] }));
-}
-
-$('btnPbi').addEventListener('click', async () => {
-  const btn = $('btnPbi');
-  btn.disabled = true;
+$('btnGuardarLogs').addEventListener('click', async () => {
+  const ci = $('colLogId').value, cf = $('colLogFecha').value, ck = $('colLogKey4').value;
+  store('cId', ci); store('cFecha', cf); store('cKey4', ck);
+  const porMes = {};
+  let malas = 0;
+  for (const r of logRows) {
+    const d = parseFecha(r[cf]);
+    const id = String(r[ci] ?? '').trim().replace(/\.0+$/, '');
+    if (!d || !id) { malas++; continue; }
+    const ts = fmtTs(d);
+    (porMes[ts.slice(0, 7)] ||= []).push([id, ts, String(r[ck] ?? '').trim()]);
+  }
+  const meses = Object.keys(porMes).sort();
+  if (!meses.length) { $('stSubida').textContent = 'No hay filas con instalación y fecha válidas. Revisa las columnas.'; return; }
+  $('btnGuardarLogs').disabled = true;
   try {
-    for (const k of ['Group', 'Dataset']) if (!$('cfg' + k).value.trim()) throw new Error('Rellena Workspace ID y Dataset ID.');
-    $('stLogs').textContent = 'Iniciando sesión en Microsoft…';
-    const token = await tokenPowerBI();
-    const dias = [];
-    for (let d = parseFecha($('desde').value); isoDia(d) <= $('hasta').value; d.setDate(d.getDate() + 1)) dias.push(isoDia(d));
-    const out = [];
-    for (let i = 0; i < dias.length; i++) {
-      $('stLogs').textContent = `Leyendo dataflow… día ${dias[i]} (${i + 1}/${dias.length}) · ${fmt(out.length)} commlogs`;
-      out.push(...(await consultarDia(token, dias[i])));
+    for (const [i, mes] of meses.entries()) {
+      $('stSubida').textContent = `Guardando ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
+      await api('/api/commlogs?mes=' + mes, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logs: porMes[mes] }) });
+      delete cacheLogs[mes];
     }
-    logRows = out;
-    setColsLogs(['id', 'fecha', 'key4']);
-    $('stLogs').textContent = `${fmt(out.length)} commlogs leídos de Power BI (${dias[0]} → ${dias[dias.length - 1]})`;
+    $('stSubida').textContent = `Guardados ${fmt(logRows.length - malas)} commlogs (${meses.map(nombreMes).join(', ')})` +
+      (malas ? ` · ${fmt(malas)} filas sin instalación o fecha ignoradas` : '');
+    $('fLogs').value = '';
+    logRows = [];
+    await cargarIndiceLogs();
+    recalcular();
   } catch (err) {
-    $('stLogs').textContent = 'Error: ' + err.message;
-  } finally {
-    btn.disabled = false;
-    actualizarBoton();
+    $('stSubida').textContent = 'Error guardando: ' + err.message;
+    $('btnGuardarLogs').disabled = false;
   }
 });
 
 // ---------- cálculo ----------
-$('btnCalc').addEventListener('click', () => {
+async function recalcular() {
+  if (!bbdd) return;
+  const desde = $('desde').value, hasta = $('hasta').value;
+  $('stCalc').textContent = 'Calculando…';
   const t0 = performance.now();
-  const ci = $('colLogId').value, cf = $('colLogFecha').value, ck = $('colLogKey4').value;
-  const logs = logRows.map((r) => ({ id: r[ci], fecha: parseFecha(r[cf]), key4: r[ck] }));
-  resultados = {};
-  for (const [camp, ids] of Object.entries(bbdd.campanas)) {
-    resultados[camp] = calcular(ids, logs, $('desde').value, $('hasta').value);
+  const logs = [];
+  for (const mes of mesesEntre(desde, hasta)) {
+    for (const [id, ts, key4] of await logsDeMes(mes)) logs.push({ id, fecha: parseFecha(ts), key4 });
   }
-  $('stCalc').textContent = `Calculado en ${fmt(performance.now() - t0)} ms · BBDD ${nombreMes(bbdd.mes)} · commlogs ${$('desde').value} → ${$('hasta').value}`;
+  resultados = {};
+  for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta);
+  $('stCalc').textContent = `BBDD ${nombreMes(bbdd.mes)} · commlogs ${desde} → ${hasta} · ${fmt(logs.length)} commlogs leídos · ${fmt(performance.now() - t0)} ms`;
   $('res').classList.remove('hidden');
   pintarCampana();
-});
+}
+$('btnCalc').addEventListener('click', recalcular);
 
 function pintarCampana() {
   const sel = $('campana').value;
@@ -378,3 +379,4 @@ $('btnCsv').addEventListener('click', () => {
   a.download = `vueltas_${$('mes').value}_${$('campana').value.replace(/\W+/g, '_')}.csv`;
   a.click();
 });
+for (const id of ['desde', 'hasta']) $(id).addEventListener('change', () => recalcular());
