@@ -426,7 +426,7 @@ function pintarCampana() {
       <td class="n">${fmt(s.mediaIlocAntes, 2)}</td><td class="n">${fmt(s.logsEnRango)}</td></tr>`;
   }).join('');
   $('tablaCamp').innerHTML = `<thead><tr><th>Campaña</th><th class="n">BBDD</th><th class="n">Excluidas</th><th class="n">Gestionables</th>
-    <th>Contactación</th><th class="n">Vueltas completas</th><th class="n">Intentos medios</th><th class="n">Ilocalizadas</th>
+    <th>Contactación</th><th class="n">Vueltas completas</th><th class="n">Nº de vueltas</th><th class="n">Ilocalizadas</th>
     <th class="n">Sin intentos</th><th class="n">Contacto 1º int.</th><th class="n">Contacto 2º int.</th><th class="n">Contacto 3º+ int.</th>
     <th class="n">Iloc. antes contacto</th><th class="n">Commlogs</th></tr></thead><tbody>${filas}</tbody>`;
   $('tablaCamp').querySelectorAll('tbody tr').forEach((tr) => tr.addEventListener('click', () => {
@@ -448,7 +448,7 @@ function pintar(r) {
     ['main', 'Contactación', fmt(pc, 1) + ' %', `${fmt(s.contactadas)} de ${fmt(s.gestionables)} gestionables`, pc],
     ['', 'Vueltas completas', fmt(s.vueltasCompletas),
       sig ? `Vuelta ${sig.n} al ${fmt(sig.pct * 100, 1)} %` : '', sig ? sig.pct * 100 : 100],
-    ['', 'Intentos medios', fmt(s.mediaIntentos, 2), `${fmt(s.totalIntentos)} intentos en total`, null],
+    ['', 'Nº de vueltas', fmt(s.mediaIntentos, 2), `intentos medios por instalación · ${fmt(s.totalIntentos)} intentos en total`, null],
     ['', 'Ilocalizados antes de contactar', fmt(s.mediaIlocAntes, 2), `media por contactada · ${fmt(s.ilocAntesTotal)} en total`, null],
   ];
   $('hero').innerHTML = hero.map(([cls, l, v, sub, m]) => `<div class="hk ${cls}"><div class="l">${l}</div><div class="v">${v}</div>
