@@ -46,6 +46,14 @@ Se guardan en KV por mes de la fecha (`logs:<AAAA-MM>`) y se añaden sin duplica
 así que vale subir el histórico completo o solo los últimos días. Al abrir la
 web se calcula sola con la BBDD y los commlogs guardados.
 
+## Fichero vinculado (Commlogs.xlsx)
+
+En Edge/Chrome, *Gestión de datos → Vincular Commlogs.xlsx* recuerda el fichero
+del PC (File System Access API, handle guardado en IndexedDB). Con la carpeta de
+SharePoint sincronizada con OneDrive el fichero se actualiza solo; al abrir la web
+se vuelve a leer si cambió (o con *↻ Actualizar commlogs* si el navegador pide
+permiso de nuevo).
+
 ## Fuentes de datos (versión anterior)
 
 1. **Ficheros** CSV/Excel de commlogs (se procesan en el navegador, no se suben

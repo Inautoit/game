@@ -161,7 +161,8 @@
       <label>Hasta <input type="date" id="hasta" /></label>
       <button class="sec" id="btnRango" title="Del día 15 del mes anterior hasta ayer">Rango por defecto</button>
       <button id="btnCalc" disabled>Recalcular</button>
-      <div class="info"><span id="stBbdd"></span> · <span id="stLogs"></span></div>
+      <button class="sec hidden" id="btnSync" title="Lee de nuevo el Commlogs.xlsx vinculado">↻ Actualizar commlogs</button>
+      <div class="info"><span id="stBbdd"></span> · <span id="stLogs"></span> <span id="stBar" style="color:var(--brand)"></span></div>
     </div>
   </div>
 
@@ -222,7 +223,14 @@
       <summary>Gestión de datos</summary>
       <div class="blk">
         <h3>Actualizar commlogs</h3>
-        <p class="status">Sube el <b>Libro.xlsx</b> de commlogs tal cual (se usan sus columnas ins_no, fecha y key4). Se guarda solo al elegirlo y se añaden únicamente los commlogs nuevos, sin duplicar.</p>
+        <div id="vinculo" class="hidden">
+          <p class="status">Vincula el <b>Commlogs.xlsx</b> de tu carpeta de OneDrive sincronizada con SharePoint. La web lo recordará y, cada vez que la abras, leerá los commlogs nuevos sin tener que subirlo.</p>
+          <div class="row">
+            <button id="btnVincular">Vincular Commlogs.xlsx</button>
+          </div>
+          <div class="status" id="stVinculo" style="margin-top:6px"></div>
+          <p class="status" style="margin-top:12px">O súbelo manualmente:</p>
+        </div>
         <div class="row"><label>Fichero de commlogs <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label></div>
         <div class="status" id="stSubida"></div>
       </div>

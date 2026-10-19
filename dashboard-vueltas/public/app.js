@@ -205,21 +205,26 @@ function buscarCol(cols, patrones) {
   return null;
 }
 
-// Al elegir el fichero se lee y se guarda directamente, sin más pasos.
+// Lee los ficheros de commlogs y guarda los nuevos.
+async function procesarFicheros(files) {
+  $('stSubida').textContent = 'Leyendo el fichero… (con ficheros grandes puede tardar un minuto)';
+  // concat: con cientos de miles de filas, push(...filas) desborda la pila.
+  let filas = [];
+  for (const f of files) filas = filas.concat(await leerFichero(f));
+  const cols = Object.keys(filas[0] || {});
+  const ci = buscarCol(cols, P_ID), cf = buscarCol(cols, P_FECHA), ck = buscarCol(cols, P_KEY4);
+  const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
+  if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en el fichero`);
+  await guardarLogs(filas, ci, cf, ck);
+}
+
+// Subida manual: al elegir el fichero se lee y se guarda directamente.
 $('fLogs').addEventListener('change', async (e) => {
   const files = [...e.target.files];
   if (!files.length) return;
   $('fLogs').disabled = true;
-  $('stSubida').textContent = 'Leyendo el fichero… (con ficheros grandes puede tardar un minuto)';
   try {
-    // concat: con cientos de miles de filas, push(...filas) desborda la pila.
-    let filas = [];
-    for (const f of files) filas = filas.concat(await leerFichero(f));
-    const cols = Object.keys(filas[0] || {});
-    const ci = buscarCol(cols, P_ID), cf = buscarCol(cols, P_FECHA), ck = buscarCol(cols, P_KEY4);
-    const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
-    if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en el fichero`);
-    await guardarLogs(filas, ci, cf, ck);
+    await procesarFicheros(files);
   } catch (err) {
     $('stSubida').textContent = 'Error: ' + err.message;
   } finally {
@@ -227,6 +232,82 @@ $('fLogs').addEventListener('change', async (e) => {
     $('fLogs').disabled = false;
   }
 });
+
+// ---------- fichero vinculado (Commlogs.xlsx sincronizado con OneDrive) ----------
+// Chrome/Edge permiten recordar un fichero del PC (File System Access API). Si la
+// carpeta de SharePoint está sincronizada con OneDrive, el fichero se actualiza solo
+// y la web lo vuelve a leer al abrirse, guardando únicamente si ha cambiado.
+const soportaVinculo = 'showOpenFilePicker' in window;
+
+// El progreso de la subida también se ve en la barra superior.
+new MutationObserver(() => {
+  const t = $('stSubida').textContent;
+  $('stBar').textContent = /^(Leyendo|Guardando|Error)/.test(t) ? '· ' + t : '';
+}).observe($('stSubida'), { childList: true, characterData: true, subtree: true });
+
+function idb(modo, fn) {
+  return new Promise((ok, ko) => {
+    const req = indexedDB.open('vueltas-bbdd', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onerror = () => ko(req.error);
+    req.onsuccess = () => {
+      let tx, r;
+      try {
+        tx = req.result.transaction('kv', modo);
+        r = fn(tx.objectStore('kv'));
+      } catch (err) { return ko(err); }
+      tx.oncomplete = () => ok(r && r.result);
+      tx.onerror = () => ko(tx.error);
+    };
+  });
+}
+const getHandle = () => idb('readonly', (st) => st.get('commlogs')).catch(() => null);
+const setHandle = (h) => idb('readwrite', (st) => st.put(h, 'commlogs'));
+
+async function sincronizar(handle, conGesto) {
+  let perm = await handle.queryPermission({ mode: 'read' });
+  if (perm !== 'granted' && conGesto) perm = await handle.requestPermission({ mode: 'read' });
+  if (perm !== 'granted') {
+    $('btnSync').classList.remove('hidden');
+    $('stVinculo').textContent = `Fichero vinculado: ${handle.name}. Pulsa «Actualizar» para leer los commlogs nuevos.`;
+    return;
+  }
+  const file = await handle.getFile();
+  const visto = load('vinculoMod');
+  $('btnSync').classList.remove('hidden');
+  if (String(file.lastModified) === visto && !conGesto) {
+    $('stVinculo').textContent = `Fichero vinculado: ${handle.name} · sin cambios desde la última lectura (${new Date(file.lastModified).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })})`;
+    return;
+  }
+  $('stVinculo').textContent = `Fichero vinculado: ${handle.name} · leyendo versión del ${new Date(file.lastModified).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}…`;
+  await procesarFicheros([file]);
+  store('vinculoMod', String(file.lastModified));
+  $('stVinculo').textContent = `Fichero vinculado: ${handle.name} · actualizado con la versión del ${new Date(file.lastModified).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}`;
+}
+
+if (soportaVinculo) {
+  $('vinculo').classList.remove('hidden');
+  $('btnVincular').addEventListener('click', async () => {
+    try {
+      const [h] = await window.showOpenFilePicker({ types: [{ description: 'Commlogs', accept: {
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'text/csv': ['.csv'] } }] });
+      await setHandle(h).catch(() => {}); // si no se puede recordar, al menos se lee ahora
+      store('vinculoMod', '');
+      await sincronizar(h, true);
+    } catch (err) {
+      if (err.name !== 'AbortError') $('stSubida').textContent = 'Error: ' + err.message;
+    }
+  });
+  $('btnSync').addEventListener('click', async () => {
+    const h = await getHandle();
+    if (!h) return;
+    $('btnSync').disabled = true;
+    try { await sincronizar(h, true); } catch (err) { $('stSubida').textContent = 'Error: ' + err.message; }
+    $('btnSync').disabled = false;
+  });
+  // Al abrir la web: si ya hay permiso, lee el fichero si ha cambiado.
+  getHandle().then((h) => h && sincronizar(h, false)).catch((err) => ($('stSubida').textContent = 'Error: ' + err.message));
+}
 
 async function guardarLogs(filas, ci, cf, ck) {
   const porMes = {};
