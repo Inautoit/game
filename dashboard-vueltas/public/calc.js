@@ -20,7 +20,11 @@ export function normId(v) {
 export function parseFecha(v) {
   if (v == null || v === '') return null;
   if (v instanceof Date) return isNaN(v) ? null : v;
-  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400000));
+  if (typeof v === 'number') {
+    // Serial de Excel: es la hora "de reloj", se construye en hora local.
+    const u = new Date(Math.round((v - 25569) * 86400000));
+    return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds());
+  }
   const s = String(v).trim();
   let m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (m) return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));

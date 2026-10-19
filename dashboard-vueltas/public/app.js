@@ -1,4 +1,5 @@
 import { calcular, parseFecha, rangoPorDefecto, isoDia } from './calc.js';
+import { leerColumnasXlsx } from './xlsxstream.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 0) => Number(n).toLocaleString('es-ES', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -237,25 +238,40 @@ function buscarCol(cols, patrones) {
   return null;
 }
 
+// Cabecera del fichero de commlogs: posiciones de ins_no, fecha y key4.
+function mapaCabecera(arr) {
+  const n = arr.map((c) => normCol(c));
+  const id = n.findIndex((c) => c === 'insno');
+  const fecha = n.findIndex((c) => c === 'fecha');
+  const key4 = n.findIndex((c) => c === 'key4');
+  return id >= 0 && fecha >= 0 && key4 >= 0 ? { id, fecha, key4 } : null;
+}
+
 // Lee los ficheros de commlogs y guarda los nuevos.
 async function procesarFicheros(files) {
-  $('stSubida').textContent = 'Leyendo el fichero… (con ficheros grandes puede tardar un minuto)';
-  // concat: con cientos de miles de filas, push(...filas) desborda la pila.
   let filas = [];
-  let vistas = [];
   for (const f of files) {
-    const leidas = await leerFichero(f);
-    vistas = vistas.concat(leidas.pestanasVistas || []);
-    filas = filas.concat(leidas);
+    $('stSubida').textContent = `Leyendo ${f.name}… (con ficheros grandes puede tardar un minuto)`;
+    if (/\.xlsx$/i.test(f.name)) {
+      const buf = await f.arrayBuffer();
+      const cab = new Uint8Array(buf.slice(0, 4));
+      // Un .xlsx normal es un ZIP (PK). Si empieza por D0 CF 11 E0 está cifrado.
+      if (cab[0] === 0xd0 && cab[1] === 0xcf) {
+        throw new Error('el Excel está protegido (etiqueta de confidencialidad o contraseña). Ábrelo y guárdalo como CSV, o quita la protección, y súbelo de nuevo');
+      }
+      const r = await leerColumnasXlsx(buf, mapaCabecera);
+      if (!r.filas) throw new Error(`no encuentro las columnas ins_no, fecha y key4. Pestañas que veo: ${r.diagnostico.join(' · ') || 'ninguna'}`);
+      filas = filas.concat(r.filas);
+    } else {
+      const leidas = await leerFichero(f);
+      const cols = Object.keys(leidas[0] || {});
+      const ci = buscarCol(cols, P_ID), cf = buscarCol(cols, P_FECHA), ck = buscarCol(cols, P_KEY4);
+      const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
+      if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en ${f.name}. Columnas que veo: ${cols.slice(0, 8).join(', ')}`);
+      filas = filas.concat(leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck] })));
+    }
   }
-  const cols = Object.keys(filas[0] || {});
-  const ci = buscarCol(cols, P_ID), cf = buscarCol(cols, P_FECHA), ck = buscarCol(cols, P_KEY4);
-  const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
-  if (faltan.length) {
-    throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')}.` +
-      (vistas.length ? ` Pestañas que veo: ${vistas.join(' · ')}` : ` Columnas que veo: ${cols.slice(0, 8).join(', ')}`));
-  }
-  await guardarLogs(filas, ci, cf, ck);
+  await guardarLogs(filas, 'id', 'fecha', 'key4');
 }
 
 // Subida manual: al elegir el fichero se lee y se guarda directamente.
