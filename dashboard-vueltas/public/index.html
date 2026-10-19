@@ -140,6 +140,11 @@
     .map { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 10px; }
     .empty { text-align: center; padding: 48px 16px; color: var(--text-2); }
     .empty strong { display: block; font-size: 16px; color: var(--text); margin-bottom: 4px; }
+    .glos summary { cursor: pointer; }
+    .glos dl { margin: 14px 0 0; display: grid; grid-template-columns: minmax(160px, 240px) 1fr; gap: 8px 18px; font-size: 13px; }
+    .glos dt { font-weight: 600; }
+    .glos dd { margin: 0; color: var(--text-2); }
+    @media (max-width: 640px) { .glos dl { grid-template-columns: 1fr; } .glos dd { margin-bottom: 6px; } }
     footer { max-width: 1240px; margin: 0 auto; padding: 0 16px 32px; color: var(--muted); font-size: 11.5px; }
     @media (max-width: 640px) {
       .top img { height: 34px; } .top h1 { font-size: 15px; } .tag, .top .sep { display: none; }
@@ -191,6 +196,9 @@
       <div class="hero" id="hero"></div>
       <div class="kpis" id="kpis"></div>
 
+      <div class="section-title"><h2>¿En qué intento contactamos?</h2><span>Instalaciones contactadas según el intento del primer contacto válido</span></div>
+      <div class="hero" id="porIntento"></div>
+
       <div class="grid2">
         <section class="card">
           <h2>Cobertura por vuelta</h2>
@@ -198,8 +206,8 @@
           <div id="chVueltas"></div>
         </section>
         <section class="card">
-          <h2>Ilocalizados antes de contactar</h2>
-          <p class="sub">Instalaciones contactadas según los intentos sin contacto previos</p>
+          <h2>Contactadas por intento</h2>
+          <p class="sub">Intento en el que se consiguió el primer contacto válido (1º = a la primera)</p>
           <div id="chIloc"></div>
         </section>
       </div>
@@ -229,6 +237,26 @@
         </div>
         <div class="tablewrap" style="margin-top:12px"><table id="tabla"></table></div>
       </section>
+
+      <details class="card glos">
+        <summary><b>¿Qué significa cada medida?</b></summary>
+        <dl>
+          <dt>Instalaciones BBDD</dt><dd>Instalaciones de la BBDD del mes en esa campaña (pestaña del Excel).</dd>
+          <dt>Excluidas</dt><dd>Instalaciones con al menos un commlog de exclusión (key4 R_NOU_02, R_NOU_03 o R_NOU_04) en el rango de fechas. Se apartan antes de todo: ninguno de sus commlogs cuenta como intento.</dd>
+          <dt>Gestionables</dt><dd>BBDD menos excluidas. Es la base de todos los porcentajes.</dd>
+          <dt>Intento</dt><dd>Cada commlog de una instalación gestionable dentro del rango de fechas (por defecto, del 15 del mes anterior a la BBDD hasta ayer).</dd>
+          <dt>Contactadas · Contactación</dt><dd>Gestionables con al menos un contacto válido (cualquier key4 que no sea de no contacto ni de exclusión). Contactación = contactadas / gestionables.</dd>
+          <dt>Ilocalizadas</dt><dd>Gestionables con intentos pero ningún contacto válido todavía (solo R_ILOC01, R_ILOC02 o R_TRA006).</dd>
+          <dt>Sin intentos</dt><dd>Gestionables que todavía no tienen ningún commlog en el rango.</dd>
+          <dt>Contactadas en el 1º / 2º / 3º+ intento</dt><dd>En qué intento llegó el primer contacto válido: 1º = a la primera llamada; 2º = hubo 1 ilocalizado antes; 3º o más = 2 o más ilocalizados antes. Los porcentajes son sobre las contactadas.</dd>
+          <dt>Ilocalizados antes de contactar</dt><dd>Media de intentos sin contacto previos al primer contacto válido, solo en instalaciones contactadas.</dd>
+          <dt>Intentos medios</dt><dd>Total de intentos / gestionables.</dd>
+          <dt>Cobertura por vuelta</dt><dd>Vuelta N cubierta = % de gestionables con al menos N intentos o ya contactadas (una vez contactada no hace falta volver a llamar).</dd>
+          <dt>Vueltas completas</dt><dd>Número de vueltas cubiertas al 100 %: todas las gestionables tienen al menos N intentos o están contactadas. Debajo se ve cómo va la siguiente vuelta.</dd>
+          <dt>Intentos por instalación</dt><dd>Cuántas gestionables tienen 0, 1, 2… intentos.</dd>
+          <dt>Intentos por día</dt><dd>Commlogs de gestionables por día, separados en contacto válido y no contacto.</dd>
+        </dl>
+      </details>
     </div>
 
   </main>

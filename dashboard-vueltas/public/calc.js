@@ -124,6 +124,10 @@ export function calcular(bbddIds, commlogs, desde, hasta) {
 
   const distIntentos = bucket(gestionables.map((d) => d.intentos), 6);
   const distIlocAntes = bucket(contactadas.map((d) => d.ilocAntes), 5);
+  // Intento en el que se contactó: 1º = sin ilocalizados previos, 2º = uno previo…
+  const contactoEnIntento = bucket(contactadas.map((d) => d.ilocAntes), 4)
+    .map((b, i) => ({ intento: i + 1, label: i === 4 ? '5º+' : `${i + 1}º`, n: b.n }));
+  const cEn = (i) => contactoEnIntento[i - 1].n;
 
   return {
     resumen: {
@@ -135,8 +139,9 @@ export function calcular(bbddIds, commlogs, desde, hasta) {
         ? contactadas.reduce((s, d) => s + d.ilocAntes, 0) / contactadas.length : 0,
       ilocAntesTotal: contactadas.reduce((s, d) => s + d.ilocAntes, 0),
       vueltasCompletas, logsEnRango, logsFueraBbdd,
+      contacto1: cEn(1), contacto2: cEn(2), contacto3mas: cEn(3) + cEn(4) + cEn(5),
     },
-    vueltas, distIntentos, distIlocAntes,
+    vueltas, distIntentos, distIlocAntes, contactoEnIntento,
     porDia: [...porDia.values()].sort((a, b) => (a.dia < b.dia ? -1 : 1)),
     detalle,
   };

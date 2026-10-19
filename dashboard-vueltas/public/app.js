@@ -422,11 +422,13 @@ function pintarCampana() {
       <td><span class="minibar"><i style="width:${pc}%"></i></span><b>${fmt(pc, 1)} %</b></td>
       <td class="n">${fmt(s.vueltasCompletas)}</td><td class="n">${fmt(s.mediaIntentos, 2)}</td>
       <td class="n">${fmt(s.ilocalizadas)}</td><td class="n">${fmt(s.sinIntentos)}</td>
+      <td class="n">${fmt(s.contacto1)}</td><td class="n">${fmt(s.contacto2)}</td><td class="n">${fmt(s.contacto3mas)}</td>
       <td class="n">${fmt(s.mediaIlocAntes, 2)}</td><td class="n">${fmt(s.logsEnRango)}</td></tr>`;
   }).join('');
   $('tablaCamp').innerHTML = `<thead><tr><th>Campaña</th><th class="n">BBDD</th><th class="n">Excluidas</th><th class="n">Gestionables</th>
     <th>Contactación</th><th class="n">Vueltas completas</th><th class="n">Intentos medios</th><th class="n">Ilocalizadas</th>
-    <th class="n">Sin intentos</th><th class="n">Iloc. antes contacto</th><th class="n">Commlogs</th></tr></thead><tbody>${filas}</tbody>`;
+    <th class="n">Sin intentos</th><th class="n">Contacto 1º int.</th><th class="n">Contacto 2º int.</th><th class="n">Contacto 3º+ int.</th>
+    <th class="n">Iloc. antes contacto</th><th class="n">Commlogs</th></tr></thead><tbody>${filas}</tbody>`;
   $('tablaCamp').querySelectorAll('tbody tr').forEach((tr) => tr.addEventListener('click', () => {
     $('campana').value = tr.dataset.c;
     store('campana', tr.dataset.c);
@@ -465,9 +467,17 @@ function pintar(r) {
     label: 'V' + v.n, segs: [{ v: v.pct * 100, c: 'var(--s1)' }], top: fmt(v.pct * 100, 0) + '%',
     tip: `Vuelta ${v.n}\n${fmt(v.cubiertas)} cubiertas (${fmt(v.pct * 100, 1)} %)\n${fmt(v.conN)} con ≥${v.n} intentos`,
   })), 100);
-  barras($('chIloc'), r.distIlocAntes.map((b) => ({
+  const intentos = [
+    ['1er intento', s.contacto1, 'a la primera llamada'],
+    ['2º intento', s.contacto2, 'tras 1 ilocalizado'],
+    ['3er intento o más', s.contacto3mas, 'tras 2 o más ilocalizados'],
+  ];
+  $('porIntento').innerHTML = intentos.map(([l, n, sub]) => `<div class="hk"><div class="l">Contactadas en el ${l}</div>
+    <div class="v">${fmt(n)}</div><div class="s">${pct(n, s.contactadas)} de las contactadas · ${sub}</div>
+    <div class="meter"><i style="width:${s.contactadas ? (100 * n) / s.contactadas : 0}%"></i></div></div>`).join('');
+  barras($('chIloc'), r.contactoEnIntento.map((b) => ({
     label: b.label, segs: [{ v: b.n, c: 'var(--s1)' }], top: fmt(b.n),
-    tip: `${b.label} ilocalizado(s) antes del contacto\n${fmt(b.n)} instalaciones (${pct(b.n, s.contactadas)})`,
+    tip: `Contactadas en el ${b.label} intento\n${fmt(b.n)} instalaciones (${pct(b.n, s.contactadas)} de las contactadas)\n${b.intento - 1}${b.intento === 5 ? ' o más' : ''} ilocalizado(s) antes`,
   })));
   barras($('chIntentos'), r.distIntentos.map((b) => ({
     label: b.label, segs: [{ v: b.n, c: 'var(--s1)' }], top: fmt(b.n),

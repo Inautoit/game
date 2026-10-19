@@ -35,4 +35,8 @@ assert.deepEqual(rangoPorDefecto('2026-07', new Date(2026, 9, 19)), { desde: '20
 // ins_no con ceros a la izquierda cruza con la BBDD sin ellos
 const r2 = calcular(['30567'], [{ id: '030567', fecha: d('04/08/2026 11:43'), key4: 'R_RIMP01' }], '2026-07-15', '2026-08-31');
 assert.equal(r2.resumen.contactadas, 1);
+// A se contactó en el 3er intento (2 ilocalizados antes)
+assert.equal(r.resumen.contacto1, 0);
+assert.equal(r.resumen.contacto3mas, 1);
+assert.equal(r2.resumen.contacto1, 1);
 console.log('OK');
