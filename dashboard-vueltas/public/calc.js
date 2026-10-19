@@ -153,3 +153,26 @@ function bucket(vals, tope) {
   for (const v of vals) out[Math.min(v, tope)].n++;
   return out;
 }
+
+/**
+ * Actividad de un único día: solo se usan los commlogs de ese día (nada acumulado).
+ * Las instalaciones con exclusión ese día no cuentan en el resto de medidas.
+ */
+export function delDia(bbddIds, commlogs, dia) {
+  const r = calcular(bbddIds, commlogs, dia, dia);
+  const s = r.resumen;
+  const d = r.porDia[0] || { contacto: 0, no_contacto: 0 };
+  const instLlamadas = s.contactadas + s.ilocalizadas;
+  return {
+    instLlamadas,
+    contactadas: s.contactadas,
+    ilocalizadas: s.ilocalizadas,
+    llamadas: s.totalIntentos,
+    contactos: d.contacto,
+    noContacto: d.no_contacto,
+    excluidas: s.excluidas,
+    pctContactoDia: instLlamadas ? (100 * s.contactadas) / instLlamadas : 0,
+    pctSobreBbdd: s.gestionables ? (100 * s.contactadas) / s.gestionables : 0,
+    llamadasPorInst: instLlamadas ? s.totalIntentos / instLlamadas : 0,
+  };
+}

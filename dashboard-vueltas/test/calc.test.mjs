@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { calcular, rangoPorDefecto, parseFecha } from '../public/calc.js';
+import { calcular, rangoPorDefecto, parseFecha, delDia } from '../public/calc.js';
 
 const d = (s) => parseFecha(s);
 const logs = [
@@ -39,4 +39,12 @@ assert.equal(r2.resumen.contactadas, 1);
 assert.equal(r.resumen.contacto1, 0);
 assert.equal(r.resumen.contacto3mas, 1);
 assert.equal(r2.resumen.contacto1, 1);
+// Solo commlogs del 03/07: A contacta; B no se llama ese día (su exclusión es el 04/07)
+const dd = delDia(['A', 'B', 'C', 'D'], logs, '2026-07-03');
+assert.equal(dd.llamadas, 1);
+assert.equal(dd.contactadas, 1);
+assert.equal(dd.pctContactoDia, 100);
+const d4 = delDia(['A', 'B', 'C', 'D'], logs, '2026-07-04');
+assert.equal(d4.excluidas, 1);
+assert.equal(d4.llamadas, 0);
 console.log('OK');
