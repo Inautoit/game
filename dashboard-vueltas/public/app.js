@@ -168,7 +168,7 @@ cargarIndice();
 const cacheLogs = {};
 let hayLogs = false;
 async function logsDeMes(mes) {
-  if (!cacheLogs[mes]) cacheLogs[mes] = api('/api/commlogs?mes=' + mes).then((d) => d.logs).catch(() => []);
+  if (!cacheLogs[mes]) cacheLogs[mes] = api('/api/commlogs?mes=' + mes).catch(() => []);
   return cacheLogs[mes];
 }
 const mesesEntre = (desde, hasta) => {
@@ -208,9 +208,10 @@ $('fLogs').addEventListener('change', async (e) => {
   logRows = [];
   $('btnGuardarLogs').disabled = true;
   if (!files.length) return;
-  $('stSubida').textContent = 'Leyendo…';
+  $('stSubida').textContent = 'Leyendo el fichero… (con ficheros grandes puede tardar un minuto)';
   try {
-    for (const f of files) logRows.push(...(await leerFichero(f)));
+    // concat: con cientos de miles de filas, push(...filas) desborda la pila.
+    for (const f of files) logRows = logRows.concat(await leerFichero(f));
     setColsLogs(Object.keys(logRows[0] || {}));
     $('stSubida').textContent = `${fmt(logRows.length)} filas en ${files.length} fichero(s). Revisa las columnas y pulsa Guardar.`;
     $('btnGuardarLogs').disabled = !logRows.length;
@@ -245,10 +246,18 @@ $('btnGuardarLogs').addEventListener('click', async () => {
   if (!meses.length) { $('stSubida').textContent = 'No hay filas con instalación y fecha válidas. Revisa las columnas.'; return; }
   $('btnGuardarLogs').disabled = true;
   try {
+    // El fichero es acumulativo: se fusiona con lo guardado (sin duplicar) y se reemplaza el mes.
     for (const [i, mes] of meses.entries()) {
       $('stSubida').textContent = `Guardando ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
-      await api('/api/commlogs?mes=' + mes, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logs: porMes[mes] }) });
+      const actuales = await api('/api/commlogs?mes=' + mes);
+      const vistos = new Set(actuales.map((l) => l.join('|')));
+      for (const l of porMes[mes]) {
+        const k = l.join('|');
+        if (!vistos.has(k)) { vistos.add(k); actuales.push(l); }
+      }
+      const max = actuales.reduce((m, l) => (l[1] > m ? l[1] : m), '');
+      await api(`/api/commlogs?mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(actuales) });
       delete cacheLogs[mes];
     }
     $('stSubida').textContent = `Guardados ${fmt(logRows.length - malas)} commlogs (${meses.map(nombreMes).join(', ')})` +
