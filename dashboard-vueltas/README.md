@@ -26,10 +26,23 @@ sobre la BBDD del mes a partir de los commlogs.
 
 La lógica está en `public/calc.js` y se prueba con `npm test`.
 
+## BBDD fijas y campañas
+
+Las BBDD mensuales se guardan en Cloudflare KV (binding `BBDD`) desde el propio
+dashboard: *Cargar o actualizar una BBDD mensual* → Excel `Exportadas_<Mes><AA>.xlsx`.
+El mes de la BBDD se toma del nombre del fichero (no de las fechas de dentro).
+Cada pestaña es una campaña y se mide por separado (TMK, COMPE, TMK PILOTO…).
+Solo se guarda el número de instalación.
+
+`scripts/preparar_bbdd.py` añade la columna `MES_BBDD` a cada pestaña de los Excel.
+
+El dashboard está protegido con contraseña: secreto `DASHBOARD_PASSWORD` del
+proyecto de Pages (Settings → Variables and Secrets).
+
 ## Fuentes de datos
 
-1. **Ficheros** CSV/Excel de BBDD y commlogs (se procesan en el navegador, no
-   se suben a ningún servidor).
+1. **Ficheros** CSV/Excel de commlogs (se procesan en el navegador, no se suben
+   a ningún servidor).
 2. **Power BI con tu usuario Microsoft**: botón *Leer del dataflow*. Inicia
    sesión con MSAL (delegado, tus permisos) y lanza consultas DAX día a día
    contra el **modelo semántico** que carga el dataflow de commlogs

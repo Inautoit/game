@@ -4,7 +4,9 @@ const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 0) => Number(n).toLocaleString('es-ES', { maximumFractionDigits: d, minimumFractionDigits: d });
 const pct = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '–');
 
-let bbddRows = [];
+let bbdd = null; // {mes, campanas: {nombre: [ids]}}
+let carga = null;
+let resultados = {};
 let logRows = [];
 let ultimo = null;
 
@@ -34,22 +36,116 @@ function escapeHtml(s) {
 }
 
 function actualizarBoton() {
-  $('btnCalc').disabled = !(bbddRows.length && logRows.length);
+  $('btnCalc').disabled = !(bbdd && logRows.length);
 }
 
-// ---------- BBDD ----------
+// ---------- BBDD fijas (guardadas en Cloudflare) ----------
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (res.status === 401) { location.reload(); throw new Error('Sesión caducada'); }
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+const nombreMes = (m) => {
+  const [y, mm] = m.split('-').map(Number);
+  return new Date(y, mm - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+};
+
+async function cargarIndice(preferido) {
+  try {
+    const idx = await api('/api/bbdd');
+    if (!idx.length) {
+      $('mes').innerHTML = '';
+      $('stBbdd').textContent = 'Todavía no hay BBDD guardadas. Cárgalas abajo.';
+      return;
+    }
+    $('mes').innerHTML = idx.map((i) => `<option value="${i.mes}">${nombreMes(i.mes)}</option>`).join('');
+    const sel = preferido || load('mes');
+    $('mes').value = idx.some((i) => i.mes === sel) ? sel : idx[idx.length - 1].mes;
+    await cambiarMes();
+  } catch (err) {
+    $('stBbdd').textContent = 'Error cargando BBDD: ' + err.message;
+  }
+}
+
+async function cambiarMes() {
+  const mes = $('mes').value;
+  store('mes', mes);
+  aplicarRango();
+  $('stBbdd').textContent = 'Cargando BBDD…';
+  bbdd = await api('/api/bbdd?mes=' + encodeURIComponent(mes));
+  const camps = Object.keys(bbdd.campanas);
+  $('campana').innerHTML = camps.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
+  if (camps.includes(load('campana'))) $('campana').value = load('campana');
+  $('stBbdd').textContent = `BBDD de ${nombreMes(mes)}: ` +
+    camps.map((c) => `${c} ${fmt(bbdd.campanas[c].length)}`).join(' · ');
+  actualizarBoton();
+}
+$('mes').addEventListener('change', () => cambiarMes().catch((e) => ($('stBbdd').textContent = 'Error: ' + e.message)));
+$('campana').addEventListener('change', () => {
+  store('campana', $('campana').value);
+  if (resultados[$('campana').value]) pintarCampana();
+});
+
+const MESES = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8,
+  septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
+function mesDeNombre(nombre) {
+  const m = nombre.match(new RegExp(`(${Object.keys(MESES).join('|')})[ _-]?(\\d{2,4})`, 'i'));
+  if (!m) return '';
+  const y = +m[2] < 100 ? 2000 + +m[2] : +m[2];
+  return `${y}-${String(MESES[m[1].toLowerCase()]).padStart(2, '0')}`;
+}
+
+// Lee todas las pestañas del Excel: cada pestaña es una campaña.
 $('fBbdd').addEventListener('change', async (e) => {
   const f = e.target.files[0];
+  carga = null;
+  $('btnGuardar').disabled = true;
   if (!f) return;
-  $('stBbdd').textContent = 'Leyendo…';
+  $('stCarga').textContent = 'Leyendo…';
   try {
-    bbddRows = await leerFichero(f);
-    rellenarSelect($('colBbdd'), Object.keys(bbddRows[0] || {}), P_ID);
-    $('stBbdd').textContent = `${fmt(bbddRows.length)} filas en ${f.name}`;
+    const wb = XLSX.read(await f.arrayBuffer(), { dense: true });
+    const campanas = {};
+    for (const nombre of wb.SheetNames) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { defval: '', raw: true });
+      const col = Object.keys(rows[0] || {}).find((c) => /numero_de_instalacion/i.test(c)) ||
+        Object.keys(rows[0] || {}).find((c) => P_ID.some((p) => p.test(c)));
+      if (!col) continue;
+      const ids = new Set();
+      for (const r of rows) {
+        const v = String(r[col] ?? '').trim().replace(/\.0+$/, '');
+        if (v) ids.add(v);
+      }
+      if (ids.size) campanas[nombre.trim()] = [...ids];
+    }
+    if (!Object.keys(campanas).length) throw new Error('No encuentro la columna Numero_de_Instalacion en ninguna pestaña');
+    carga = campanas;
+    $('mesCarga').value = mesDeNombre(f.name) || $('mesCarga').value;
+    $('stCarga').textContent = Object.entries(campanas).map(([c, v]) => `${c}: ${fmt(v.length)}`).join(' · ') +
+      (mesDeNombre(f.name) ? '' : ' — no detecto el mes en el nombre, elígelo a mano');
+    $('btnGuardar').disabled = false;
   } catch (err) {
-    $('stBbdd').textContent = 'Error leyendo el fichero: ' + err.message;
+    $('stCarga').textContent = 'Error leyendo el fichero: ' + err.message;
   }
-  actualizarBoton();
+});
+
+$('btnGuardar').addEventListener('click', async () => {
+  const mes = $('mesCarga').value;
+  if (!carga || !mes) return;
+  $('btnGuardar').disabled = true;
+  $('stCarga').textContent = 'Guardando…';
+  try {
+    await api('/api/bbdd?mes=' + mes, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mes, campanas: carga }) });
+    $('stCarga').textContent = `Guardada la BBDD de ${nombreMes(mes)}.`;
+    $('fBbdd').value = '';
+    carga = null;
+    await cargarIndice(mes);
+  } catch (err) {
+    $('stCarga').textContent = 'Error guardando: ' + err.message;
+    $('btnGuardar').disabled = false;
+  }
 });
 
 // ---------- rango de fechas ----------
@@ -59,13 +155,8 @@ function aplicarRango() {
   $('desde').value = r.desde;
   $('hasta').value = r.hasta;
 }
-$('mes').addEventListener('change', () => { store('mes', $('mes').value); aplicarRango(); });
 $('btnRango').addEventListener('click', aplicarRango);
-{
-  const hoy = new Date();
-  $('mes').value = load('mes') || `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
-  aplicarRango();
-}
+cargarIndice();
 
 // ---------- commlogs desde fichero ----------
 $('fLogs').addEventListener('change', async (e) => {
@@ -172,13 +263,37 @@ $('btnPbi').addEventListener('click', async () => {
 // ---------- cálculo ----------
 $('btnCalc').addEventListener('click', () => {
   const t0 = performance.now();
-  const colB = $('colBbdd').value;
   const ci = $('colLogId').value, cf = $('colLogFecha').value, ck = $('colLogKey4').value;
   const logs = logRows.map((r) => ({ id: r[ci], fecha: parseFecha(r[cf]), key4: r[ck] }));
-  ultimo = calcular(bbddRows.map((r) => r[colB]), logs, $('desde').value, $('hasta').value);
-  $('stCalc').textContent = `Calculado en ${fmt(performance.now() - t0)} ms · ${fmt(ultimo.resumen.logsEnRango)} commlogs de la BBDD en rango · ${fmt(ultimo.resumen.logsFueraBbdd)} commlogs de instalaciones fuera de la BBDD`;
-  pintar(ultimo);
+  resultados = {};
+  for (const [camp, ids] of Object.entries(bbdd.campanas)) {
+    resultados[camp] = calcular(ids, logs, $('desde').value, $('hasta').value);
+  }
+  $('stCalc').textContent = `Calculado en ${fmt(performance.now() - t0)} ms · BBDD ${nombreMes(bbdd.mes)} · commlogs ${$('desde').value} → ${$('hasta').value}`;
+  $('res').classList.remove('hidden');
+  pintarCampana();
 });
+
+function pintarCampana() {
+  const sel = $('campana').value;
+  const filas = Object.entries(resultados).map(([c, r]) => {
+    const s = r.resumen;
+    return `<tr data-c="${escapeHtml(c)}" class="${c === sel ? 'sel' : ''}"><td>${escapeHtml(c)}</td><td>${fmt(s.total)}</td><td>${fmt(s.excluidas)}</td>
+      <td>${fmt(s.gestionables)}</td><td>${fmt(s.vueltasCompletas)}</td><td>${fmt(s.mediaIntentos, 2)}</td>
+      <td>${fmt(s.contactadas)} (${pct(s.contactadas, s.gestionables)})</td><td>${fmt(s.ilocalizadas)} (${pct(s.ilocalizadas, s.gestionables)})</td>
+      <td>${fmt(s.sinIntentos)} (${pct(s.sinIntentos, s.gestionables)})</td><td>${fmt(s.mediaIlocAntes, 2)}</td><td>${fmt(s.logsEnRango)}</td></tr>`;
+  }).join('');
+  $('tablaCamp').innerHTML = `<thead><tr><th>Campaña</th><th>BBDD</th><th>Excluidas</th><th>Gestionables</th><th>Vueltas completas</th>
+    <th>Intentos medios</th><th>Contactadas</th><th>Ilocalizadas</th><th>Sin intentos</th><th>Iloc. antes de contacto</th><th>Commlogs</th></tr></thead><tbody>${filas}</tbody>`;
+  $('tablaCamp').querySelectorAll('tbody tr').forEach((tr) => tr.addEventListener('click', () => {
+    $('campana').value = tr.dataset.c;
+    store('campana', tr.dataset.c);
+    pintarCampana();
+  }));
+  $('tituloCamp').textContent = `Detalle · ${sel}`;
+  ultimo = resultados[sel];
+  pintar(ultimo);
+}
 
 function pintar(r) {
   const s = r.resumen;
@@ -260,6 +375,6 @@ $('btnCsv').addEventListener('click', () => {
   const lines = [COLS.map((c) => c[1]).join(';'), ...filas().map((d) => COLS.map(([k]) => (k === 'estado' ? ESTADOS[d[k]] : d[k] ?? '')).join(';'))];
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' }));
-  a.download = `vueltas_${$('mes').value}.csv`;
+  a.download = `vueltas_${$('mes').value}_${$('campana').value.replace(/\W+/g, '_')}.csv`;
   a.click();
 });

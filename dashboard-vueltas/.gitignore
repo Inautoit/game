@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.dev.vars
+# Nunca subir BBDD ni commlogs al repo
+*.xlsx
+*.xls
+*.csv
+data/

@@ -66,6 +66,8 @@
     .legend b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
     #tip { position: fixed; pointer-events: none; background: var(--text); color: var(--surface);
       padding: 6px 8px; border-radius: 6px; font-size: 12px; z-index: 10; white-space: pre; }
+    tr.sel td { background: var(--bg); font-weight: 600; }
+    #tablaCamp tbody tr { cursor: pointer; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
     th { color: var(--text-2); font-weight: 600; }
@@ -81,11 +83,20 @@
     <section class="card">
       <h2>1 · BBDD del mes</h2>
       <div class="row">
-        <label>Mes de la BBDD <input type="month" id="mes" /></label>
-        <label>Fichero BBDD (CSV / Excel) <input type="file" id="fBbdd" accept=".csv,.txt,.xlsx,.xls" /></label>
-        <label>Columna instalación <select id="colBbdd"></select></label>
+        <label>Mes de la BBDD <select id="mes"></select></label>
+        <label>Campaña <select id="campana"></select></label>
       </div>
       <div class="status" id="stBbdd"></div>
+      <details style="margin-top:12px">
+        <summary>Cargar o actualizar una BBDD mensual</summary>
+        <p class="status">Sube el Excel exportado (Exportadas_&lt;Mes&gt;&lt;AA&gt;.xlsx). Cada pestaña es una campaña y se mide por separado. Solo se guarda el número de instalación.</p>
+        <div class="row">
+          <label>Excel BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv" /></label>
+          <label>Mes de la BBDD <input type="month" id="mesCarga" /></label>
+          <button id="btnGuardar" disabled>Guardar en Cloudflare</button>
+        </div>
+        <div class="status" id="stCarga"></div>
+      </details>
     </section>
 
     <section class="card">
@@ -124,6 +135,11 @@
     <div class="row"><button id="btnCalc" disabled>Calcular</button> <span class="status" id="stCalc"></span></div>
 
     <div id="res" class="hidden" style="display:grid; gap:16px">
+      <section class="card">
+        <h2>Resumen por campaña</h2>
+        <div class="tablewrap"><table id="tablaCamp"></table></div>
+      </section>
+      <h2 style="margin:8px 0 0;font-size:17px" id="tituloCamp"></h2>
       <div class="kpis" id="kpis"></div>
       <div class="grid2">
         <section class="card">
