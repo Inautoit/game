@@ -1,5 +1,6 @@
 // Protege todo el dashboard con una contraseña (secreto DASHBOARD_PASSWORD).
 // Tras iniciar sesión se guarda una cookie firmada con HMAC durante 30 días.
+// Si DASHBOARD_PASSWORD no está configurado, el dashboard queda abierto.
 
 const COOKIE = 'vb_auth';
 
@@ -29,7 +30,7 @@ ${error ? `<div class="e">${error}</div>` : ''}<button>Entrar</button></form></b
 export async function onRequest(ctx) {
   const { request, env, next } = ctx;
   const secreto = env.DASHBOARD_PASSWORD;
-  if (!secreto) return new Response('Falta configurar DASHBOARD_PASSWORD', { status: 500 });
+  if (!secreto) return next();
   const url = new URL(request.url);
   const ok = await firma(secreto);
 
