@@ -614,10 +614,10 @@ const logsParseados = (mes) => (cacheParsed[mes] ||= logsDeMes(mes).then((l) => 
 //            (15 del mes anterior) hasta el día elegido, sin pasar del fin de mes.
 let modoComp = load('modoComp') === 'acum' ? 'acum' : 'dia';
 
-async function estadoAl(mes, dia, modo) {
-  const k = modo + '|' + mes + '|' + dia;
+async function estadoAl(mes, dia, modo, desdeElegido) {
+  const k = modo + '|' + mes + '|' + dia + '|' + (desdeElegido || '');
   if (cacheComp[k]) return cacheComp[k];
-  const { desde } = rangoBbdd(mes);
+  const desde = (modo === 'acum' && desdeElegido) || rangoBbdd(mes).desde;
   const finMes = finMesBbdd(mes);
   const datos = {};
   if (modo === 'dia') {
@@ -627,7 +627,11 @@ async function estadoAl(mes, dia, modo) {
     return (cacheComp[k] = { datos, fueraVentana: dia < desde || dia > finMes, desde, finMes });
   }
   const hasta = dia > finMes ? finMes : dia;
-  if (hasta < desde) return (cacheComp[k] = { datos, vacio: true, desde, hasta });
+  if (hasta < desde) {
+    // Sin datos para ese día, pero las campañas de la BBDD siguen disponibles para elegir.
+    for (const camp of Object.keys((await bbddDe(mes)).campanas)) datos[camp] = null;
+    return (cacheComp[k] = { datos, vacio: true, desde, hasta });
+  }
   const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(desde, hasta).map(logsParseados)]);
   const logs = [].concat(...porMes);
   for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = calcular(ids, logs, desde, hasta).resumen;
@@ -706,21 +710,30 @@ async function comparar() {
   $('ayudaModo').textContent = modo === 'dia'
     ? 'Día único: solo los commlogs del día elegido, cruzados con la BBDD que elijas.'
     : 'Situación a ese día: cómo íbamos con esa BBDD hasta ese día (commlogs desde el 15 del mes anterior hasta el día elegido, sin pasar del fin de mes).';
+  // "Commlogs desde" de cada lado (solo modo situación): por defecto la regla de su BBDD;
+  // se reinicia al cambiar de BBDD y se puede editar para mirar antes/después de una fecha.
+  for (const l of ['A', 'B']) {
+    const m = $('mes' + l).value;
+    if ($('desde' + l).dataset.mes !== m || !$('desde' + l).value) {
+      $('desde' + l).value = rangoBbdd(m).desde;
+      $('desde' + l).dataset.mes = m;
+    }
+  }
+  document.querySelectorAll('.soloAcum').forEach((e) => e.classList.toggle('hidden', modo !== 'acum'));
   const id = ++compId;
   $('notaComp').textContent = 'Calculando…';
   let ea, eb;
   try {
-    [ea, eb] = await Promise.all([estadoAl(mA, A, modo), estadoAl(mB, B, modo)]);
+    [ea, eb] = await Promise.all([estadoAl(mA, A, modo, $('desdeA').value), estadoAl(mB, B, modo, $('desdeB').value)]);
   } catch (err) {
     $('notaComp').textContent = 'Error: ' + err.message;
     return;
   }
   if (id !== compId) return; // llegó otra comparación más reciente
   const nota = modo === 'dia'
-    ? (e, d, m, l) => `${l}: commlogs del ${fDia(d)} cruzados con la BBDD ${nombreBbdd(m)}` +
-      (e.fueraVentana ? ` (ojo: ese día está fuera del rango de esa BBDD, ${fDia(e.desde)}–${fDia(e.finMes)})` : '') + '.'
+    ? (e, d, m, l) => `${l}: commlogs del ${fDia(d)} cruzados con la BBDD ${nombreBbdd(m)}.`
     : (e, d, m, l) => e.vacio
-      ? `${l}: el ${fDia(d)} es anterior al inicio de la BBDD ${nombreBbdd(m)} (${fDia(e.desde)}), no hay datos.`
+      ? `${l}: el ${fDia(d)} es anterior a «Commlogs desde» (${fDia(e.desde)}); adelanta esa fecha para ver ese día.`
       : `${l}: BBDD ${nombreBbdd(m)}, commlogs del ${fDia(e.desde)} al ${fDia(e.hasta)}${e.recortado ? ' (cierre de mes)' : ''}.`;
   $('notaComp').textContent = `${nota(ea, A, mA, 'A')} ${nota(eb, B, mB, 'B')}`;
 
@@ -759,8 +772,15 @@ for (const [btn, m] of [['btnModoDia', 'dia'], ['btnModoAcum', 'acum']]) {
 }
 for (const l of ['A', 'B']) {
   // Al cambiar el día se propone la BBDD del mes de ese día.
-  $('dia' + l).addEventListener('change', () => { $('mes' + l).value = mesParaDia($('dia' + l).value); comparar(); });
+  // Si el día cambia de mes se propone la BBDD de ese mes; si sigue en el mismo mes se
+  // respeta la BBDD elegida (p. ej. una segmentada).
+  $('dia' + l).addEventListener('change', () => {
+    const d = $('dia' + l).value;
+    if (d && mesBase($('mes' + l).value) !== d.slice(0, 7)) $('mes' + l).value = mesParaDia(d);
+    comparar();
+  });
   $('mes' + l).addEventListener('change', comparar);
+  $('desde' + l).addEventListener('change', comparar);
   $('camp' + l).addEventListener('change', () => { store('camp' + l, $('camp' + l).value); comparar(); });
 }
 $('btnCompMes').addEventListener('click', () => { fijarDias('mes'); comparar(); });
