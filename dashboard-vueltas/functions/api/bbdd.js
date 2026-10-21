@@ -9,7 +9,9 @@
 const json = (d, status = 200) => new Response(JSON.stringify(d), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8' },
 });
-const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
+// AAAA-MM o AAAA-MM-sufijo (BBDD adicionales de un mes, p. ej. una segmentación).
+const MES = /^\d{4}-(0[1-9]|1[0-2])(-[a-z0-9]{1,20})?$/;
+const DIA = /^\d{4}-\d{2}-\d{2}$/;
 
 async function leerIndice(kv) {
   return (await kv.get('index', 'json')) || [];
@@ -34,9 +36,13 @@ export async function onRequest({ request, env }) {
       campanas[String(nombre).trim().slice(0, 80)] = [...new Set(ids.map((x) => String(x).trim()).filter(Boolean))];
     }
     if (!Object.keys(campanas).length) return json({ error: 'Sin campañas' }, 400);
-    await kv.put('bbdd:' + mes, JSON.stringify({ mes, campanas }));
+    // Opcionales: nombre visible y fecha desde la que cuentan los commlogs.
+    const extra = {};
+    if (body.nombre) extra.nombre = String(body.nombre).trim().slice(0, 60);
+    if (DIA.test(body.desde || '')) extra.desde = body.desde;
+    await kv.put('bbdd:' + mes, JSON.stringify({ mes, ...extra, campanas }));
     const idx = (await leerIndice(kv)).filter((i) => i.mes !== mes);
-    idx.push({ mes, campanas: Object.fromEntries(Object.entries(campanas).map(([k, v]) => [k, v.length])) });
+    idx.push({ mes, ...extra, campanas: Object.fromEntries(Object.entries(campanas).map(([k, v]) => [k, v.length])) });
     idx.sort((a, b) => a.mes.localeCompare(b.mes));
     await kv.put('index', JSON.stringify(idx));
     return json({ ok: true });

@@ -80,6 +80,19 @@ const nombreMes = (m) => {
   return new Date(y, mm - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 };
 
+// Una BBDD se identifica por AAAA-MM o AAAA-MM-sufijo (BBDD extra de un mes, p. ej.
+// una segmentación). Puede tener nombre propio y una fecha "desde" para los commlogs.
+let indiceBbdd = {};
+const mesBase = (id) => id.slice(0, 7);
+const nombreBbdd = (id) => indiceBbdd[id]?.nombre || nombreMes(mesBase(id));
+function rangoBbdd(id, hoy) {
+  const r = rangoPorDefecto(mesBase(id), hoy);
+  const desde = indiceBbdd[id]?.desde;
+  if (desde) r.desde = desde;
+  return r;
+}
+const finMesBbdd = (id) => rangoPorDefecto(mesBase(id), new Date(2999, 0, 1)).hasta;
+
 async function cargarIndice(preferido) {
   try {
     const idx = await api('/api/bbdd');
@@ -88,7 +101,8 @@ async function cargarIndice(preferido) {
       $('stBbdd').textContent = 'Sin BBDD guardadas';
       return;
     }
-    $('mes').innerHTML = idx.map((i) => `<option value="${i.mes}">${nombreMes(i.mes)}</option>`).join('');
+    indiceBbdd = Object.fromEntries(idx.map((i) => [i.mes, i]));
+    $('mes').innerHTML = idx.map((i) => `<option value="${i.mes}">${escapeHtml(nombreBbdd(i.mes))}</option>`).join('');
     const sel = preferido || load('mes');
     $('mes').value = idx.some((i) => i.mes === sel) ? sel : idx[idx.length - 1].mes;
     await cambiarMes();
@@ -107,7 +121,7 @@ async function cambiarMes() {
   $('campana').innerHTML = camps.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
   if (camps.includes(load('campana'))) $('campana').value = load('campana');
   const tot = camps.reduce((a, c) => a + bbdd.campanas[c].length, 0);
-  $('stBbdd').textContent = `BBDD ${nombreMes(mes)}: ${fmt(tot)} instalaciones en ${camps.length} campañas`;
+  $('stBbdd').textContent = `BBDD ${nombreBbdd(mes)}: ${fmt(tot)} instalaciones en ${camps.length} campañas`;
   actualizarBoton();
   await logsListos;
   recalcular();
@@ -160,16 +174,22 @@ $('fBbdd').addEventListener('change', async (e) => {
   }
 });
 
+const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
+
 $('btnGuardar').addEventListener('click', async () => {
-  const mes = $('mesCarga').value;
+  const nombre = $('nombreCarga').value.trim(), desde = $('desdeCarga').value;
+  // Con nombre propio se guarda como BBDD adicional del mes (no sustituye a la del mes).
+  const mes = $('mesCarga').value && (nombre ? `${$('mesCarga').value}-${slug(nombre) || 'extra'}` : $('mesCarga').value);
   if (!carga || !mes) return;
   $('btnGuardar').disabled = true;
   $('stCarga').textContent = 'Guardando…';
   try {
     delete cacheBbdd[mes];
     await api('/api/bbdd?mes=' + mes, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mes, campanas: carga }) });
-    $('stCarga').textContent = `Guardada la BBDD de ${nombreMes(mes)}.`;
+      body: JSON.stringify({ mes, nombre: nombre || undefined, desde: desde || undefined, campanas: carga }) });
+    $('stCarga').textContent = `Guardada la BBDD ${nombre || nombreMes(mes)}${desde ? ` (commlogs desde ${desde.split('-').reverse().join('/')})` : ''}.`;
+    $('nombreCarga').value = '';
+    $('desdeCarga').value = '';
     $('fBbdd').value = '';
     carga = null;
     await cargarIndice(mes);
@@ -182,7 +202,7 @@ $('btnGuardar').addEventListener('click', async () => {
 // ---------- rango de fechas ----------
 function aplicarRango() {
   if (!$('mes').value) return;
-  const r = rangoPorDefecto($('mes').value);
+  const r = rangoBbdd($('mes').value);
   $('desde').value = r.desde;
   $('hasta').value = r.hasta;
 }
@@ -410,7 +430,7 @@ async function recalcular() {
   resultados = {};
   for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta);
   const f = (d) => d.split('-').reverse().join('/');
-  $('stCalc').textContent = `BBDD ${nombreMes(bbdd.mes)} · commlogs del ${f(desde)} al ${f(hasta)}`;
+  $('stCalc').textContent = `BBDD ${nombreBbdd(bbdd.mes)} · commlogs del ${f(desde)} al ${f(hasta)}`;
   $('res').classList.remove('hidden');
   pintarCampana();
 }
@@ -560,12 +580,13 @@ vista();
 async function pintarDatos() {
   try {
     const [bb, lg] = await Promise.all([api('/api/bbdd'), api('/api/commlogs')]);
-    const meses = [...new Set([...bb.map((b) => b.mes), ...lg.map((l) => l.mes)])].sort().reverse();
+    const meses = [...new Set([...bb.map((b) => mesBase(b.mes)), ...lg.map((l) => l.mes)])].sort().reverse();
     $('tablaDatos').innerHTML = `<thead><tr><th>Mes</th><th>BBDD (campañas · instalaciones)</th><th class="n">Commlogs con fecha de ese mes</th><th>Último commlog</th></tr></thead><tbody>${
       meses.map((m) => {
-        const b = bb.find((x) => x.mes === m), l = lg.find((x) => x.mes === m);
-        const camp = b ? Object.entries(b.campanas).map(([c, n]) => `${escapeHtml(c)} ${fmt(n)}`).join(' · ') : '—';
-        return `<tr><td>${nombreMes(m)}</td><td>${camp}</td><td class="n">${l ? fmt(l.n) : '—'}</td><td>${l ? l.max : '—'}</td></tr>`;
+        const bs = bb.filter((x) => mesBase(x.mes) === m), l = lg.find((x) => x.mes === m);
+        const camp = bs.length ? bs.map((b) => (b.nombre ? `<b>${escapeHtml(b.nombre)}</b>${b.desde ? ` (desde ${b.desde.split('-').reverse().join('/')})` : ''}: ` : '') +
+          Object.entries(b.campanas).map(([c, n]) => `${escapeHtml(c)} ${fmt(n)}`).join(' · ')).join('<br>') : '—';
+        return `<tr><td>${nombreMes(m)}</td><td style="white-space:normal">${camp}</td><td class="n">${l ? fmt(l.n) : '—'}</td><td>${l ? l.max : '—'}</td></tr>`;
       }).join('')}</tbody>`;
   } catch (err) {
     $('tablaDatos').innerHTML = `<tbody><tr><td>Error: ${escapeHtml(err.message)}</td></tr></tbody>`;
@@ -596,8 +617,8 @@ let modoComp = load('modoComp') === 'acum' ? 'acum' : 'dia';
 async function estadoAl(mes, dia, modo) {
   const k = modo + '|' + mes + '|' + dia;
   if (cacheComp[k]) return cacheComp[k];
-  const { desde } = rangoPorDefecto(mes);
-  const finMes = rangoPorDefecto(mes, new Date(2999, 0, 1)).hasta;
+  const { desde } = rangoBbdd(mes);
+  const finMes = finMesBbdd(mes);
   const datos = {};
   if (modo === 'dia') {
     const [bb, logsMes] = await Promise.all([bbddDe(mes), logsParseados(dia.slice(0, 7))]);
@@ -617,10 +638,10 @@ const mesesDisponibles = () => [...$('mes').options].map((o) => o.value);
 function mesParaDia(dia, preferido) {
   const ms = mesesDisponibles();
   if (preferido && ms.includes(preferido)) return preferido;
-  return ms.includes(dia.slice(0, 7)) ? dia.slice(0, 7) : ms[ms.length - 1];
+  return ms.includes(dia.slice(0, 7)) ? dia.slice(0, 7) : (ms.find((m) => mesBase(m) === dia.slice(0, 7)) || ms[ms.length - 1]);
 }
 function rellenarMesesComp() {
-  const html = mesesDisponibles().map((m) => `<option value="${m}">${nombreMes(m)}</option>`).join('');
+  const html = mesesDisponibles().map((m) => `<option value="${m}">${escapeHtml(nombreBbdd(m))}</option>`).join('');
   for (const id of ['mesA', 'mesB']) {
     const v = $(id).value;
     $(id).innerHTML = html;
@@ -696,11 +717,11 @@ async function comparar() {
   }
   if (id !== compId) return; // llegó otra comparación más reciente
   const nota = modo === 'dia'
-    ? (e, d, m, l) => `${l}: commlogs del ${fDia(d)} cruzados con la BBDD de ${nombreMes(m)}` +
+    ? (e, d, m, l) => `${l}: commlogs del ${fDia(d)} cruzados con la BBDD ${nombreBbdd(m)}` +
       (e.fueraVentana ? ` (ojo: ese día está fuera del rango de esa BBDD, ${fDia(e.desde)}–${fDia(e.finMes)})` : '') + '.'
     : (e, d, m, l) => e.vacio
-      ? `${l}: el ${fDia(d)} es anterior al inicio de la BBDD de ${nombreMes(m)} (${fDia(e.desde)}), no hay datos.`
-      : `${l}: BBDD ${nombreMes(m)}, commlogs del ${fDia(e.desde)} al ${fDia(e.hasta)}${e.recortado ? ' (cierre de mes)' : ''}.`;
+      ? `${l}: el ${fDia(d)} es anterior al inicio de la BBDD ${nombreBbdd(m)} (${fDia(e.desde)}), no hay datos.`
+      : `${l}: BBDD ${nombreBbdd(m)}, commlogs del ${fDia(e.desde)} al ${fDia(e.hasta)}${e.recortado ? ' (cierre de mes)' : ''}.`;
   $('notaComp').textContent = `${nota(ea, A, mA, 'A')} ${nota(eb, B, mB, 'B')}`;
 
   const sel = $('campana').value;
@@ -709,7 +730,7 @@ async function comparar() {
   const da = ea.datos[campSel], db = eb.datos[campSel];
   const metricas = modo === 'dia' ? METRICAS_DIA : METRICAS_ACUM;
   const cab = modo === 'dia' ? 'Medida (solo commlogs de ese día)' : 'Medida (acumulado hasta ese día)';
-  $('tituloCompDia').textContent = `Campaña ${campSel}: ${fDia(A)} (${nombreMes(mA)}) frente a ${fDia(B)} (${nombreMes(mB)})`;
+  $('tituloCompDia').textContent = `Campaña ${campSel}: ${fDia(A)} (${nombreBbdd(mA)}) frente a ${fDia(B)} (${nombreBbdd(mB)})`;
   $('tablaCompDia').innerHTML = `<thead><tr><th>${cab}</th><th class="n">A · ${fDia(A)}</th><th class="n">B · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
     metricas.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${val(da, f, dec, suf)}</td><td class="n"><b>${val(db, f, dec, suf)}</b></td>${delta(da && f(da), db && f(db), dec, suf)}</tr>`).join('')
   }</tbody>`;

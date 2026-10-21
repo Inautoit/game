@@ -317,8 +317,11 @@
       <div class="row">
         <label>Excel BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv" /></label>
         <label>Mes de la BBDD <input type="month" id="mesCarga" /></label>
+        <label>Nombre (opcional) <input type="text" id="nombreCarga" placeholder="p. ej. Octubre segmentada" /></label>
+        <label>Commlogs desde (opcional) <input type="date" id="desdeCarga" /></label>
         <button id="btnGuardar" disabled>Guardar BBDD</button>
       </div>
+      <p class="status" style="margin-top:6px">Con <b>nombre</b> se guarda como una BBDD adicional de ese mes, sin sustituir a la principal. Con <b>commlogs desde</b>, solo cuentan las llamadas a partir de esa fecha (por defecto, desde el 15 del mes anterior).</p>
       <div class="status" id="stCarga"></div>
     </section>
     <section class="card">
