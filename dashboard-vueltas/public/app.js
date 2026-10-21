@@ -724,14 +724,22 @@ async function comparar() {
       : `${l}: BBDD ${nombreBbdd(m)}, commlogs del ${fDia(e.desde)} al ${fDia(e.hasta)}${e.recortado ? ' (cierre de mes)' : ''}.`;
   $('notaComp').textContent = `${nota(ea, A, mA, 'A')} ${nota(eb, B, mB, 'B')}`;
 
+  // Cada lado tiene su campaña: se rellenan con las campañas de su BBDD y se
+  // mantiene la elegida si sigue existiendo (si no, la del dashboard o la primera).
   const sel = $('campana').value;
+  for (const [l, e] of [['A', ea], ['B', eb]]) {
+    const cs = Object.keys(e.datos), prev = $('camp' + l).value || load('camp' + l);
+    $('camp' + l).innerHTML = cs.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
+    $('camp' + l).value = cs.includes(prev) ? prev : cs.includes(sel) ? sel : cs[0] || '';
+  }
+  const cA = $('campA').value, cB = $('campB').value;
   const camps = [...new Set([...Object.keys(ea.datos), ...Object.keys(eb.datos)])];
-  const campSel = camps.includes(sel) ? sel : camps[0];
-  const da = ea.datos[campSel], db = eb.datos[campSel];
+  const campSel = cA;
+  const da = ea.datos[cA], db = eb.datos[cB];
   const metricas = modo === 'dia' ? METRICAS_DIA : METRICAS_ACUM;
   const cab = modo === 'dia' ? 'Medida (solo commlogs de ese día)' : 'Medida (acumulado hasta ese día)';
-  $('tituloCompDia').textContent = `Campaña ${campSel}: ${fDia(A)} (${nombreBbdd(mA)}) frente a ${fDia(B)} (${nombreBbdd(mB)})`;
-  $('tablaCompDia').innerHTML = `<thead><tr><th>${cab}</th><th class="n">A · ${fDia(A)}</th><th class="n">B · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
+  $('tituloCompDia').textContent = `A: ${cA} · ${fDia(A)} (${nombreBbdd(mA)})  frente a  B: ${cB} · ${fDia(B)} (${nombreBbdd(mB)})`;
+  $('tablaCompDia').innerHTML = `<thead><tr><th>${cab}</th><th class="n">A · ${escapeHtml(cA)} · ${fDia(A)}</th><th class="n">B · ${escapeHtml(cB)} · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
     metricas.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${val(da, f, dec, suf)}</td><td class="n"><b>${val(db, f, dec, suf)}</b></td>${delta(da && f(da), db && f(db), dec, suf)}</tr>`).join('')
   }</tbody>`;
   const celdas3 = (x, y, f, dec, suf) => `<td class="n">${val(x, f, dec, suf)}</td><td class="n"><b>${val(y, f, dec, suf)}</b></td>${delta(x && f(x), y && f(y), dec, suf)}`;
@@ -753,6 +761,7 @@ for (const l of ['A', 'B']) {
   // Al cambiar el día se propone la BBDD del mes de ese día.
   $('dia' + l).addEventListener('change', () => { $('mes' + l).value = mesParaDia($('dia' + l).value); comparar(); });
   $('mes' + l).addEventListener('change', comparar);
+  $('camp' + l).addEventListener('change', () => { store('camp' + l, $('camp' + l).value); comparar(); });
 }
 $('btnCompMes').addEventListener('click', () => { fijarDias('mes'); comparar(); });
 $('btnCompHoy').addEventListener('click', () => { fijarDias('semana'); comparar(); });

@@ -214,9 +214,11 @@
         <div class="row">
           <label>Día A <input type="date" id="diaA" /></label>
           <label>BBDD A <select id="mesA"></select></label>
+          <label>Campaña A <select id="campA"></select></label>
           <span style="align-self:center;color:var(--muted);font-weight:600">vs</span>
           <label>Día B <input type="date" id="diaB" /></label>
           <label>BBDD B <select id="mesB"></select></label>
+          <label>Campaña B <select id="campB"></select></label>
         </div>
         <div class="row" style="margin-top:10px">
           <button class="sec" id="btnCompMes">Mismo día del mes anterior</button>
@@ -225,7 +227,7 @@
         <p class="status" id="notaComp" style="margin-top:8px"></p>
         <h3 style="margin:16px 0 6px;font-size:13.5px" id="tituloCompDia"></h3>
         <div class="tablewrap" style="max-height:none"><table id="tablaCompDia"></table></div>
-        <h3 style="margin:18px 0 6px;font-size:13.5px">Todas las campañas</h3>
+        <h3 style="margin:18px 0 6px;font-size:13.5px">Todas las campañas <span style="font-weight:400;color:var(--muted)">(cada fila compara la campaña del mismo nombre en A y en B; «—» si no existe en ese lado)</span></h3>
         <div class="tablewrap"><table id="tablaCompCamp"></table></div>
       </section>
 
@@ -284,7 +286,7 @@
           <dt>Cobertura por vuelta</dt><dd>Vuelta N cubierta = % de gestionables con al menos N intentos o ya contactadas (una vez contactada no hace falta volver a llamar).</dd>
           <dt>Vueltas completas</dt><dd>Número de vueltas cubiertas al 100 %: todas las gestionables tienen al menos N intentos o están contactadas. Debajo se ve cómo va la siguiente vuelta.</dd>
           <dt>Intentos por instalación</dt><dd>Cuántas gestionables tienen 0, 1, 2… intentos.</dd>
-          <dt>Comparador de días</dt><dd>Dos modos. <b>Día único</b>: solo cuenta los commlogs del día elegido, cruzados con la BBDD elegida (contactadas ese día, % de contacto del día…). <b>Situación a ese día</b>: cómo íbamos con esa BBDD hasta ese día, contando los commlogs desde el 15 del mes anterior hasta el día elegido (Nº de vueltas, contactación… acumulados). En los dos, la BBDD de cada lado es por defecto la del mes del día elegido.</dd>
+          <dt>Comparador de días</dt><dd>Dos modos. <b>Día único</b>: solo cuenta los commlogs del día elegido, cruzados con la BBDD elegida (contactadas ese día, % de contacto del día…). <b>Situación a ese día</b>: cómo íbamos con esa BBDD hasta ese día, contando los commlogs desde el 15 del mes anterior hasta el día elegido (Nº de vueltas, contactación… acumulados). En los dos, la BBDD de cada lado es por defecto la del mes del día elegido, y cada lado tiene su propia campaña, así que puedes comparar campañas distintas (p. ej. TMK de octubre frente a RESTO TMK SIN OPC de Octubre segmentada).</dd>
           <dt>Intentos por día</dt><dd>Commlogs de gestionables por día, separados en contacto válido y no contacto.</dd>
         </dl>
       </details>
