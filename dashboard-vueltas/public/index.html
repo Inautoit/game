@@ -165,7 +165,7 @@
       <img class="logo-vs" src="./logo.png" alt="Verisure" />
       <div class="sep"></div>
       <div>
-        <h1>Contactación y vueltas de BBDD</h1>
+        <h1 id="tituloInforme">Contactación y vueltas de BBDD</h1>
         <p>Seguimiento de intentos, exclusiones e ilocalizados por campaña</p>
       </div>
       <span class="tag">Uso interno</span>
@@ -173,6 +173,7 @@
   </header>
   <nav class="tabs"><div class="tabs-in">
     <a href="#" id="tabDash" class="on">Dashboard</a>
+    <a href="#sa" id="tabSa">Second Attempt</a>
     <a href="#origenes" id="tabOrig" class="right">＋ Añadir orígenes</a>
   </div></nav>
 
@@ -319,13 +320,14 @@
       <h2>BBDD mensual</h2>
       <p class="sub">Excel exportado (Exportadas_&lt;Mes&gt;&lt;AA&gt;.xlsx). Cada pestaña es una campaña y se mide por separado. Solo se guarda el número de instalación.</p>
       <div class="row">
+        <label>Informe <select id="progCarga"><option value="">Dashboard (principal)</option><option value="sa">Second Attempt</option></select></label>
         <label>Excel BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv" /></label>
         <label>Mes de la BBDD <input type="month" id="mesCarga" /></label>
         <label>Nombre (opcional) <input type="text" id="nombreCarga" placeholder="p. ej. Octubre segmentada" /></label>
         <label>Commlogs desde (opcional) <input type="date" id="desdeCarga" /></label>
         <button id="btnGuardar" disabled>Guardar BBDD</button>
       </div>
-      <p class="status" style="margin-top:6px">Con <b>nombre</b> se guarda como una BBDD adicional de ese mes, sin sustituir a la principal. Con <b>commlogs desde</b>, solo cuentan las llamadas a partir de esa fecha (por defecto, desde el 15 del mes anterior).</p>
+      <p class="status" style="margin-top:6px">En <b>Second Attempt</b> solo se cogen las hojas BBDD WELCOME (INS_NO), CLOSED (Installation Number), NO ACEPTAS (Numero_de_Instalacion) y BBDD PROSPECTOS MES (Old Inst); cada una es una campaña. Con <b>nombre</b> se guarda como una BBDD adicional de ese mes, sin sustituir a la principal. Con <b>commlogs desde</b>, solo cuentan las llamadas a partir de esa fecha (por defecto, desde el 15 del mes anterior).</p>
       <div class="status" id="stCarga"></div>
     </section>
     <section class="card">
