@@ -12,7 +12,23 @@ function leerZip(buf) {
   for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 70000); i--) {
     if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
   }
-  if (eocd < 0) throw new Error('el fichero no es un Excel .xlsx válido');
+  if (eocd < 0) {
+    // Empieza como un .xlsx (PK) pero le falta el final: descarga o sincronización cortada.
+    if (dv.getUint32(0, true) === 0x04034b50) {
+      let p = 0, esperado = 0;
+      while (p + 30 <= buf.byteLength && dv.getUint32(p, true) === 0x04034b50) {
+        const fin = p + 30 + dv.getUint16(p + 26, true) + dv.getUint16(p + 28, true) + dv.getUint32(p + 18, true);
+        esperado = Math.max(esperado, fin);
+        if (fin > buf.byteLength) break;
+        p = fin;
+      }
+      const mb = (n) => (n / 1048576).toLocaleString('es-ES', { maximumFractionDigits: 0 });
+      throw new Error(`el Excel está incompleto: el archivo se ha cortado al descargarlo o sincronizarlo (pesa ${mb(buf.byteLength)} MB` +
+        (esperado > buf.byteLength ? ` y debería pesar al menos ${mb(esperado)} MB` : '') +
+        '). Vuelve a descargarlo de SharePoint esperando a que termine (o ábrelo en Excel y usa «Guardar como») y súbelo otra vez');
+    }
+    throw new Error('el fichero no es un Excel .xlsx válido');
+  }
   let n = dv.getUint16(eocd + 10, true);
   let p = dv.getUint32(eocd + 16, true);
   const entradas = {};
