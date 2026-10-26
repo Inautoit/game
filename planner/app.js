@@ -96,12 +96,12 @@
         meta.append(el('span', { class: 'pill' + (overdue ? ' overdue' : '') }, (overdue ? 'Vencido ' : 'Para el ') + formatDate(item.due)));
       }
       const project = item.projectId && byId(item.projectId);
-      if (project) meta.append(el('span', { class: 'pill' }, '📁 ' + project.title));
+      if (project) meta.append(el('span', { class: 'pill' }, '↳ ' + project.title));
       if (item.type === 'proyecto') {
         const kids = items.filter((i) => i.projectId === item.id);
         if (kids.length) meta.append(el('span', { class: 'pill' }, `${kids.filter((k) => k.done).length}/${kids.length} hechas`));
       }
-      if (item.notes && item.notes.length) meta.append(el('span', null, '📝 ' + item.notes.length));
+      if (item.notes && item.notes.length) meta.append(el('span', null, item.notes.length + (item.notes.length === 1 ? ' nota' : ' notas')));
       if (item.done && item.doneAt) meta.append(el('span', null, '✔ ' + formatDate(item.doneAt)));
 
       const check = el('input', {
