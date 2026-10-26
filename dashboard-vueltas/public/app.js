@@ -734,6 +734,14 @@ function campanasConGrupos(campanas) {
     const base = miembros[0].replace(/\s*\b(SIN|CON)\s+OPC\b\s*/i, ' ').trim();
     out[`${base} · SIN + CON OPC${SUF_JUNTAS}`] = [...new Set(miembros.flatMap((m) => campanas[m]))];
   }
+  // Campaña + su versión de baja propensión (p. ej. COMPE y COMPE_BAJA PROPENSION en septiembre).
+  const BAJA = /[\s_-]*BAJA\s+PROPENSI[OÓ]N\s*$/i;
+  for (const c of Object.keys(campanas)) {
+    if (!BAJA.test(c)) continue;
+    const base = c.replace(BAJA, '').trim();
+    const madre = Object.keys(campanas).find((x) => x !== c && x.trim().toUpperCase() === base.toUpperCase());
+    if (madre) out[`${madre} + BAJA PROPENSIÓN${SUF_JUNTAS}`] = [...new Set([...campanas[madre], ...campanas[c]])];
+  }
   if (Object.keys(campanas).length > 1) out[`Todas las campañas${SUF_JUNTAS}`] = [...new Set(Object.values(campanas).flat())];
   return out;
 }
