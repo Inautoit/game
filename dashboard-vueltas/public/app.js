@@ -720,6 +720,24 @@ const logsParseados = (mes) => (cacheParsed[mes] ||= logsDeMes(mes).then((l) => 
 //            (15 del mes anterior) hasta el día elegido, sin pasar del fin de mes.
 let modoComp = load('modoComp') === 'acum' ? 'acum' : 'dia';
 
+// Campañas que se pueden comparar juntas: cada pareja SIN OPC + CON OPC (mismas palabras
+// quitando "SIN/CON OPC", da igual el orden: "TMK COMPETICIÓN SIN OPC" ~ "COMPETICIÓN TMK CON OPC")
+// y todas las campañas de la BBDD.
+const SUF_JUNTAS = ' (juntas)';
+function campanasConGrupos(campanas) {
+  const out = { ...campanas };
+  const clave = (c) => c.toUpperCase().replace(/\b(SIN|CON)\s+OPC\b/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+  const grupos = {};
+  for (const c of Object.keys(campanas)) if (/\b(SIN|CON)\s+OPC\b/i.test(c)) (grupos[clave(c)] ||= []).push(c);
+  for (const miembros of Object.values(grupos)) {
+    if (miembros.length < 2) continue;
+    const base = miembros[0].replace(/\s*\b(SIN|CON)\s+OPC\b\s*/i, ' ').trim();
+    out[`${base} · SIN + CON OPC${SUF_JUNTAS}`] = [...new Set(miembros.flatMap((m) => campanas[m]))];
+  }
+  if (Object.keys(campanas).length > 1) out[`Todas las campañas${SUF_JUNTAS}`] = [...new Set(Object.values(campanas).flat())];
+  return out;
+}
+
 async function estadoAl(mes, dia, modo, desdeElegido) {
   const k = PROG + '|' + modo + '|' + mes + '|' + dia + '|' + (desdeElegido || '');
   if (cacheComp[k]) return cacheComp[k];
@@ -729,18 +747,18 @@ async function estadoAl(mes, dia, modo, desdeElegido) {
   if (modo === 'dia') {
     const [bb, logsMes] = await Promise.all([bbddDe(mes), logsParseados(dia.slice(0, 7))]);
     const delDiaLogs = logsMes.filter((l) => l.fecha && isoDia(l.fecha) === dia);
-    for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = delDia(ids, delDiaLogs, dia, bb.cargas);
+    for (const [camp, ids] of Object.entries(campanasConGrupos(bb.campanas))) datos[camp] = delDia(ids, delDiaLogs, dia, bb.cargas);
     return (cacheComp[k] = { datos, fueraVentana: dia < desde || dia > finMes, desde, finMes });
   }
   const hasta = dia > finMes ? finMes : dia;
   if (hasta < desde) {
     // Sin datos para ese día, pero las campañas de la BBDD siguen disponibles para elegir.
-    for (const camp of Object.keys((await bbddDe(mes)).campanas)) datos[camp] = null;
+    for (const camp of Object.keys(campanasConGrupos((await bbddDe(mes)).campanas))) datos[camp] = null;
     return (cacheComp[k] = { datos, vacio: true, desde, hasta });
   }
   const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(desde, hasta).map(logsParseados)]);
   const logs = [].concat(...porMes);
-  for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
+  for (const [camp, ids] of Object.entries(campanasConGrupos(bb.campanas))) datos[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
   return (cacheComp[k] = { datos, desde, hasta, recortado: hasta !== dia });
 }
 
@@ -848,7 +866,9 @@ async function comparar() {
   const sel = $('campana').value;
   for (const [l, e] of [['A', ea], ['B', eb]]) {
     const cs = Object.keys(e.datos), prev = $('camp' + l).value || load('camp' + l);
-    $('camp' + l).innerHTML = cs.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
+    const solas = cs.filter((c) => !c.endsWith(SUF_JUNTAS)), juntas = cs.filter((c) => c.endsWith(SUF_JUNTAS));
+    $('camp' + l).innerHTML = `<optgroup label="Por separado">${solas.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` +
+      (juntas.length ? `<optgroup label="Juntas">${juntas.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` : '');
     $('camp' + l).value = cs.includes(prev) ? prev : cs.includes(sel) ? sel : cs[0] || '';
   }
   const cA = $('campA').value, cB = $('campB').value;
