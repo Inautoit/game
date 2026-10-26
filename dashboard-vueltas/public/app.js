@@ -742,6 +742,11 @@ function campanasConGrupos(campanas) {
     const madre = Object.keys(campanas).find((x) => x !== c && x.trim().toUpperCase() === base.toUpperCase());
     if (madre) out[`${madre} + BAJA PROPENSIÓN${SUF_JUNTAS}`] = [...new Set([...campanas[madre], ...campanas[c]])];
   }
+  // Todo TMK de la segmentación: RESTO TMK (SIN + CON OPC) + PILOTO/COMPETICIÓN TMK (SIN + CON OPC).
+  const tmkOpc = Object.keys(campanas).filter((c) => /\bTMK\b/i.test(c) && /\b(SIN|CON)\s+OPC\b/i.test(c));
+  if (tmkOpc.some((c) => /\bRESTO\b/i.test(c)) && tmkOpc.some((c) => /COMPETICI[OÓ]N|PILOTO/i.test(c))) {
+    out[`RESTO TMK + COMPETICIÓN (piloto) · SIN + CON OPC${SUF_JUNTAS}`] = [...new Set(tmkOpc.flatMap((c) => campanas[c]))];
+  }
   if (Object.keys(campanas).length > 1) out[`Todas las campañas${SUF_JUNTAS}`] = [...new Set(Object.values(campanas).flat())];
   return out;
 }
