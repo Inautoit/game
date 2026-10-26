@@ -883,7 +883,9 @@ async function comparar() {
   const metricas = modo === 'dia' ? METRICAS_DIA : METRICAS_ACUM;
   const cab = modo === 'dia' ? 'Medida (solo commlogs de ese día)' : 'Medida (en el rango: commlogs desde → día elegido)';
   $('tituloCompDia').textContent = `A: ${cA} · ${fDia(A)} (${nombreBbdd(mA)})  frente a  B: ${cB} · ${fDia(B)} (${nombreBbdd(mB)})`;
-  $('tablaCompDia').innerHTML = `<thead><tr><th>${cab}</th><th class="n">A · ${escapeHtml(cA)} · ${fDia(A)}</th><th class="n">B · ${escapeHtml(cB)} · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
+  // En modo situación la cabecera muestra el rango completo (desde → día); en día único, solo el día.
+  const etqRango = (e, d) => (modo === 'acum' && !e.vacio ? `${fDia(e.desde)} → ${fDia(e.hasta)}` : fDia(d));
+  $('tablaCompDia').innerHTML = `<thead><tr><th>${cab}</th><th class="n">A · ${escapeHtml(cA)} · ${etqRango(ea, A)}</th><th class="n">B · ${escapeHtml(cB)} · ${etqRango(eb, B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
     metricas.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${val(da, f, dec, suf)}</td><td class="n"><b>${val(db, f, dec, suf)}</b></td>${delta(da && f(da), db && f(db), dec, suf)}</tr>`).join('')
   }</tbody>`;
   const celdas3 = (x, y, f, dec, suf) => `<td class="n">${val(x, f, dec, suf)}</td><td class="n"><b>${val(y, f, dec, suf)}</b></td>${delta(x && f(x), y && f(y), dec, suf)}`;
