@@ -59,3 +59,20 @@ automáticamente. Detalles en [`assets/README.md`](assets/README.md).
 - Sonido de motor
 - Objetos coleccionables / misiones
 - Día/noche y farolas
+
+---
+
+# Planificador de trabajo 🗂️
+
+Aplicación en [`planner/`](planner/) para organizar el trabajo. Se abre
+directamente con doble clic en `planner/index.html` (no necesita servidor).
+
+- Tres tipos de entrada: **Proyecto**, **Cosa** y **Ticket** (con nº de ticket).
+- Todo se junta en **Pendientes**; al marcar el check pasa a **Terminados**
+  (y se puede devolver a pendiente).
+- Cada elemento tiene un campo de **información / explicación** y una lista
+  de **notas** con fecha.
+- Prioridad, fecha límite (avisa si está vencido) y asignar cosas/tickets a
+  un proyecto.
+- Filtros por tipo, buscador y copia de seguridad (exportar/importar JSON).
+- Los datos se guardan en el navegador (`localStorage`).

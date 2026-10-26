@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planificador de trabajo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Mi planificador</h1>
+    <div class="add-buttons">
+      <button class="btn add proyecto" data-new="proyecto">+ Proyecto</button>
+      <button class="btn add cosa" data-new="cosa">+ Cosa</button>
+      <button class="btn add ticket" data-new="ticket">+ Ticket</button>
+    </div>
+  </header>
+
+  <main>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="pendientes">Pendientes <span id="count-pend" class="count">0</span></button>
+      <button class="tab" data-tab="terminados">Terminados <span id="count-done" class="count">0</span></button>
+    </nav>
+
+    <div class="filters">
+      <div class="chips">
+        <button class="chip active" data-filter="todos">Todos</button>
+        <button class="chip" data-filter="proyecto">Proyectos</button>
+        <button class="chip" data-filter="cosa">Cosas</button>
+        <button class="chip" data-filter="ticket">Tickets</button>
+      </div>
+      <input id="search" type="search" placeholder="Buscar…">
+    </div>
+
+    <ul id="list" class="list"></ul>
+    <p id="empty" class="empty" hidden></p>
+  </main>
+
+  <footer class="bottom">
+    <button class="btn ghost" id="export">Exportar copia (JSON)</button>
+    <label class="btn ghost">Importar copia<input type="file" id="import" accept="application/json" hidden></label>
+    <span class="hint">Los datos se guardan en este navegador.</span>
+  </footer>
+
+  <!-- Panel de detalle / edición -->
+  <div id="overlay" class="overlay" hidden>
+    <section class="panel" role="dialog" aria-modal="true" aria-labelledby="f-title">
+      <div class="panel-head">
+        <span id="f-badge" class="badge"></span>
+        <button class="icon" id="close" aria-label="Cerrar">✕</button>
+      </div>
+
+      <form id="form">
+        <input id="f-title" class="title-input" placeholder="Título" required autocomplete="off">
+
+        <div class="row">
+          <label id="f-ref-wrap">Nº ticket
+            <input id="f-ref" placeholder="Ej. INC-1234" autocomplete="off">
+          </label>
+          <label>Prioridad
+            <select id="f-priority">
+              <option value="alta">Alta</option>
+              <option value="media">Media</option>
+              <option value="baja">Baja</option>
+            </select>
+          </label>
+          <label>Fecha límite
+            <input id="f-due" type="date">
+          </label>
+          <label id="f-project-wrap">Proyecto
+            <select id="f-project"></select>
+          </label>
+        </div>
+
+        <label class="block">Información / explicación
+          <textarea id="f-info" rows="5" placeholder="Contexto, qué hay que hacer, enlaces, contactos…"></textarea>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" class="btn primary">Guardar</button>
+          <button type="button" class="btn" id="toggle-done"></button>
+          <button type="button" class="btn danger" id="delete">Eliminar</button>
+        </div>
+      </form>
+
+      <div id="notes-section" class="notes">
+        <h2>Notas</h2>
+        <form id="note-form" class="note-form">
+          <textarea id="note-text" rows="2" placeholder="Escribe una nota…"></textarea>
+          <button type="submit" class="btn primary">Añadir nota</button>
+        </form>
+        <ul id="notes" class="note-list"></ul>
+      </div>
+
+      <div id="children-section" class="children" hidden>
+        <h2>Cosas y tickets de este proyecto</h2>
+        <ul id="children" class="child-list"></ul>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
