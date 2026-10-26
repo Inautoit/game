@@ -53,12 +53,20 @@ export function rangoPorDefecto(mesBbdd, hoy = new Date()) {
  * @param bbddIds  array de ids de instalación de la BBDD del mes
  * @param commlogs array de {id, fecha: Date, key4}
  * @param desde,hasta 'YYYY-MM-DD' (ambos incluidos)
+ * @param desdePorId opcional {id: 'YYYY-MM-DD'}: cada instalación solo cuenta commlogs
+ *        desde esa fecha (p. ej. su día de carga en TakeOver)
  */
-export function calcular(bbddIds, commlogs, desde, hasta) {
+export function calcular(bbddIds, commlogs, desde, hasta, desdePorId) {
   const inst = new Map();
   for (const raw of bbddIds) {
     const id = normId(raw);
-    if (id && !inst.has(id)) inst.set(id, { id, logs: [] });
+    if (id && !inst.has(id)) inst.set(id, { id, logs: [], desde: '' });
+  }
+  if (desdePorId) {
+    for (const [raw, d] of Object.entries(desdePorId)) {
+      const it = inst.get(normId(raw));
+      if (it && d) it.desde = d;
+    }
   }
 
   let logsEnRango = 0, logsFueraBbdd = 0;
@@ -69,6 +77,7 @@ export function calcular(bbddIds, commlogs, desde, hasta) {
     if (dia < desde || dia > hasta) continue;
     const it = inst.get(normId(c.id));
     if (!it) { logsFueraBbdd++; continue; }
+    if (dia < it.desde) continue;
     logsEnRango++;
     it.logs.push({ fecha: c.fecha, dia, tipo: clasificar(c.key4), key4: c.key4 });
   }
@@ -158,8 +167,8 @@ function bucket(vals, tope) {
  * Actividad de un único día: solo se usan los commlogs de ese día (nada acumulado).
  * Las instalaciones con exclusión ese día no cuentan en el resto de medidas.
  */
-export function delDia(bbddIds, commlogs, dia) {
-  const r = calcular(bbddIds, commlogs, dia, dia);
+export function delDia(bbddIds, commlogs, dia, desdePorId) {
+  const r = calcular(bbddIds, commlogs, dia, dia, desdePorId);
   const s = r.resumen;
   const d = r.porDia[0] || { contacto: 0, no_contacto: 0 };
   const instLlamadas = s.contactadas + s.ilocalizadas;

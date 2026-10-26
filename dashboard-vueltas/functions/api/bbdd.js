@@ -5,7 +5,7 @@
 // GET ?mes=      -> BBDD del mes
 // PUT ?mes=      -> guarda/reemplaza la BBDD del mes
 // DELETE ?mes=   -> borra la BBDD del mes
-// ?prog=sa        -> mismas operaciones para el informe Second Attempt (claves sa:…)
+// ?prog=sa|to     -> mismas operaciones para los informes Second Attempt / TakeOver (claves sa:… / to:…)
 
 const json = (d, status = 200) => new Response(JSON.stringify(d), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -15,7 +15,7 @@ const MES = /^\d{4}-(0[1-9]|1[0-2])(-[a-z0-9]{1,20})?$/;
 const DIA = /^\d{4}-\d{2}-\d{2}$/;
 
 // Cada informe (principal o Second Attempt) tiene sus propias BBDD; los commlogs son comunes.
-const PROGS = { '': '', sa: 'sa:' };
+const PROGS = { '': '', sa: 'sa:', to: 'to:' };
 
 async function leerIndice(kv, pre) {
   return (await kv.get(pre + 'index', 'json')) || [];
@@ -47,7 +47,14 @@ export async function onRequest({ request, env }) {
     const extra = {};
     if (body.nombre) extra.nombre = String(body.nombre).trim().slice(0, 60);
     if (DIA.test(body.desde || '')) extra.desde = body.desde;
-    await kv.put(pre + 'bbdd:' + mes, JSON.stringify({ mes, ...extra, campanas }));
+    // TakeOver: commlogs hasta hoy (sin cortar a fin de mes) y fecha de carga por instalación.
+    if (body.hastaHoy) extra.hastaHoy = true;
+    let cargas = null;
+    if (body.cargas && typeof body.cargas === 'object') {
+      cargas = {};
+      for (const [id, d] of Object.entries(body.cargas)) if (DIA.test(d)) cargas[String(id).trim()] = d;
+    }
+    await kv.put(pre + 'bbdd:' + mes, JSON.stringify({ mes, ...extra, campanas, ...(cargas ? { cargas } : {}) }));
     const idx = (await leerIndice(kv, pre)).filter((i) => i.mes !== mes);
     idx.push({ mes, ...extra, campanas: Object.fromEntries(Object.entries(campanas).map(([k, v]) => [k, v.length])) });
     idx.sort((a, b) => a.mes.localeCompare(b.mes));

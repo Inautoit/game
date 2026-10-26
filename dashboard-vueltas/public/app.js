@@ -11,7 +11,8 @@ let resultados = {};
 let cacheComp = {};
 let ultimo = null;
 // Informe activo: '' = principal, 'sa' = Second Attempt (sus propias BBDD, mismos commlogs).
-let PROG = location.hash === '#sa' ? 'sa' : '';
+const progDeHash = () => ({ '#sa': 'sa', '#to': 'to' })[location.hash] || '';
+let PROG = progDeHash();
 const urlBbdd = (qs = '', prog = PROG) => '/api/bbdd' + (qs || prog ? '?' : '') + [qs, prog && 'prog=' + prog].filter(Boolean).join('&');
 const kp = (k) => (PROG ? k + '.' + PROG : k); // claves de localStorage por informe
 
@@ -89,13 +90,17 @@ const nombreMes = (m) => {
 let indiceBbdd = {};
 const mesBase = (id) => id.slice(0, 7);
 const nombreBbdd = (id) => indiceBbdd[id]?.nombre || nombreMes(mesBase(id));
+const ayerIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return isoDia(d); };
 function rangoBbdd(id, hoy) {
+  // TakeOver (hastaHoy): desde el día 1 del mes de carga hasta ayer, sin cortar a fin de mes;
+  // además cada instalación solo cuenta desde su propio día de carga (bbdd.cargas).
+  if (indiceBbdd[id]?.hastaHoy) return { desde: indiceBbdd[id].desde || mesBase(id) + '-01', hasta: ayerIso() };
   const r = rangoPorDefecto(mesBase(id), hoy);
   const desde = indiceBbdd[id]?.desde;
   if (desde) r.desde = desde;
   return r;
 }
-const finMesBbdd = (id) => rangoPorDefecto(mesBase(id), new Date(2999, 0, 1)).hasta;
+const finMesBbdd = (id) => (indiceBbdd[id]?.hastaHoy ? ayerIso() : rangoPorDefecto(mesBase(id), new Date(2999, 0, 1)).hasta);
 
 async function cargarIndice(preferido) {
   try {
@@ -153,9 +158,47 @@ const HOJAS_SA = { 'BBDD WELCOME': 'INS_NO', CLOSED: 'Installation Number', 'NO 
 
 // Lee las pestañas del Excel: cada pestaña es una campaña.
 $('progCarga').addEventListener('change', () => $('fBbdd').files[0] && $('fBbdd').dispatchEvent(new Event('change')));
+// TakeOver: un único Excel acumulado; se separa por mes de Fecha_Carga y se guarda
+// la fecha de carga de cada instalación (Ins_no_padre), desde la que cuentan sus commlogs.
+let cargaTO = null;
+async function leerTakeOver(f) {
+  const wb = XLSX.read(await f.arrayBuffer(), { dense: true, cellDates: true });
+  for (const nombre of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { defval: '', raw: true });
+    const cols = Object.keys(rows[0] || {});
+    const ci = cols.find((c) => normCol(c) === 'insnopadre'), cf = cols.find((c) => normCol(c) === 'fechacarga');
+    if (!ci || !cf) continue;
+    const porMes = {};
+    for (const r of rows) {
+      const id = String(r[ci] ?? '').trim().replace(/\.0+$/, ''), d = parseFecha(r[cf]);
+      if (!id || !d) continue;
+      const dia = isoDia(d), m = (porMes[dia.slice(0, 7)] ||= { ids: new Set(), cargas: {} });
+      m.ids.add(id);
+      if (!m.cargas[id] || dia < m.cargas[id]) m.cargas[id] = dia; // primera carga del mes
+    }
+    return porMes;
+  }
+  throw new Error('no encuentro las columnas Ins_no_padre y Fecha_Carga');
+}
+
 $('fBbdd').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   const sa = $('progCarga').value === 'sa';
+  cargaTO = null;
+  if (f && $('progCarga').value === 'to') {
+    carga = null;
+    $('btnGuardar').disabled = true;
+    $('stCarga').textContent = 'Leyendo…';
+    try {
+      cargaTO = await leerTakeOver(f);
+      $('stCarga').textContent = 'Se guardará una BBDD por mes de carga: ' +
+        Object.entries(cargaTO).sort().map(([m, x]) => `${nombreMes(m)} ${fmt(x.ids.size)}`).join(' · ');
+      $('btnGuardar').disabled = false;
+    } catch (err) {
+      $('stCarga').textContent = 'Error leyendo el fichero: ' + err.message;
+    }
+    return;
+  }
   carga = null;
   $('btnGuardar').disabled = true;
   if (!f) return;
@@ -193,6 +236,26 @@ $('fBbdd').addEventListener('change', async (e) => {
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
 
 $('btnGuardar').addEventListener('click', async () => {
+  if (cargaTO) {
+    $('btnGuardar').disabled = true;
+    try {
+      const meses = Object.keys(cargaTO).sort();
+      for (const [i, m] of meses.entries()) {
+        $('stCarga').textContent = `Guardando ${nombreMes(m)} (${i + 1}/${meses.length})…`;
+        delete cacheBbdd['to|' + m];
+        await api(urlBbdd('mes=' + m, 'to'), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mes: m, hastaHoy: true, campanas: { TakeOver: [...cargaTO[m].ids] }, cargas: cargaTO[m].cargas }) });
+      }
+      $('stCarga').textContent = `Guardadas ${meses.length} BBDD de TakeOver (${nombreMes(meses[0])} – ${nombreMes(meses[meses.length - 1])}).`;
+      cargaTO = null;
+      $('fBbdd').value = '';
+      if (PROG === 'to') await cargarIndice(); else pintarDatos();
+    } catch (err) {
+      $('stCarga').textContent = 'Error guardando: ' + err.message;
+      $('btnGuardar').disabled = false;
+    }
+    return;
+  }
   const nombre = $('nombreCarga').value.trim(), desde = $('desdeCarga').value;
   // Con nombre propio se guarda como BBDD adicional del mes (no sustituye a la del mes).
   const mes = $('mesCarga').value && (nombre ? `${$('mesCarga').value}-${slug(nombre) || 'extra'}` : $('mesCarga').value);
@@ -446,7 +509,7 @@ async function recalcular() {
   }
   cacheComp = {};
   resultados = {};
-  for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta);
+  for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta, bbdd.cargas);
   const f = (d) => d.split('-').reverse().join('/');
   $('stCalc').textContent = `BBDD ${nombreBbdd(bbdd.mes)} · commlogs del ${f(desde)} al ${f(hasta)}`;
   $('res').classList.remove('hidden');
@@ -590,13 +653,14 @@ function vista() {
   $('vistaOrig').classList.toggle('hidden', !orig);
   $('tabDash').classList.toggle('on', !orig && PROG === '');
   $('tabSa').classList.toggle('on', !orig && PROG === 'sa');
+  $('tabTo').classList.toggle('on', !orig && PROG === 'to');
   $('tabOrig').classList.toggle('on', orig);
   scrollTo(0, 0);
 }
 // Cambiar de informe (Dashboard <-> Second Attempt) recarga sus BBDD; Añadir orígenes no cambia el informe.
 addEventListener('hashchange', () => {
   if (location.hash === '#origenes') return;
-  const nuevo = location.hash === '#sa' ? 'sa' : '';
+  const nuevo = progDeHash();
   if (nuevo === PROG) return;
   PROG = nuevo;
   pintarInforme();
@@ -608,8 +672,10 @@ addEventListener('hashchange', () => {
   cargarIndice();
 });
 function pintarInforme() {
-  $('tituloInforme').textContent = PROG === 'sa' ? 'Second Attempt · contactación y vueltas' : 'Contactación y vueltas de BBDD';
-  document.title = PROG === 'sa' ? 'Second Attempt BBDD' : 'Contactación y vueltas BBDD';
+  const t = { sa: ['Second Attempt · contactación y vueltas', 'Second Attempt BBDD'], to: ['TakeOver · contactación y vueltas', 'TakeOver BBDD'] }[PROG] ||
+    ['Contactación y vueltas de BBDD', 'Contactación y vueltas BBDD'];
+  $('tituloInforme').textContent = t[0];
+  document.title = t[1];
 }
 pintarInforme();
 addEventListener('hashchange', vista);
@@ -617,8 +683,9 @@ vista();
 
 async function pintarDatos() {
   try {
-    const [bbP, bbS, lg] = await Promise.all([api(urlBbdd('', '')), api(urlBbdd('', 'sa')), api('/api/commlogs')]);
-    const bb = [...bbP, ...bbS.map((b) => ({ ...b, nombre: 'Second Attempt' + (b.nombre ? ' · ' + b.nombre : '') }))];
+    const [bbP, bbS, bbT, lg] = await Promise.all([api(urlBbdd('', '')), api(urlBbdd('', 'sa')), api(urlBbdd('', 'to')), api('/api/commlogs')]);
+    const etiqueta = (pref) => (b) => ({ ...b, nombre: pref + (b.nombre ? ' · ' + b.nombre : '') });
+    const bb = [...bbP, ...bbS.map(etiqueta('Second Attempt')), ...bbT.map(etiqueta('TakeOver'))];
     const meses = [...new Set([...bb.map((b) => mesBase(b.mes)), ...lg.map((l) => l.mes)])].sort().reverse();
     $('tablaDatos').innerHTML = `<thead><tr><th>Mes</th><th>BBDD (campañas · instalaciones)</th><th class="n">Commlogs con fecha de ese mes</th><th>Último commlog</th></tr></thead><tbody>${
       meses.map((m) => {
@@ -662,7 +729,7 @@ async function estadoAl(mes, dia, modo, desdeElegido) {
   if (modo === 'dia') {
     const [bb, logsMes] = await Promise.all([bbddDe(mes), logsParseados(dia.slice(0, 7))]);
     const delDiaLogs = logsMes.filter((l) => l.fecha && isoDia(l.fecha) === dia);
-    for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = delDia(ids, delDiaLogs, dia);
+    for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = delDia(ids, delDiaLogs, dia, bb.cargas);
     return (cacheComp[k] = { datos, fueraVentana: dia < desde || dia > finMes, desde, finMes });
   }
   const hasta = dia > finMes ? finMes : dia;
@@ -673,7 +740,7 @@ async function estadoAl(mes, dia, modo, desdeElegido) {
   }
   const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(desde, hasta).map(logsParseados)]);
   const logs = [].concat(...porMes);
-  for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = calcular(ids, logs, desde, hasta).resumen;
+  for (const [camp, ids] of Object.entries(bb.campanas)) datos[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
   return (cacheComp[k] = { datos, desde, hasta, recortado: hasta !== dia });
 }
 
