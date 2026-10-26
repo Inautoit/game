@@ -785,13 +785,18 @@ function fijarDias(modo) {
 }
 
 const pctDe = (a, b) => (b ? (100 * a) / b : 0);
+// Tratadas = instalaciones gestionables llamadas al menos una vez en el rango.
+const tratadas = (s) => s.contactadas + s.ilocalizadas;
 const METRICAS_ACUM = [
+  ['Tratadas (llamadas al menos una vez en el rango)', tratadas, 0, ''],
+  ['Contactadas', (s) => s.contactadas, 0, ''],
+  ['% contactación sobre tratadas', (s) => pctDe(s.contactadas, tratadas(s)), 1, ' %'],
+  ['Nº de vueltas sobre tratadas (intentos / tratadas)', (s) => (tratadas(s) ? s.totalIntentos / tratadas(s) : 0), 2, ''],
   ['Nº de vueltas', (s) => s.mediaIntentos, 2, ''],
   ['Vueltas completas', (s) => s.vueltasCompletas, 0, ''],
-  ['Contactación', (s) => pctDe(s.contactadas, s.gestionables), 1, ' %'],
   ['Instalaciones BBDD', (s) => s.total, 0, ''],
+  ['Contactación sobre la BBDD (contactadas / gestionables)', (s) => pctDe(s.contactadas, s.gestionables), 1, ' %'],
   ['Gestionables', (s) => s.gestionables, 0, ''],
-  ['Contactadas', (s) => s.contactadas, 0, ''],
   ['Ilocalizadas', (s) => s.ilocalizadas, 0, ''],
   ['Sin intentos', (s) => s.sinIntentos, 0, ''],
   ['Excluidas', (s) => s.excluidas, 0, ''],
@@ -802,10 +807,10 @@ const METRICAS_ACUM = [
   ['Ilocalizados antes de contactar', (s) => s.mediaIlocAntes, 2, ''],
 ];
 const METRICAS_DIA = [
-  ['Instalaciones llamadas', (d) => d.instLlamadas, 0, ''],
+  ['Tratadas ese día (instalaciones llamadas)', (d) => d.instLlamadas, 0, ''],
   ['Contactadas ese día', (d) => d.contactadas, 0, ''],
   ['Ilocalizadas ese día (llamadas sin contacto)', (d) => d.ilocalizadas, 0, ''],
-  ['% contacto del día (contactadas / llamadas)', (d) => d.pctContactoDia, 1, ' %'],
+  ['% contactación sobre tratadas (contactadas / tratadas)', (d) => d.pctContactoDia, 1, ' %'],
   ['% contactadas sobre la BBDD', (d) => d.pctSobreBbdd, 2, ' %'],
   ['Llamadas (commlogs) del día', (d) => d.llamadas, 0, ''],
   ['Llamadas por instalación', (d) => d.llamadasPorInst, 2, ''],
@@ -876,15 +881,15 @@ async function comparar() {
   const campSel = cA;
   const da = ea.datos[cA], db = eb.datos[cB];
   const metricas = modo === 'dia' ? METRICAS_DIA : METRICAS_ACUM;
-  const cab = modo === 'dia' ? 'Medida (solo commlogs de ese día)' : 'Medida (acumulado hasta ese día)';
+  const cab = modo === 'dia' ? 'Medida (solo commlogs de ese día)' : 'Medida (en el rango: commlogs desde → día elegido)';
   $('tituloCompDia').textContent = `A: ${cA} · ${fDia(A)} (${nombreBbdd(mA)})  frente a  B: ${cB} · ${fDia(B)} (${nombreBbdd(mB)})`;
   $('tablaCompDia').innerHTML = `<thead><tr><th>${cab}</th><th class="n">A · ${escapeHtml(cA)} · ${fDia(A)}</th><th class="n">B · ${escapeHtml(cB)} · ${fDia(B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
     metricas.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${val(da, f, dec, suf)}</td><td class="n"><b>${val(db, f, dec, suf)}</b></td>${delta(da && f(da), db && f(db), dec, suf)}</tr>`).join('')
   }</tbody>`;
   const celdas3 = (x, y, f, dec, suf) => `<td class="n">${val(x, f, dec, suf)}</td><td class="n"><b>${val(y, f, dec, suf)}</b></td>${delta(x && f(x), y && f(y), dec, suf)}`;
   const cols = modo === 'dia'
-    ? [['Inst. llamadas', (d) => d.instLlamadas, 0, ''], ['Contactadas', (d) => d.contactadas, 0, ''], ['% contacto', (d) => d.pctContactoDia, 1, ' %']]
-    : [['Nº vueltas', (s) => s.mediaIntentos, 2, ''], ['Contactación', (s) => pctDe(s.contactadas, s.gestionables), 1, ' %'], ['Contactadas', (s) => s.contactadas, 0, '']];
+    ? [['Tratadas', (d) => d.instLlamadas, 0, ''], ['Contactadas', (d) => d.contactadas, 0, ''], ['% s/ tratadas', (d) => d.pctContactoDia, 1, ' %']]
+    : [['Tratadas', tratadas, 0, ''], ['Contactadas', (s) => s.contactadas, 0, ''], ['% s/ tratadas', (s) => pctDe(s.contactadas, tratadas(s)), 1, ' %'], ['Nº vueltas', (s) => s.mediaIntentos, 2, '']];
   $('tablaCompCamp').innerHTML = `<thead><tr><th>Campaña</th>${
     cols.map(([l]) => `<th class="n">${l} A</th><th class="n">${l} B</th><th class="n">Dif.</th>`).join('')}</tr></thead><tbody>${
     camps.map((c) => {
