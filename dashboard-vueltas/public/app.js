@@ -191,7 +191,7 @@ $('fBbdd').addEventListener('change', async (e) => {
     $('stCarga').textContent = 'Leyendo…';
     try {
       cargaTO = await leerTakeOver(f);
-      $('stCarga').textContent = 'Se guardará una BBDD por mes de carga: ' +
+      $('stCarga').textContent = 'Sustituirá todo TakeOver con una BBDD por mes de carga: ' +
         Object.entries(cargaTO).sort().map(([m, x]) => `${nombreMes(m)} ${fmt(x.ids.size)}`).join(' · ');
       $('btnGuardar').disabled = false;
     } catch (err) {
@@ -246,7 +246,14 @@ $('btnGuardar').addEventListener('click', async () => {
         await api(urlBbdd('mes=' + m, 'to'), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mes: m, hastaHoy: true, campanas: { TakeOver: [...cargaTO[m].ids] }, cargas: cargaTO[m].cargas }) });
       }
-      $('stCarga').textContent = `Guardadas ${meses.length} BBDD de TakeOver (${nombreMes(meses[0])} – ${nombreMes(meses[meses.length - 1])}).`;
+      // El Excel de TakeOver sustituye todo lo anterior: se borran los meses que ya no vienen.
+      const viejos = (await api(urlBbdd('', 'to'))).map((i) => i.mes).filter((m) => !meses.includes(m));
+      for (const m of viejos) {
+        delete cacheBbdd['to|' + m];
+        await api(urlBbdd('mes=' + m, 'to'), { method: 'DELETE' });
+      }
+      $('stCarga').textContent = `TakeOver sustituido: ${meses.length} BBDD (${nombreMes(meses[0])} – ${nombreMes(meses[meses.length - 1])})` +
+        (viejos.length ? ` · borradas ${viejos.length} que ya no venían en el Excel (${viejos.map(nombreMes).join(', ')})` : '') + '.';
       cargaTO = null;
       $('fBbdd').value = '';
       if (PROG === 'to') await cargarIndice(); else pintarDatos();

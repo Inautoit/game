@@ -328,7 +328,7 @@
         <label>Commlogs desde (opcional) <input type="date" id="desdeCarga" /></label>
         <button id="btnGuardar" disabled>Guardar BBDD</button>
       </div>
-      <p class="status" style="margin-top:6px">En <b>Second Attempt</b> solo se cogen las hojas BBDD WELCOME (INS_NO), CLOSED (Installation Number), NO ACEPTAS (Numero_de_Instalacion) y BBDD PROSPECTOS MES (Old Inst); cada una es una campaña. En <b>TakeOver</b> se sube el Excel acumulado: se separa solo en una BBDD por mes de Fecha_Carga, se cruza por Ins_no_padre y cada instalación cuenta sus commlogs desde su día de carga hasta ayer. Con <b>nombre</b> se guarda como una BBDD adicional de ese mes, sin sustituir a la principal. Con <b>commlogs desde</b>, solo cuentan las llamadas a partir de esa fecha (por defecto, desde el 15 del mes anterior).</p>
+      <p class="status" style="margin-top:6px">En <b>Second Attempt</b> solo se cogen las hojas BBDD WELCOME (INS_NO), CLOSED (Installation Number), NO ACEPTAS (Numero_de_Instalacion) y BBDD PROSPECTOS MES (Old Inst); cada una es una campaña. Subir una BBDD <b>sustituye</b> la que hubiera: en el Dashboard y en Second Attempt, la de ese mes; en <b>TakeOver</b>, todo TakeOver. En TakeOver se sube el Excel acumulado: se separa solo en una BBDD por mes de Fecha_Carga, se cruza por Ins_no_padre y cada instalación cuenta sus commlogs desde su día de carga hasta ayer. Con <b>nombre</b> se guarda como una BBDD adicional de ese mes, sin sustituir a la principal. Con <b>commlogs desde</b>, solo cuentan las llamadas a partir de esa fecha (por defecto, desde el 15 del mes anterior).</p>
       <div class="status" id="stCarga"></div>
     </section>
     <section class="card">
