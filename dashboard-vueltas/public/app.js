@@ -820,14 +820,23 @@ function campanasConGrupos(campanas) {
 // son las instalaciones con Fecha_Carga = D - 1 (la carga lleva la fecha del día anterior).
 // Los lunes no hay carga, así que nunca hay BBDD de martes.
 const PRE_DIARIA = 'BBDD del ';
+// (ver diaBbddDeCarga más abajo)
 const DIAS_SEM = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 const etqDiaria = (dia) => `${PRE_DIARIA}${DIAS_SEM[parseFecha(dia).getDay()]} ${fDia(dia).slice(0, 5)}`;
+// Día de la BBDD de una carga: el siguiente, salvo las del sábado y el domingo, que van al lunes
+// (el fin de semana no se llama). Los lunes casi no se carga, así que el martes no hay BBDD.
+function diaBbddDeCarga(c) {
+  const dow = parseFecha(c).getDay();
+  return sumarDias(c, dow === 6 ? 2 : 1);
+}
+// Al revés: primer día de carga que entra en la BBDD del día d (el lunes, desde el sábado).
+const inicioCargaDe = (d) => sumarDias(d, parseFecha(d).getDay() === 1 ? -2 : -1);
 function campanasComp(bb) {
   const out = campanasConGrupos(bb.campanas);
   if (bb.cargas) {
     const porCarga = {};
-    for (const [id, c] of Object.entries(bb.cargas)) (porCarga[c] ||= []).push(id);
-    for (const c of Object.keys(porCarga).sort()) out[etqDiaria(sumarDias(c, 1))] = porCarga[c];
+    for (const [id, c] of Object.entries(bb.cargas)) (porCarga[diaBbddDeCarga(c)] ||= []).push(id);
+    for (const d of Object.keys(porCarga).sort()) out[etqDiaria(d)] = porCarga[d];
   }
   return out;
 }
@@ -995,7 +1004,7 @@ async function comparar() {
     const solas = cs.filter((c) => !c.endsWith(SUF_JUNTAS) && !c.startsWith(PRE_DIARIA)), juntas = cs.filter((c) => c.endsWith(SUF_JUNTAS));
     $('camp' + l).innerHTML = `<optgroup label="Por separado">${solas.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` +
       (juntas.length ? `<optgroup label="Juntas">${juntas.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` : '') +
-      (diarias.length ? `<optgroup label="BBDD diarias (carga del día anterior)">${diarias.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` : '');
+      (diarias.length ? `<optgroup label="BBDD diarias (carga del día anterior; el lunes, la del sábado y domingo)">${diarias.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` : '');
     $('camp' + l).value = cs.includes(prev) ? prev : cs.includes(sel) ? sel : cs[0] || '';
   }
   const cA = $('campA').value, cB = $('campB').value;
@@ -1037,7 +1046,7 @@ for (const l of ['A', 'B']) {
   $('dia' + l).addEventListener('change', () => {
     const d = $('dia' + l).value;
     // En TakeOver la BBDD del día D está en el mes de su carga (D - 1) y se elige sola.
-    const ref = d && PROG === 'to' ? sumarDias(d, -1) : d;
+    const ref = d && PROG === 'to' ? inicioCargaDe(d) : d;
     if (ref && mesBase($('mes' + l).value) !== ref.slice(0, 7)) $('mes' + l).value = mesParaDia(ref);
     if (d && PROG === 'to') campPreferida[l] = etqDiaria(d);
     comparar();
