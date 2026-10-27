@@ -11,9 +11,14 @@ let resultados = {};
 let cacheComp = {};
 let ultimo = null;
 // Informe activo: '' = principal, 'sa' = Second Attempt (sus propias BBDD, mismos commlogs).
-const progDeHash = () => ({ '#sa': 'sa', '#to': 'to' })[location.hash] || '';
+// Dos dashboards con datos separados: Winback (/) y Upsell (/upsell), cada uno con sus
+// propias BBDD y commlogs. Dentro de cada uno, cada pestaña es un informe (PROG).
+const ESP = location.pathname.replace(/\/+$/, '') === '/upsell' ? 'up' : '';
+const progDeHash = () => (ESP === 'up' ? 'ven' : ({ '#sa': 'sa', '#to': 'to' })[location.hash] || '');
 let PROG = progDeHash();
-const urlBbdd = (qs = '', prog = PROG) => '/api/bbdd' + (qs || prog ? '?' : '') + [qs, prog && 'prog=' + prog].filter(Boolean).join('&');
+const conEsp = (qs) => [qs, ESP && 'esp=' + ESP].filter(Boolean).join('&');
+const urlBbdd = (qs = '', prog = PROG) => { const q = conEsp([qs, prog && 'prog=' + prog].filter(Boolean).join('&')); return '/api/bbdd' + (q ? '?' + q : ''); };
+const urlLogs = (qs = '') => { const q = conEsp(qs); return '/api/commlogs' + (q ? '?' + q : ''); };
 const kp = (k) => (PROG ? k + '.' + PROG : k); // claves de localStorage por informe
 
 // ---------- utilidades ----------
@@ -192,6 +197,7 @@ async function leerTakeOver(f) {
 $('fBbdd').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   const sa = $('progCarga').value === 'sa';
+  const ven = $('progCarga').value === 'ven';
   cargaTO = null;
   if (f && $('progCarga').value === 'to') {
     carga = null;
@@ -213,11 +219,14 @@ $('fBbdd').addEventListener('change', async (e) => {
   $('stCarga').textContent = 'Leyendo…';
   try {
     const buf = await f.arrayBuffer();
-    const nombresSa = sa ? XLSX.read(buf, { bookSheets: true }).SheetNames.filter((n) => HOJAS_SA[n.trim()]) : null;
+    // Second Attempt: sus 4 hojas. Upsell Vencimiento: solo la hoja "BBDD VENCIMIENTO".
+    const todas = sa || ven ? XLSX.read(buf, { bookSheets: true }).SheetNames : null;
+    const nombresSa = sa ? todas.filter((n) => HOJAS_SA[n.trim()]) : ven ? todas.filter((n) => /vencimiento/i.test(n)) : null;
     if (sa && !nombresSa.length) throw new Error(`no encuentro ninguna de las hojas ${Object.keys(HOJAS_SA).join(', ')}`);
-    const wb = XLSX.read(buf, { dense: true, ...(sa ? { sheets: nombresSa } : {}) });
+    if (ven && !nombresSa.length) throw new Error(`no encuentro la hoja BBDD VENCIMIENTO (hojas: ${todas.join(', ')})`);
+    const wb = XLSX.read(buf, { dense: true, ...(nombresSa ? { sheets: nombresSa } : {}) });
     const campanas = {};
-    for (const nombre of sa ? nombresSa : wb.SheetNames) {
+    for (const nombre of nombresSa || wb.SheetNames) {
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { defval: '', raw: true });
       const col = sa ? Object.keys(rows[0] || {}).find((c) => c.trim() === HOJAS_SA[nombre.trim()]) :
         Object.keys(rows[0] || {}).find((c) => /numero_de_instalacion/i.test(c)) ||
@@ -310,7 +319,7 @@ cargarIndice();
 const cacheLogs = {};
 let hayLogs = false;
 async function logsDeMes(mes) {
-  if (!cacheLogs[mes]) cacheLogs[mes] = api('/api/commlogs?mes=' + mes).catch(() => []);
+  if (!cacheLogs[mes]) cacheLogs[mes] = api(urlLogs('mes=' + mes)).catch(() => []);
   return cacheLogs[mes];
 }
 const mesesEntre = (desde, hasta) => {
@@ -328,7 +337,7 @@ const mesesEntre = (desde, hasta) => {
 
 async function cargarIndiceLogs() {
   try {
-    const idx = await api('/api/commlogs');
+    const idx = await api(urlLogs());
     const total = idx.reduce((s, i) => s + i.n, 0);
     const ult = idx.map((i) => i.max).sort().pop();
     hayLogs = idx.length > 0;
@@ -430,8 +439,8 @@ function idb(modo, fn) {
     };
   });
 }
-const getHandle = () => idb('readonly', (st) => st.get('commlogs')).catch(() => null);
-const setHandle = (h) => idb('readwrite', (st) => st.put(h, 'commlogs'));
+const getHandle = () => idb('readonly', (st) => st.get('commlogs' + ESP)).catch(() => null);
+const setHandle = (h) => idb('readwrite', (st) => st.put(h, 'commlogs' + ESP));
 
 async function sincronizar(handle, conGesto) {
   let perm = await handle.queryPermission({ mode: 'read' });
@@ -442,7 +451,7 @@ async function sincronizar(handle, conGesto) {
     return;
   }
   const file = await handle.getFile();
-  const visto = load('vinculoMod');
+  const visto = load('vinculoMod' + ESP);
   $('btnSync').classList.remove('hidden');
   if (String(file.lastModified) === visto && !conGesto) {
     $('stVinculo').textContent = `Fichero vinculado: ${handle.name} · sin cambios desde la última lectura (${new Date(file.lastModified).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })})`;
@@ -450,7 +459,7 @@ async function sincronizar(handle, conGesto) {
   }
   $('stVinculo').textContent = `Fichero vinculado: ${handle.name} · leyendo versión del ${new Date(file.lastModified).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}…`;
   await procesarFicheros([file]);
-  store('vinculoMod', String(file.lastModified));
+  store('vinculoMod' + ESP, String(file.lastModified));
   $('stVinculo').textContent = `Fichero vinculado: ${handle.name} · actualizado con la versión del ${new Date(file.lastModified).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}`;
 }
 
@@ -461,7 +470,7 @@ if (soportaVinculo) {
       const [h] = await window.showOpenFilePicker({ types: [{ description: 'Commlogs', accept: {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'text/csv': ['.csv'] } }] });
       await setHandle(h).catch(() => {}); // si no se puede recordar, al menos se lee ahora
-      store('vinculoMod', '');
+      store('vinculoMod' + ESP, '');
       await sincronizar(h, true);
     } catch (err) {
       if (err.name !== 'AbortError') $('stSubida').textContent = 'Error: ' + err.message;
@@ -494,14 +503,14 @@ async function guardarLogs(filas, ci, cf, ck) {
   let nuevos = 0;
   for (const [i, mes] of meses.entries()) {
     $('stSubida').textContent = `Guardando ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
-    const actuales = await api('/api/commlogs?mes=' + mes);
+    const actuales = await api(urlLogs('mes=' + mes));
     const vistos = new Set(actuales.map((l) => l.join('|')));
     for (const l of porMes[mes]) {
       const k = l.join('|');
       if (!vistos.has(k)) { vistos.add(k); actuales.push(l); nuevos++; }
     }
     const max = actuales.reduce((m, l) => (l[1] > m ? l[1] : m), '');
-    await api(`/api/commlogs?mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`, {
+    await api(urlLogs(`mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`), {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(actuales) });
     delete cacheLogs[mes];
     delete cacheParsed[mes];
@@ -669,6 +678,7 @@ function vista() {
   $('tabDash').classList.toggle('on', !orig && PROG === '');
   $('tabSa').classList.toggle('on', !orig && PROG === 'sa');
   $('tabTo').classList.toggle('on', !orig && PROG === 'to');
+  $('tabVen').classList.toggle('on', !orig && PROG === 'ven');
   $('tabOrig').classList.toggle('on', orig);
   scrollTo(0, 0);
 }
@@ -687,20 +697,33 @@ addEventListener('hashchange', () => {
   cargarIndice();
 });
 function pintarInforme() {
-  const t = { sa: ['Second Attempt · contactación y vueltas', 'Second Attempt BBDD'], to: ['TakeOver · contactación y vueltas', 'TakeOver BBDD'] }[PROG] ||
+  const t = { sa: ['Second Attempt · contactación y vueltas', 'Second Attempt BBDD'], to: ['TakeOver · contactación y vueltas', 'TakeOver BBDD'],
+    ven: ['Upsell · Vencimiento · contactación y vueltas', 'Upsell Vencimiento BBDD'] }[PROG] ||
     ['Contactación y vueltas de BBDD', 'Contactación y vueltas BBDD'];
   $('tituloInforme').textContent = t[0];
   document.title = t[1];
 }
 pintarInforme();
+// Pestañas y opciones de carga según el dashboard (Winback o Upsell).
+for (const id of ['tabDash', 'tabSa', 'tabTo']) $(id).classList.toggle('hidden', ESP === 'up');
+$('tabVen').classList.toggle('hidden', ESP !== 'up');
+$('linkOtro').href = ESP === 'up' ? '/' : '/upsell';
+$('linkOtro').textContent = ESP === 'up' ? 'Ir a Winback ↗' : 'Ir a Upsell ↗';
+if (ESP === 'up') $('progCarga').innerHTML = '<option value="ven">Upsell · Vencimiento</option>';
 addEventListener('hashchange', vista);
 vista();
 
 async function pintarDatos() {
   try {
-    const [bbP, bbS, bbT, lg] = await Promise.all([api(urlBbdd('', '')), api(urlBbdd('', 'sa')), api(urlBbdd('', 'to')), api('/api/commlogs')]);
     const etiqueta = (pref) => (b) => ({ ...b, nombre: pref + (b.nombre ? ' · ' + b.nombre : '') });
-    const bb = [...bbP, ...bbS.map(etiqueta('Second Attempt')), ...bbT.map(etiqueta('TakeOver'))];
+    let bb, lg;
+    if (ESP === 'up') {
+      const [bbV, l] = await Promise.all([api(urlBbdd('', 'ven')), api(urlLogs())]);
+      bb = bbV.map(etiqueta('Vencimiento')); lg = l;
+    } else {
+      const [bbP, bbS, bbT, l] = await Promise.all([api(urlBbdd('', '')), api(urlBbdd('', 'sa')), api(urlBbdd('', 'to')), api(urlLogs())]);
+      bb = [...bbP, ...bbS.map(etiqueta('Second Attempt')), ...bbT.map(etiqueta('TakeOver'))]; lg = l;
+    }
     const meses = [...new Set([...bb.map((b) => mesBase(b.mes)), ...lg.map((l) => l.mes)])].sort().reverse();
     $('tablaDatos').innerHTML = `<thead><tr><th>Mes</th><th>BBDD (campañas · instalaciones)</th><th class="n">Commlogs con fecha de ese mes</th><th>Último commlog</th></tr></thead><tbody>${
       meses.map((m) => {

@@ -15,7 +15,9 @@ const MES = /^\d{4}-(0[1-9]|1[0-2])(-[a-z0-9]{1,20})?$/;
 const DIA = /^\d{4}-\d{2}-\d{2}$/;
 
 // Cada informe (principal o Second Attempt) tiene sus propias BBDD; los commlogs son comunes.
-const PROGS = { '': '', sa: 'sa:', to: 'to:' };
+const PROGS = { '': '', sa: 'sa:', to: 'to:', ven: 'ven:' };
+// ?esp=up -> dashboard de Upsell, con sus propias BBDD (claves up:…)
+const ESPACIOS = { '': '', up: 'up:' };
 
 async function leerIndice(kv, pre) {
   return (await kv.get(pre + 'index', 'json')) || [];
@@ -26,8 +28,9 @@ export async function onRequest({ request, env }) {
   const url = new URL(request.url);
   const mes = url.searchParams.get('mes');
   if (mes && !MES.test(mes)) return json({ error: 'mes inválido' }, 400);
-  const pre = PROGS[url.searchParams.get('prog') || ''];
-  if (pre == null) return json({ error: 'informe inválido' }, 400);
+  const prog = PROGS[url.searchParams.get('prog') || ''], esp = ESPACIOS[url.searchParams.get('esp') || ''];
+  if (prog == null || esp == null) return json({ error: 'informe inválido' }, 400);
+  const pre = esp + prog;
 
   if (request.method === 'GET') {
     if (!mes) return json(await leerIndice(kv, pre));

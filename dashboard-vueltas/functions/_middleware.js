@@ -27,10 +27,17 @@ input,button{font:inherit;padding:8px 10px;border-radius:6px;border:1px solid #e
 ${error ? `<div class="e">${error}</div>` : ''}<button>Entrar</button></form></body></html>`,
 { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 
+// /upsell es el mismo dashboard con sus propios datos (la página detecta la ruta).
+function pagina(ctx) {
+  const url = new URL(ctx.request.url);
+  if (url.pathname === '/upsell' || url.pathname === '/upsell/') return ctx.env.ASSETS.fetch(new URL('/index.html', url));
+  return ctx.next();
+}
+
 export async function onRequest(ctx) {
-  const { request, env, next } = ctx;
+  const { request, env } = ctx;
   const secreto = env.DASHBOARD_PASSWORD;
-  if (!secreto) return next();
+  if (!secreto) return pagina(ctx);
   const url = new URL(request.url);
   const ok = await firma(secreto);
 
@@ -48,7 +55,7 @@ export async function onRequest(ctx) {
   if (cookie(request, COOKIE) !== ok) {
     return url.pathname.startsWith('/api/') ? new Response('No autorizado', { status: 401 }) : login();
   }
-  const res = await next();
+  const res = await pagina(ctx);
   const out = new Response(res.body, res);
   out.headers.set('Cache-Control', 'no-store');
   return out;
