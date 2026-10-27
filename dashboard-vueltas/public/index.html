@@ -146,6 +146,11 @@
     .delta { font-weight: 600; }
     .delta.up { color: var(--brand); }
     .delta.down, .delta.eq { color: var(--muted); }
+    .evol th, .evol td { text-align: center; }
+    .evol thead th { background: var(--track); color: var(--text); font-size: 13px; text-transform: none; letter-spacing: 0; }
+    .evol thead th:first-child, .evol tbody tr:first-child td:first-child { background: var(--brand); color: #fff; }
+    .evol td:first-child { text-align: right; color: var(--text-2); background: var(--surface-2); font-weight: 500; }
+    .evol tbody tr:first-child td { font-weight: 700; font-size: 14px; }
     .glos summary { cursor: pointer; }
     .glos dl { margin: 14px 0 0; display: grid; grid-template-columns: minmax(160px, 240px) 1fr; gap: 8px 18px; font-size: 13px; }
     .glos dt { font-weight: 600; }
@@ -208,6 +213,12 @@
 
       <div class="section-title"><h2>¿En qué intento contactamos?</h2><span>Instalaciones contactadas según el intento del primer contacto válido</span></div>
       <div class="hero" id="porIntento"></div>
+
+      <div class="section-title"><h2>Evolución por días</h2><span id="subEvol"></span></div>
+      <section class="card">
+        <div class="row"><label>Campaña <select id="campEvol"></select></label></div>
+        <div class="tablewrap" style="margin-top:12px"><table id="tablaEvol" class="evol"></table></div>
+      </section>
 
       <div class="section-title"><h2>Comparador de días</h2><span>Compara dos días, también de meses distintos.</span></div>
       <section class="card">
