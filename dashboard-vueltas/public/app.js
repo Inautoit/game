@@ -766,6 +766,11 @@ function campanasConGrupos(campanas) {
   if (tmkOpc.some((c) => /\bRESTO\b/i.test(c)) && tmkOpc.some((c) => /COMPETICI[OÓ]N|PILOTO/i.test(c))) {
     out[`RESTO TMK + COMPETICIÓN (piloto) · SIN + CON OPC${SUF_JUNTAS}`] = [...new Set(tmkOpc.flatMap((c) => campanas[c]))];
   }
+  // Todo COMPE de noviembre: COMPE REST (SIN + CON OPC) + COMPE COMPETICIÓN (SIN + CON OPC).
+  const compeOpc = Object.keys(campanas).filter((c) => /^COMPE /.test(limpio(c)) && OPC.test(limpio(c)));
+  if (compeOpc.some((c) => /(?:^| )RESTO?(?= |$)/.test(limpio(c))) && compeOpc.some((c) => /COMPETICI[OÓ]N/.test(limpio(c)))) {
+    out[`COMPE REST + COMPE COMPETICIÓN · SIN + CON OPC${SUF_JUNTAS}`] = [...new Set(compeOpc.flatMap((c) => campanas[c]))];
+  }
   if (Object.keys(campanas).length > 1) out[`Todas las campañas${SUF_JUNTAS}`] = [...new Set(Object.values(campanas).flat())];
   return out;
 }
