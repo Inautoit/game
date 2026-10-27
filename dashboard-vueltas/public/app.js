@@ -143,14 +143,22 @@ $('campana').addEventListener('change', () => {
 
 const MESES = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8,
   septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
+// Mes a partir del nombre del fichero. Tolera abreviaturas y erratas ("NOVIEMBE", "Sept")
+// porque basta con las 3 primeras letras, y si no hay año toma el más cercano a hoy.
+const ABREV = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12 };
 function mesDeNombre(nombre) {
-  const m = nombre.match(new RegExp(`(${Object.keys(MESES).join('|')})[ _-]?(\\d{2,4})?`, 'i'));
+  const m = nombre.match(/(?:^|[^a-záéíóúñ])(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)[a-záéíóúñ]*[ _-]?(\d{2,4})?/i);
   if (!m) return '';
-  // Año pegado al mes (Octubre26) o en otra parte del nombre (BBDD_OCTUBRE_2ATTEMPT_2026).
-  const anyo = m[2] && m[2].length !== 1 ? m[2] : (nombre.match(/20\d{2}/) || [''])[0];
-  if (!anyo) return '';
+  const mes = ABREV[m[1].toLowerCase()];
+  let anyo = m[2] && m[2].length !== 3 ? m[2] : (nombre.match(/20\d{2}/) || [''])[0];
+  if (!anyo) {
+    // Sin año: el del mes más cercano a hoy (en octubre, "noviembre" es este año y "enero" el siguiente).
+    const hoy = new Date(), y0 = hoy.getFullYear();
+    anyo = [y0 - 1, y0, y0 + 1].reduce((best, y) =>
+      Math.abs(new Date(y, mes - 1, 15) - hoy) < Math.abs(new Date(best, mes - 1, 15) - hoy) ? y : best, y0);
+  }
   const y = +anyo < 100 ? 2000 + +anyo : +anyo;
-  return `${y}-${String(MESES[m[1].toLowerCase()]).padStart(2, '0')}`;
+  return `${y}-${String(mes).padStart(2, '0')}`;
 }
 
 // Second Attempt: solo estas hojas, cada una con su columna de instalación.
@@ -733,12 +741,16 @@ let modoComp = load('modoComp') === 'acum' ? 'acum' : 'dia';
 const SUF_JUNTAS = ' (juntas)';
 function campanasConGrupos(campanas) {
   const out = { ...campanas };
-  const clave = (c) => c.toUpperCase().replace(/\b(SIN|CON)\s+OPC\b/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+  // Los nombres pueden venir con guiones bajos y "OCP" en vez de "OPC" (COMPE_REST_SIN_ OCP).
+  // La clave son las palabras antes de SIN/CON, sin importar el orden.
+  const limpio = (c) => c.toUpperCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  const OPC = /(?:^| )(SIN|CON) (OPC|OCP)(?= |$)/;
+  const clave = (c) => limpio(c).split(OPC)[0].split(' ').filter(Boolean).sort().join(' ');
   const grupos = {};
-  for (const c of Object.keys(campanas)) if (/\b(SIN|CON)\s+OPC\b/i.test(c)) (grupos[clave(c)] ||= []).push(c);
+  for (const c of Object.keys(campanas)) if (OPC.test(limpio(c))) (grupos[clave(c)] ||= []).push(c);
   for (const miembros of Object.values(grupos)) {
     if (miembros.length < 2) continue;
-    const base = miembros[0].replace(/\s*\b(SIN|CON)\s+OPC\b\s*/i, ' ').trim();
+    const base = limpio(miembros[0]).split(OPC)[0].trim();
     out[`${base} · SIN + CON OPC${SUF_JUNTAS}`] = [...new Set(miembros.flatMap((m) => campanas[m]))];
   }
   // Campaña + su versión de baja propensión (p. ej. COMPE y COMPE_BAJA PROPENSION en septiembre).
@@ -750,7 +762,7 @@ function campanasConGrupos(campanas) {
     if (madre) out[`${madre} + BAJA PROPENSIÓN${SUF_JUNTAS}`] = [...new Set([...campanas[madre], ...campanas[c]])];
   }
   // Todo TMK de la segmentación: RESTO TMK (SIN + CON OPC) + PILOTO/COMPETICIÓN TMK (SIN + CON OPC).
-  const tmkOpc = Object.keys(campanas).filter((c) => /\bTMK\b/i.test(c) && /\b(SIN|CON)\s+OPC\b/i.test(c));
+  const tmkOpc = Object.keys(campanas).filter((c) => /(?:^| )TMK(?= |$)/.test(limpio(c)) && OPC.test(limpio(c)));
   if (tmkOpc.some((c) => /\bRESTO\b/i.test(c)) && tmkOpc.some((c) => /COMPETICI[OÓ]N|PILOTO/i.test(c))) {
     out[`RESTO TMK + COMPETICIÓN (piloto) · SIN + CON OPC${SUF_JUNTAS}`] = [...new Set(tmkOpc.flatMap((c) => campanas[c]))];
   }
