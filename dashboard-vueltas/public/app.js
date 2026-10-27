@@ -771,6 +771,12 @@ function campanasConGrupos(campanas) {
   if (compeOpc.some((c) => /(?:^| )RESTO?(?= |$)/.test(limpio(c))) && compeOpc.some((c) => /COMPETICI[OÓ]N/.test(limpio(c)))) {
     out[`COMPE REST + COMPE COMPETICIÓN · SIN + CON OPC${SUF_JUNTAS}`] = [...new Set(compeOpc.flatMap((c) => campanas[c]))];
   }
+  // Campaña + su piloto (p. ej. TMK y TMK PILOTO en octubre).
+  for (const c of Object.keys(campanas)) {
+    const m = limpio(c).match(/^(.+) PILOTO$/);
+    const madre = m && Object.keys(campanas).find((x) => x !== c && limpio(x) === m[1]);
+    if (madre) out[`${madre} + ${c}${SUF_JUNTAS}`] = [...new Set([...campanas[madre], ...campanas[c]])];
+  }
   if (Object.keys(campanas).length > 1) out[`Todas las campañas${SUF_JUNTAS}`] = [...new Set(Object.values(campanas).flat())];
   return out;
 }
