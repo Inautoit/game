@@ -135,7 +135,7 @@ function celdas(filaXml, shared) {
  * @param esCabecera fn(arrayDeTextos) -> {nombreSalida: índiceColumna} | null
  * @returns {filas: [{nombreSalida: valor}], hoja, diagnostico}
  */
-export async function leerColumnasXlsx(buf, esCabecera) {
+export async function leerColumnasXlsx(buf, esCabecera, filtroHoja = () => true) {
   const zip = leerZip(buf);
   const wbXml = await textoEntrada(buf, zip['xl/workbook.xml']);
   const relsXml = zip['xl/_rels/workbook.xml.rels'] ? await textoEntrada(buf, zip['xl/_rels/workbook.xml.rels']) : '';
@@ -149,6 +149,7 @@ export async function leerColumnasXlsx(buf, esCabecera) {
     path: rels[(m[0].match(/\sr:id="([^"]+)"/) || m[0].match(/\s\w+:id="([^"]+)"/) || [])[1]],
   })).filter((h) => h.path && zip[h.path]);
   hojas.sort((a, b) => /query/i.test(b.nombre) - /query/i.test(a.nombre));
+  const elegidas = hojas.filter((h) => filtroHoja(h.nombre));
 
   const shared = [];
   if (zip['xl/sharedStrings.xml']) {
@@ -156,7 +157,7 @@ export async function leerColumnasXlsx(buf, esCabecera) {
   }
 
   const diagnostico = [];
-  for (const h of hojas) {
+  for (const h of elegidas) {
     let mapa = null, nFilas = 0, primera = null;
     const filas = [];
     await recorrer(streamEntrada(buf, zip[h.path]), 'row', (rowXml) => {

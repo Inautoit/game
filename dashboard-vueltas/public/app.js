@@ -18,7 +18,7 @@ const progDeHash = () => (ESP === 'up' ? 'ven' : ({ '#sa': 'sa', '#to': 'to' })[
 let PROG = progDeHash();
 const conEsp = (qs) => [qs, ESP && 'esp=' + ESP].filter(Boolean).join('&');
 const urlBbdd = (qs = '', prog = PROG) => { const q = conEsp([qs, prog && 'prog=' + prog].filter(Boolean).join('&')); return '/api/bbdd' + (q ? '?' + q : ''); };
-const urlLogs = (qs = '') => { const q = conEsp(qs); return '/api/commlogs' + (q ? '?' + q : ''); };
+const urlLogs = (qs = '', esp = ESP) => { const q = [qs, esp && 'esp=' + esp].filter(Boolean).join('&'); return '/api/commlogs' + (q ? '?' + q : ''); };
 const kp = (k) => (PROG ? k + '.' + PROG : k); // claves de localStorage por informe
 
 // ---------- utilidades ----------
@@ -375,8 +375,11 @@ function mapaCabecera(arr) {
 }
 
 // Lee los ficheros de commlogs y guarda los nuevos.
+// El Excel de commlogs trae dos pestañas: la de RBE (Query) -> Winback y la de "upsell" -> Upsell.
+// Se suba desde el dashboard que se suba, cada pestaña se guarda en el suyo.
+const esUpsell = (nombre) => /upsell/i.test(nombre);
 async function procesarFicheros(files) {
-  let filas = [];
+  let filas = [], filasUp = [];
   for (const f of files) {
     $('stSubida').textContent = `Leyendo ${f.name}… (con ficheros grandes puede tardar un minuto)`;
     if (/\.xlsx$/i.test(f.name)) {
@@ -386,19 +389,30 @@ async function procesarFicheros(files) {
       if (cab[0] === 0xd0 && cab[1] === 0xcf) {
         throw new Error('el Excel está protegido (etiqueta de confidencialidad o contraseña). Ábrelo y guárdalo como CSV, o quita la protección, y súbelo de nuevo');
       }
-      const r = await leerColumnasXlsx(buf, mapaCabecera);
-      if (!r.filas) throw new Error(`no encuentro las columnas ins_no, fecha y key4. Pestañas que veo: ${r.diagnostico.join(' · ') || 'ninguna'}`);
-      filas = filas.concat(r.filas);
+      const r = await leerColumnasXlsx(buf, mapaCabecera, (n) => !esUpsell(n));
+      const ru = await leerColumnasXlsx(buf, mapaCabecera, esUpsell);
+      if (!r.filas && !ru.filas) {
+        throw new Error(`no encuentro las columnas ins_no, fecha y key4. Pestañas que veo: ${[...r.diagnostico, ...ru.diagnostico].join(' · ') || 'ninguna'}`);
+      }
+      if (r.filas) filas = filas.concat(r.filas);
+      if (ru.filas) filasUp = filasUp.concat(ru.filas);
     } else {
       const leidas = await leerFichero(f);
       const cols = Object.keys(leidas[0] || {});
       const ci = buscarCol(cols, P_ID), cf = buscarCol(cols, P_FECHA), ck = buscarCol(cols, P_KEY4);
       const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
       if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en ${f.name}. Columnas que veo: ${cols.slice(0, 8).join(', ')}`);
-      filas = filas.concat(leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck] })));
+      // Un CSV es una sola tabla: va al dashboard en el que estás.
+      const conv = leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck] }));
+      if (ESP === 'up') filasUp = filasUp.concat(conv); else filas = filas.concat(conv);
     }
   }
-  await guardarLogs(filas, 'id', 'fecha', 'key4');
+  const partes = [];
+  if (filas.length) partes.push(await guardarLogs(filas, 'id', 'fecha', 'key4', ''));
+  if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up'));
+  $('stSubida').textContent = 'Listo: ' + partes.join(' · ');
+  await cargarIndiceLogs();
+  recalcular();
 }
 
 // Subida manual: al elegir el fichero se lee y se guarda directamente.
@@ -487,7 +501,8 @@ if (soportaVinculo) {
   getHandle().then((h) => h && sincronizar(h, false)).catch((err) => ($('stSubida').textContent = 'Error: ' + err.message));
 }
 
-async function guardarLogs(filas, ci, cf, ck) {
+async function guardarLogs(filas, ci, cf, ck, esp = ESP) {
+  const etq = esp === 'up' ? 'Upsell' : 'Winback (RBE)';
   const porMes = {};
   let malas = 0;
   for (const r of filas) {
@@ -502,26 +517,22 @@ async function guardarLogs(filas, ci, cf, ck) {
   // El fichero es acumulativo: se fusiona con lo guardado (sin duplicar) y se reemplaza el mes.
   let nuevos = 0;
   for (const [i, mes] of meses.entries()) {
-    $('stSubida').textContent = `Guardando ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
-    const actuales = await api(urlLogs('mes=' + mes));
+    $('stSubida').textContent = `Guardando ${etq}: ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
+    const actuales = await api(urlLogs('mes=' + mes, esp));
     const vistos = new Set(actuales.map((l) => l.join('|')));
     for (const l of porMes[mes]) {
       const k = l.join('|');
       if (!vistos.has(k)) { vistos.add(k); actuales.push(l); nuevos++; }
     }
     const max = actuales.reduce((m, l) => (l[1] > m ? l[1] : m), '');
-    await api(urlLogs(`mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`), {
+    await api(urlLogs(`mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`, esp), {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(actuales) });
-    delete cacheLogs[mes];
-    delete cacheParsed[mes];
+    if (esp === ESP) { delete cacheLogs[mes]; delete cacheParsed[mes]; }
   }
-  $('stSubida').textContent = `Listo: ${fmt(filas.length - malas)} commlogs leídos, ${fmt(nuevos)} nuevos guardados` +
-    (malas ? ` · ${fmt(malas)} filas sin instalación o fecha ignoradas` : '');
-  await cargarIndiceLogs();
-  recalcular();
+  return `${etq}: ${fmt(filas.length - malas)} commlogs leídos, ${fmt(nuevos)} nuevos guardados` +
+    (malas ? ` (${fmt(malas)} filas sin instalación o fecha ignoradas)` : '');
 }
 
-// ---------- cálculo ----------
 async function recalcular() {
   if (!bbdd || !hayLogs) return;
   const desde = $('desde').value, hasta = $('hasta').value;
