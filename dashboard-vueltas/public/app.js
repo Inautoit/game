@@ -781,6 +781,22 @@ function campanasConGrupos(campanas) {
   return out;
 }
 
+// Cómo iba la BBDD a ese día (incluido): regla de la BBDD desde su inicio, sin "Commlogs desde".
+async function bbddAl(mes, dia) {
+  const k = PROG + '|bbddAl|' + mes + '|' + dia;
+  if (cacheComp[k]) return cacheComp[k];
+  const { desde } = rangoBbdd(mes);
+  const finMes = finMesBbdd(mes);
+  const hasta = dia > finMes ? finMes : dia;
+  const bb = await bbddDe(mes);
+  const res = {};
+  if (hasta >= desde) {
+    const logs = [].concat(...(await Promise.all(mesesEntre(desde, hasta).map(logsParseados))));
+    for (const [camp, ids] of Object.entries(campanasConGrupos(bb.campanas))) res[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
+  }
+  return (cacheComp[k] = res);
+}
+
 async function estadoAl(mes, dia, modo, desdeElegido) {
   const k = PROG + '|' + modo + '|' + mes + '|' + dia + '|' + (desdeElegido || '');
   if (cacheComp[k]) return cacheComp[k];
@@ -850,6 +866,11 @@ const METRICAS_ACUM = [
   ['Ilocalizados antes de contactar', (s) => s.mediaIlocAntes, 2, ''],
 ];
 // Mismo orden que en "Situación a ese día": primero lo que va sobre tratadas.
+const METRICAS_BBDD_AL = [
+  ['Nº de vueltas de la BBDD', (s) => s.mediaIntentos, 2, ''],
+  ['Vueltas completas de la BBDD', (s) => s.vueltasCompletas, 0, ''],
+  ['Contactación de la BBDD (contactadas / gestionables)', (s) => pctDe(s.contactadas, s.gestionables), 1, ' %'],
+];
 const METRICAS_DIA = [
   ['Tratadas ese día (instalaciones llamadas)', (d) => d.instLlamadas, 0, ''],
   ['Contactadas ese día', (d) => d.contactadas, 0, ''],
@@ -898,6 +919,7 @@ async function comparar() {
   let ea, eb;
   try {
     [ea, eb] = await Promise.all([estadoAl(mA, A, modo, $('desdeA').value), estadoAl(mB, B, modo, $('desdeB').value)]);
+    [ea.bbddAl, eb.bbddAl] = await Promise.all([bbddAl(mA, A), bbddAl(mB, B)]);
   } catch (err) {
     $('notaComp').textContent = 'Error: ' + err.message;
     return;
@@ -925,22 +947,27 @@ async function comparar() {
   const campSel = cA;
   const da = ea.datos[cA], db = eb.datos[cB];
   const metricas = modo === 'dia' ? METRICAS_DIA : METRICAS_ACUM;
+  const fila = (l, x, y, f, dec, suf) => `<tr><td>${l}</td><td class="n">${val(x, f, dec, suf)}</td><td class="n"><b>${val(y, f, dec, suf)}</b></td>${delta(x && f(x), y && f(y), dec, suf)}</tr>`;
+  const filaSeccion = (t) => `<tr><td colspan="4" style="background:var(--surface-2);font-weight:600;font-size:12px;color:var(--text-2)">${t}</td></tr>`;
   const cab = modo === 'dia' ? 'Medida (solo commlogs de ese día)' : 'Medida (en el rango: commlogs desde → día elegido)';
   $('tituloCompDia').textContent = `A: ${cA} · ${fDia(A)} (${nombreBbdd(mA)})  frente a  B: ${cB} · ${fDia(B)} (${nombreBbdd(mB)})`;
   // En modo situación la cabecera muestra el rango completo (desde → día); en día único, solo el día.
   const etqRango = (e, d) => (modo === 'acum' && !e.vacio ? `${fDia(e.desde)} → ${fDia(e.hasta)}` : fDia(d));
   $('tablaCompDia').innerHTML = `<thead><tr><th>${cab}</th><th class="n">A · ${escapeHtml(cA)} · ${etqRango(ea, A)}</th><th class="n">B · ${escapeHtml(cB)} · ${etqRango(eb, B)}</th><th class="n">Diferencia</th></tr></thead><tbody>${
-    metricas.map(([l, f, dec, suf]) => `<tr><td>${l}</td><td class="n">${val(da, f, dec, suf)}</td><td class="n"><b>${val(db, f, dec, suf)}</b></td>${delta(da && f(da), db && f(db), dec, suf)}</tr>`).join('')
+    filaSeccion('Cómo iba la BBDD a ese día (desde el inicio de la BBDD hasta el día marcado, incluido)') +
+    METRICAS_BBDD_AL.map(([l, f, dec, suf]) => fila(l, ea.bbddAl[cA], eb.bbddAl[cB], f, dec, suf)).join('') +
+    filaSeccion(modo === 'dia' ? 'Solo ese día' : 'En el rango elegido') +
+    metricas.map(([l, f, dec, suf]) => fila(l, da, db, f, dec, suf)).join('')
   }</tbody>`;
   const celdas3 = (x, y, f, dec, suf) => `<td class="n">${val(x, f, dec, suf)}</td><td class="n"><b>${val(y, f, dec, suf)}</b></td>${delta(x && f(x), y && f(y), dec, suf)}`;
   const cols = modo === 'dia'
     ? [['Tratadas', (d) => d.instLlamadas, 0, ''], ['Contactadas', (d) => d.contactadas, 0, ''], ['% s/ tratadas', (d) => d.pctContactoDia, 1, ' %'], ['Vueltas s/ tratadas', (d) => d.llamadasPorInst, 2, '']]
     : [['Tratadas', tratadas, 0, ''], ['Contactadas', (s) => s.contactadas, 0, ''], ['% s/ tratadas', (s) => pctDe(s.contactadas, tratadas(s)), 1, ' %'], ['Nº vueltas', (s) => s.mediaIntentos, 2, '']];
-  $('tablaCompCamp').innerHTML = `<thead><tr><th>Campaña</th>${
+  $('tablaCompCamp').innerHTML = `<thead><tr><th>Campaña</th><th class="n">Vueltas BBDD A</th><th class="n">Vueltas BBDD B</th><th class="n">Dif.</th>${
     cols.map(([l]) => `<th class="n">${l} A</th><th class="n">${l} B</th><th class="n">Dif.</th>`).join('')}</tr></thead><tbody>${
     camps.map((c) => {
       const x = ea.datos[c], y = eb.datos[c];
-      return `<tr class="${c === campSel ? 'sel' : ''}"><td>${escapeHtml(c)}</td>${cols.map(([, f, dec, suf]) => celdas3(x, y, f, dec, suf)).join('')}</tr>`;
+      return `<tr class="${c === campSel ? 'sel' : ''}"><td>${escapeHtml(c)}</td>${celdas3(ea.bbddAl[c], eb.bbddAl[c], (s) => s.mediaIntentos, 2, '')}${cols.map(([, f, dec, suf]) => celdas3(x, y, f, dec, suf)).join('')}</tr>`;
     }).join('')
   }</tbody>`;
 }
