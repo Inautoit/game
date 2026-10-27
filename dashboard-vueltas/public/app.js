@@ -816,6 +816,22 @@ function campanasConGrupos(campanas) {
 }
 
 // Cómo iba la BBDD a ese día (incluido): regla de la BBDD desde su inicio, sin "Commlogs desde".
+// TakeOver: además de la BBDD del mes, una "campaña" por cada BBDD diaria. La BBDD del día D
+// son las instalaciones con Fecha_Carga = D - 1 (la carga lleva la fecha del día anterior).
+// Los lunes no hay carga, así que nunca hay BBDD de martes.
+const PRE_DIARIA = 'BBDD del ';
+const DIAS_SEM = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const etqDiaria = (dia) => `${PRE_DIARIA}${DIAS_SEM[parseFecha(dia).getDay()]} ${fDia(dia).slice(0, 5)}`;
+function campanasComp(bb) {
+  const out = campanasConGrupos(bb.campanas);
+  if (bb.cargas) {
+    const porCarga = {};
+    for (const [id, c] of Object.entries(bb.cargas)) (porCarga[c] ||= []).push(id);
+    for (const c of Object.keys(porCarga).sort()) out[etqDiaria(sumarDias(c, 1))] = porCarga[c];
+  }
+  return out;
+}
+
 async function bbddAl(mes, dia) {
   const k = PROG + '|bbddAl|' + mes + '|' + dia;
   if (cacheComp[k]) return cacheComp[k];
@@ -826,7 +842,7 @@ async function bbddAl(mes, dia) {
   const res = {};
   if (hasta >= desde) {
     const logs = [].concat(...(await Promise.all(mesesEntre(desde, hasta).map(logsParseados))));
-    for (const [camp, ids] of Object.entries(campanasConGrupos(bb.campanas))) res[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
+    for (const [camp, ids] of Object.entries(campanasComp(bb))) res[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
   }
   return (cacheComp[k] = res);
 }
@@ -840,18 +856,18 @@ async function estadoAl(mes, dia, modo, desdeElegido) {
   if (modo === 'dia') {
     const [bb, logsMes] = await Promise.all([bbddDe(mes), logsParseados(dia.slice(0, 7))]);
     const delDiaLogs = logsMes.filter((l) => l.fecha && isoDia(l.fecha) === dia);
-    for (const [camp, ids] of Object.entries(campanasConGrupos(bb.campanas))) datos[camp] = delDia(ids, delDiaLogs, dia, bb.cargas);
+    for (const [camp, ids] of Object.entries(campanasComp(bb))) datos[camp] = delDia(ids, delDiaLogs, dia, bb.cargas);
     return (cacheComp[k] = { datos, fueraVentana: dia < desde || dia > finMes, desde, finMes });
   }
   const hasta = dia > finMes ? finMes : dia;
   if (hasta < desde) {
     // Sin datos para ese día, pero las campañas de la BBDD siguen disponibles para elegir.
-    for (const camp of Object.keys(campanasConGrupos((await bbddDe(mes)).campanas))) datos[camp] = null;
+    for (const camp of Object.keys(campanasComp(await bbddDe(mes)))) datos[camp] = null;
     return (cacheComp[k] = { datos, vacio: true, desde, hasta });
   }
   const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(desde, hasta).map(logsParseados)]);
   const logs = [].concat(...porMes);
-  for (const [camp, ids] of Object.entries(campanasConGrupos(bb.campanas))) datos[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
+  for (const [camp, ids] of Object.entries(campanasComp(bb))) datos[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
   return (cacheComp[k] = { datos, desde, hasta, recortado: hasta !== dia });
 }
 
@@ -928,6 +944,7 @@ function delta(a, b, dec, suf) {
 const val = (s, f, dec, suf) => (s ? `${fmt(f(s), dec)}${suf}` : '—');
 
 let compId = 0;
+const campPreferida = { A: null, B: null };
 async function comparar() {
   if (!$('mes').options.length || !hayLogs) return;
   rellenarMesesComp();
@@ -964,16 +981,21 @@ async function comparar() {
     : (e, d, m, l) => e.vacio
       ? `${l}: el ${fDia(d)} es anterior a «Commlogs desde» (${fDia(e.desde)}); adelanta esa fecha para ver ese día.`
       : `${l}: BBDD ${nombreBbdd(m)}, commlogs del ${fDia(e.desde)} al ${fDia(e.hasta)}${e.recortado ? ' (cierre de mes)' : ''}.`;
-  $('notaComp').textContent = `${nota(ea, A, mA, 'A')} ${nota(eb, B, mB, 'B')}`;
+  const martes = (d) => (PROG === 'to' && parseFecha(d).getDay() === 2 ? ' Ojo: los martes no hay BBDD de TakeOver.' : '');
+  $('notaComp').textContent = `${nota(ea, A, mA, 'A')}${martes(A)} ${nota(eb, B, mB, 'B')}${martes(B)}`;
 
   // Cada lado tiene su campaña: se rellenan con las campañas de su BBDD y se
   // mantiene la elegida si sigue existiendo (si no, la del dashboard o la primera).
   const sel = $('campana').value;
   for (const [l, e] of [['A', ea], ['B', eb]]) {
-    const cs = Object.keys(e.datos), prev = $('camp' + l).value || load('camp' + l);
-    const solas = cs.filter((c) => !c.endsWith(SUF_JUNTAS)), juntas = cs.filter((c) => c.endsWith(SUF_JUNTAS));
+    const cs = Object.keys(e.datos);
+    const prev = campPreferida[l] && cs.includes(campPreferida[l]) ? campPreferida[l] : $('camp' + l).value || load('camp' + l);
+    campPreferida[l] = null;
+    const diarias = cs.filter((c) => c.startsWith(PRE_DIARIA));
+    const solas = cs.filter((c) => !c.endsWith(SUF_JUNTAS) && !c.startsWith(PRE_DIARIA)), juntas = cs.filter((c) => c.endsWith(SUF_JUNTAS));
     $('camp' + l).innerHTML = `<optgroup label="Por separado">${solas.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` +
-      (juntas.length ? `<optgroup label="Juntas">${juntas.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` : '');
+      (juntas.length ? `<optgroup label="Juntas">${juntas.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` : '') +
+      (diarias.length ? `<optgroup label="BBDD diarias (carga del día anterior)">${diarias.map((c) => `<option>${escapeHtml(c)}</option>`).join('')}</optgroup>` : '');
     $('camp' + l).value = cs.includes(prev) ? prev : cs.includes(sel) ? sel : cs[0] || '';
   }
   const cA = $('campA').value, cB = $('campB').value;
@@ -1014,7 +1036,10 @@ for (const l of ['A', 'B']) {
   // respeta la BBDD elegida (p. ej. una segmentada).
   $('dia' + l).addEventListener('change', () => {
     const d = $('dia' + l).value;
-    if (d && mesBase($('mes' + l).value) !== d.slice(0, 7)) $('mes' + l).value = mesParaDia(d);
+    // En TakeOver la BBDD del día D está en el mes de su carga (D - 1) y se elige sola.
+    const ref = d && PROG === 'to' ? sumarDias(d, -1) : d;
+    if (ref && mesBase($('mes' + l).value) !== ref.slice(0, 7)) $('mes' + l).value = mesParaDia(ref);
+    if (d && PROG === 'to') campPreferida[l] = etqDiaria(d);
     comparar();
   });
   $('mes' + l).addEventListener('change', comparar);
