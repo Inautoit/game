@@ -9,7 +9,6 @@ let bbdd = null; // {mes, campanas: {nombre: [ids]}}
 let carga = null;
 let resultados = {};
 let cacheComp = {};
-let logsActual = [];
 let ultimo = null;
 // Informe activo: '' = principal, 'sa' = Second Attempt (sus propias BBDD, mismos commlogs).
 // Dos dashboards con datos separados: Winback (/) y Upsell (/upsell), cada uno con sus
@@ -544,7 +543,6 @@ async function recalcular() {
     for (const [id, ts, key4] of await logsDeMes(mes)) logs.push({ id, fecha: parseFecha(ts), key4 });
   }
   cacheComp = {};
-  logsActual = logs;
   resultados = {};
   for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta, bbdd.cargas);
   const f = (d) => d.split('-').reverse().join('/');
@@ -553,60 +551,6 @@ async function recalcular() {
   pintarCampana();
 }
 $('btnCalc').addEventListener('click', recalcular);
-
-// ---------- evolución por días (tabla con una columna por día) ----------
-// TakeOver: una columna por BBDD diaria (cargas del día anterior) con lo hecho desde su carga
-// hasta "Hasta". Resto: una columna por día de llamadas, solo con los commlogs de ese día.
-function pintarEvolucion() {
-  if (!bbdd) return;
-  const camps = campanasComp(bbdd);
-  const nombres = Object.keys(camps).filter((c) => !c.startsWith(PRE_DIARIA));
-  const prev = $('campEvol').value || load(kp('campEvol'));
-  $('campEvol').innerHTML = nombres.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
-  $('campEvol').value = nombres.includes(prev) ? prev : nombres.includes($('campana').value) ? $('campana').value : nombres[0];
-  const ids = camps[$('campEvol').value] || [];
-  const desde = $('desde').value, hasta = $('hasta').value;
-  const cab = (d) => `${DIAS_SEM[parseFecha(d).getDay()]} ${+d.slice(8)}`;
-  const cols = [];
-  let filas;
-  if (bbdd.cargas) {
-    const porCarga = {};
-    for (const raw of ids) { const c = bbdd.cargas[raw]; if (c) (porCarga[c] ||= []).push(raw); }
-    for (const c of Object.keys(porCarga).sort()) {
-      const d = sumarDias(c, 1);
-      if (d < desde || d > hasta) continue;
-      const r = calcular(porCarga[c], logsActual, desde, hasta, bbdd.cargas).resumen;
-      cols.push({ d, r });
-    }
-    filas = [
-      ['% contactación', (r) => fmt(pctDe(r.contactadas, r.gestionables), 1) + ' %'],
-      ['Cargas BBDD', (r) => fmt(r.total)],
-      ['Descuelgues (contactadas)', (r) => fmt(r.contactadas)],
-      ['Int/reg', (r) => fmt(r.gestionables ? r.totalIntentos / r.gestionables : 0, 1)],
-    ];
-    $('subEvol').textContent = `BBDD diarias de TakeOver (cargas del día anterior): lo hecho con cada una desde su carga hasta el ${fDia(hasta)}`;
-  } else {
-    const porDia = {};
-    for (const l of logsActual) { if (!l.fecha) continue; const d = isoDia(l.fecha); if (d >= desde && d <= hasta) (porDia[d] ||= []).push(l); }
-    for (const d of Object.keys(porDia).sort()) {
-      const r = delDia(ids, porDia[d], d);
-      if (r.instLlamadas) cols.push({ d, r });
-    }
-    filas = [
-      ['% contactación s/ tratadas', (r) => fmt(r.pctContactoDia, 1) + ' %'],
-      ['Tratadas', (r) => fmt(r.instLlamadas)],
-      ['Descuelgues (contactadas)', (r) => fmt(r.contactadas)],
-      ['Int/reg', (r) => fmt(r.llamadasPorInst, 1)],
-    ];
-    $('subEvol').textContent = 'Cada día, solo los commlogs de ese día de esta campaña';
-  }
-  const mesTxt = nombreMes(mesBase(bbdd.mes)).split(' ')[0];
-  $('tablaEvol').innerHTML = cols.length
-    ? `<thead><tr><th>${mesTxt[0].toUpperCase() + mesTxt.slice(1)}</th>${cols.map((c) => `<th>${cab(c.d)}</th>`).join('')}</tr></thead><tbody>${
-      filas.map(([l, f]) => `<tr><td>${l}</td>${cols.map((c) => `<td>${f(c.r)}</td>`).join('')}</tr>`).join('')}</tbody>`
-    : '<tbody><tr><td>Sin datos en el rango elegido</td></tr></tbody>';
-}
-$('campEvol').addEventListener('change', () => { store(kp('campEvol'), $('campEvol').value); pintarEvolucion(); });
 
 function pintarCampana() {
   const sel = $('campana').value;
@@ -633,7 +577,6 @@ function pintarCampana() {
   $('tituloCamp').textContent = `Campaña ${sel}`;
   ultimo = resultados[sel];
   pintar(ultimo);
-  pintarEvolucion();
   comparar();
 }
 
