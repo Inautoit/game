@@ -838,14 +838,15 @@ const METRICAS_ACUM = [
   ['Contactadas en 3er intento o más', (s) => s.contacto3mas, 0, ''],
   ['Ilocalizados antes de contactar', (s) => s.mediaIlocAntes, 2, ''],
 ];
+// Mismo orden que en "Situación a ese día": primero lo que va sobre tratadas.
 const METRICAS_DIA = [
   ['Tratadas ese día (instalaciones llamadas)', (d) => d.instLlamadas, 0, ''],
   ['Contactadas ese día', (d) => d.contactadas, 0, ''],
-  ['Ilocalizadas ese día (llamadas sin contacto)', (d) => d.ilocalizadas, 0, ''],
-  ['% contactación sobre tratadas (contactadas / tratadas)', (d) => d.pctContactoDia, 1, ' %'],
-  ['% contactadas sobre la BBDD', (d) => d.pctSobreBbdd, 2, ' %'],
+  ['% contactación sobre tratadas', (d) => d.pctContactoDia, 1, ' %'],
+  ['Nº de vueltas sobre tratadas (llamadas / tratadas)', (d) => d.llamadasPorInst, 2, ''],
+  ['Ilocalizadas ese día (tratadas sin contacto)', (d) => d.ilocalizadas, 0, ''],
   ['Llamadas (commlogs) del día', (d) => d.llamadas, 0, ''],
-  ['Llamadas por instalación', (d) => d.llamadasPorInst, 2, ''],
+  ['% contactadas sobre la BBDD', (d) => d.pctSobreBbdd, 2, ' %'],
   ['Commlogs de contacto válido', (d) => d.contactos, 0, ''],
   ['Commlogs de no contacto', (d) => d.noContacto, 0, ''],
   ['Excluidas ese día', (d) => d.excluidas, 0, ''],
@@ -922,7 +923,7 @@ async function comparar() {
   }</tbody>`;
   const celdas3 = (x, y, f, dec, suf) => `<td class="n">${val(x, f, dec, suf)}</td><td class="n"><b>${val(y, f, dec, suf)}</b></td>${delta(x && f(x), y && f(y), dec, suf)}`;
   const cols = modo === 'dia'
-    ? [['Tratadas', (d) => d.instLlamadas, 0, ''], ['Contactadas', (d) => d.contactadas, 0, ''], ['% s/ tratadas', (d) => d.pctContactoDia, 1, ' %']]
+    ? [['Tratadas', (d) => d.instLlamadas, 0, ''], ['Contactadas', (d) => d.contactadas, 0, ''], ['% s/ tratadas', (d) => d.pctContactoDia, 1, ' %'], ['Vueltas s/ tratadas', (d) => d.llamadasPorInst, 2, '']]
     : [['Tratadas', tratadas, 0, ''], ['Contactadas', (s) => s.contactadas, 0, ''], ['% s/ tratadas', (s) => pctDe(s.contactadas, tratadas(s)), 1, ' %'], ['Nº vueltas', (s) => s.mediaIntentos, 2, '']];
   $('tablaCompCamp').innerHTML = `<thead><tr><th>Campaña</th>${
     cols.map(([l]) => `<th class="n">${l} A</th><th class="n">${l} B</th><th class="n">Dif.</th>`).join('')}</tr></thead><tbody>${
