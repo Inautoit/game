@@ -57,6 +57,8 @@ assert.equal(clasificarUpsell('U_XX01', 'Cliente ilocalizado'), 'no_contacto');
 assert.equal(clasificarUpsell('R_ILOC01', 'Acepta oferta'), 'contacto');
 assert.equal(clasificarUpsell('R_NOU_03', 'Ilocalizado'), 'exclusion');
 assert.equal(clasificarUpsell('R_ILOC01', ''), 'no_contacto'); // sin texto: como RBE
+assert.equal(clasificarUpsell('MS_ILO3', ''), 'no_contacto');
+assert.equal(clasificarUpsell('V_REF002', 'Referido No'), 'contacto');
 const ru = calcular(['A'], [{ id: 'A', fecha: d('2026-07-03'), key4: 'U1', tipo: 'no_contacto' }], '2026-07-01', '2026-07-31');
 assert.equal(ru.resumen.ilocalizadas, 1);
 console.log('OK');

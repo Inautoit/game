@@ -13,12 +13,13 @@ export function clasificar(key4) {
 
 // Upsell: las key4 son otras, se mira el texto (key4txt). La exclusión es la misma
 // que en RBE; si el texto dice ilocalizado es no contacto; el resto, contacto.
-// Sin texto (commlogs antiguos) se clasifica como en RBE.
+// Las key4 de ilocalizado de Upsell son MS_ILO1…MS_ILO8 («Ilocalizado 1er intento»…), por si falta el texto.
 export function clasificarUpsell(key4, txt) {
-  const t = String(txt ?? '').trim();
-  if (!t) return clasificar(key4);
-  if (EXCLUSION.includes(String(key4 ?? '').trim().toUpperCase())) return 'exclusion';
-  return /ilocaliz/i.test(t) ? 'no_contacto' : 'contacto';
+  const k = String(key4 ?? '').trim().toUpperCase();
+  if (EXCLUSION.includes(k)) return 'exclusion';
+  if (/ilocaliz/i.test(String(txt ?? '')) || /^MS_ILO/.test(k)) return 'no_contacto';
+  // Con texto, todo lo que no es ilocalizado es contacto; sin texto (commlogs antiguos), como en RBE.
+  return String(txt ?? '').trim() ? 'contacto' : clasificar(k);
 }
 
 // En commlogs ins_no viene con ceros a la izquierda (030567) y en la BBDD no (30567).
