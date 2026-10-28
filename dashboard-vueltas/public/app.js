@@ -242,12 +242,15 @@ $('fBbdd').addEventListener('change', async (e) => {
         Object.keys(rows[0] || {}).find((c) => /numero_de_instalacion/i.test(c)) ||
         Object.keys(rows[0] || {}).find((c) => P_ID.some((p) => p.test(c)));
       if (!col) continue;
-      const ids = new Set();
+      // Vencimiento: si la primera columna pone 4PRO es la campaña 4PRO; el resto, Vencimiento.
+      const primera = Object.keys(rows[0] || {})[0];
+      const campDe = (r) => !ven ? nombre.trim() : /4\s*pro/i.test(String(r[primera] ?? '')) ? '4PRO' : 'Vencimiento';
+      const porCamp = {};
       for (const r of rows) {
         const v = String(r[col] ?? '').trim().replace(/\.0+$/, '');
-        if (v) ids.add(v);
+        if (v) (porCamp[campDe(r)] ||= new Set()).add(v);
       }
-      if (ids.size) campanas[nombre.trim()] = [...ids];
+      for (const [c, ids] of Object.entries(porCamp)) campanas[c] = [...new Set([...(campanas[c] || []), ...ids])];
     }
     if (!Object.keys(campanas).length) throw new Error('No encuentro la columna Numero_de_Instalacion en ninguna pestaña');
     carga = campanas;
