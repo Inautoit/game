@@ -283,8 +283,8 @@
           <dt>Excluidas</dt><dd>Instalaciones con al menos un commlog de exclusión (key4 R_NOU_02, R_NOU_03 o R_NOU_04) en el rango de fechas. Se apartan antes de todo: ninguno de sus commlogs cuenta como intento.</dd>
           <dt>Gestionables</dt><dd>BBDD menos excluidas. Es la base de todos los porcentajes.</dd>
           <dt>Intento</dt><dd>Cada commlog de una instalación gestionable dentro del rango de fechas (por defecto, del 15 del mes anterior a la BBDD hasta ayer).</dd>
-          <dt>Contactadas · Contactación</dt><dd>Gestionables con al menos un contacto válido (cualquier key4 que no sea de no contacto ni de exclusión). Contactación = contactadas / gestionables.</dd>
-          <dt>Ilocalizadas</dt><dd>Gestionables con intentos pero ningún contacto válido todavía (solo R_ILOC01, R_ILOC02 o R_TRA006).</dd>
+          <dt>Contactadas · Contactación</dt><dd id="gContacto">Gestionables con al menos un contacto válido (cualquier key4 que no sea de no contacto ni de exclusión). Contactación = contactadas / gestionables.</dd>
+          <dt>Ilocalizadas</dt><dd id="gIloc">Gestionables con intentos pero ningún contacto válido todavía (solo R_ILOC01, R_ILOC02 o R_TRA006).</dd>
           <dt>Sin intentos</dt><dd>Gestionables que todavía no tienen ningún commlog en el rango.</dd>
           <dt>Contactadas en el 1º / 2º / 3º+ intento</dt><dd>En qué intento llegó el primer contacto válido: 1º = a la primera llamada; 2º = hubo 1 ilocalizado antes; 3º o más = 2 o más ilocalizados antes. Los porcentajes son sobre las contactadas.</dd>
           <dt>Ilocalizados antes de contactar</dt><dd>Media de intentos sin contacto previos al primer contacto válido, solo en instalaciones contactadas.</dd>
@@ -340,7 +340,7 @@
     <div><a href="#" style="color:var(--brand); font-weight:500">← Volver al dashboard</a></div>
   </main>
   </div>
-  <footer>Clasificación key4 · No contacto: R_ILOC01, R_ILOC02, R_TRA006 · Exclusión: R_NOU_02, R_NOU_03, R_NOU_04 · Contacto válido: resto. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.</footer>
+  <footer id="pie">Clasificación key4 · No contacto: R_ILOC01, R_ILOC02, R_TRA006 · Exclusión: R_NOU_02, R_NOU_03, R_NOU_04 · Contacto válido: resto. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.</footer>
   <div id="tip" class="hidden"></div>
   <script type="module" src="/app.js"></script>
 </body>

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { calcular, rangoPorDefecto, parseFecha, delDia } from '../public/calc.js';
+import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell } from '../public/calc.js';
 
 const d = (s) => parseFecha(s);
 const logs = [
@@ -52,4 +52,11 @@ const rc = calcular(['A', 'C'], logs, '2026-06-01', '2026-07-31', { A: '2026-07-
 assert.equal(rc.detalle.find((x) => x.id === 'A').intentos, 1); // solo el del 03/07
 assert.equal(rc.detalle.find((x) => x.id === 'C').intentos, 0); // su commlog es del 05/07
 assert.equal(rc.resumen.contacto1, 1);
+// Upsell: se clasifica por key4txt; la exclusión, por key4 como en RBE
+assert.equal(clasificarUpsell('U_XX01', 'Cliente ilocalizado'), 'no_contacto');
+assert.equal(clasificarUpsell('R_ILOC01', 'Acepta oferta'), 'contacto');
+assert.equal(clasificarUpsell('R_NOU_03', 'Ilocalizado'), 'exclusion');
+assert.equal(clasificarUpsell('R_ILOC01', ''), 'no_contacto'); // sin texto: como RBE
+const ru = calcular(['A'], [{ id: 'A', fecha: d('2026-07-03'), key4: 'U1', tipo: 'no_contacto' }], '2026-07-01', '2026-07-31');
+assert.equal(ru.resumen.ilocalizadas, 1);
 console.log('OK');

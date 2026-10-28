@@ -1,4 +1,4 @@
-import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia } from './calc.js';
+import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell } from './calc.js';
 import { leerColumnasXlsx } from './xlsxstream.js';
 
 const $ = (id) => document.getElementById(id);
@@ -316,7 +316,15 @@ cargarIndice();
 
 // ---------- commlogs guardados (Cloudflare) ----------
 // Se guardan por mes de la fecha del commlog: logs:<AAAA-MM> -> [[id, 'AAAA-MM-DD HH:MM', key4], ...]
+// En Upsell llevan además el key4txt: [id, ts, key4, txt].
 const cacheLogs = {};
+if (ESP === 'up') {
+  $('gContacto').textContent = 'Gestionables con al menos un contacto válido (todo lo que en key4txt no sea ilocalizado ni exclusión). Contactación = contactadas / gestionables.';
+  $('gIloc').textContent = 'Gestionables con intentos pero ningún contacto válido todavía (solo commlogs con key4txt de ilocalizado).';
+  $('pie').textContent = 'Clasificación Upsell (por key4txt) · Exclusión: key4 R_NOU_02, R_NOU_03, R_NOU_04, igual que en RBE · No contacto: key4txt de ilocalizado · Contacto válido: resto. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.';
+}
+const aLog = ([id, ts, key4, txt]) =>
+  ({ id, fecha: parseFecha(ts), key4, tipo: ESP === 'up' ? clasificarUpsell(key4, txt) : undefined });
 let hayLogs = false;
 async function logsDeMes(mes) {
   if (!cacheLogs[mes]) cacheLogs[mes] = api(urlLogs('mes=' + mes)).catch(() => []);
@@ -365,13 +373,15 @@ function buscarCol(cols, patrones) {
   return null;
 }
 
-// Cabecera del fichero de commlogs: posiciones de ins_no, fecha y key4.
+// Cabecera del fichero de commlogs: posiciones de ins_no, fecha, key4 y (si está) key4txt.
 function mapaCabecera(arr) {
   const n = arr.map((c) => normCol(c));
   const id = n.findIndex((c) => c === 'insno');
   const fecha = n.findIndex((c) => c === 'fecha');
   const key4 = n.findIndex((c) => c === 'key4');
-  return id >= 0 && fecha >= 0 && key4 >= 0 ? { id, fecha, key4 } : null;
+  const txt = n.findIndex((c) => c === 'key4txt');
+  if (id < 0 || fecha < 0 || key4 < 0) return null;
+  return txt >= 0 ? { id, fecha, key4, txt } : { id, fecha, key4 };
 }
 
 // Lee los ficheros de commlogs y guarda los nuevos.
@@ -403,13 +413,14 @@ async function procesarFicheros(files) {
       const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
       if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en ${f.name}. Columnas que veo: ${cols.slice(0, 8).join(', ')}`);
       // Un CSV es una sola tabla: va al dashboard en el que estás.
-      const conv = leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck] }));
+      const ct = cols.find((c) => normCol(c) === 'key4txt');
+      const conv = leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck], txt: ct ? x[ct] : '' }));
       if (ESP === 'up') filasUp = filasUp.concat(conv); else filas = filas.concat(conv);
     }
   }
   const partes = [];
   if (filas.length) partes.push(await guardarLogs(filas, 'id', 'fecha', 'key4', ''));
-  if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up'));
+  if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up', 'txt'));
   $('stSubida').textContent = 'Listo: ' + partes.join(' · ');
   await cargarIndiceLogs();
   recalcular();
@@ -501,7 +512,8 @@ if (soportaVinculo) {
   getHandle().then((h) => h && sincronizar(h, false)).catch((err) => ($('stSubida').textContent = 'Error: ' + err.message));
 }
 
-async function guardarLogs(filas, ci, cf, ck, esp = ESP) {
+// ct: columna del key4txt (solo Upsell, que clasifica por el texto).
+async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null) {
   const etq = esp === 'up' ? 'Upsell' : 'Winback (RBE)';
   const porMes = {};
   let malas = 0;
@@ -510,19 +522,25 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP) {
     const id = String(r[ci] ?? '').trim().replace(/\.0+$/, '');
     if (!d || !id) { malas++; continue; }
     const ts = fmtTs(d);
-    (porMes[ts.slice(0, 7)] ||= []).push([id, ts, String(r[ck] ?? '').trim()]);
+    const l = [id, ts, String(r[ck] ?? '').trim()];
+    const txt = ct ? String(r[ct] ?? '').trim() : '';
+    if (txt) l.push(txt);
+    (porMes[ts.slice(0, 7)] ||= []).push(l);
   }
   const meses = Object.keys(porMes).sort();
   if (!meses.length) throw new Error('el fichero no tiene filas con instalación y fecha válidas');
   // El fichero es acumulativo: se fusiona con lo guardado (sin duplicar) y se reemplaza el mes.
-  let nuevos = 0;
+  let nuevos = 0, completados = 0;
   for (const [i, mes] of meses.entries()) {
     $('stSubida').textContent = `Guardando ${etq}: ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
     const actuales = await api(urlLogs('mes=' + mes, esp));
-    const vistos = new Set(actuales.map((l) => l.join('|')));
+    // Mismo commlog = misma instalación, hora y key4; si ahora trae key4txt, se completa.
+    const clave = (l) => l.slice(0, 3).join('|');
+    const pos = new Map(actuales.map((l, i) => [clave(l), i]));
     for (const l of porMes[mes]) {
-      const k = l.join('|');
-      if (!vistos.has(k)) { vistos.add(k); actuales.push(l); nuevos++; }
+      const i = pos.get(clave(l));
+      if (i === undefined) { pos.set(clave(l), actuales.length); actuales.push(l); nuevos++; }
+      else if (l.length > actuales[i].length) { actuales[i] = l; completados++; }
     }
     const max = actuales.reduce((m, l) => (l[1] > m ? l[1] : m), '');
     await api(urlLogs(`mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`, esp), {
@@ -530,6 +548,7 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP) {
     if (esp === ESP) { delete cacheLogs[mes]; delete cacheParsed[mes]; }
   }
   return `${etq}: ${fmt(filas.length - malas)} commlogs leídos, ${fmt(nuevos)} nuevos guardados` +
+    (completados ? `, ${fmt(completados)} completados con key4txt` : '') +
     (malas ? ` (${fmt(malas)} filas sin instalación o fecha ignoradas)` : '');
 }
 
@@ -540,7 +559,7 @@ async function recalcular() {
   const t0 = performance.now();
   const logs = [];
   for (const mes of mesesEntre(desde, hasta)) {
-    for (const [id, ts, key4] of await logsDeMes(mes)) logs.push({ id, fecha: parseFecha(ts), key4 });
+    for (const l of await logsDeMes(mes)) logs.push(aLog(l));
   }
   cacheComp = {};
   resultados = {};
@@ -761,7 +780,7 @@ const fDia = (iso) => iso.split('-').reverse().join('/');
 const cacheBbdd = {};
 const cacheParsed = {};
 const bbddDe = (mes) => (cacheBbdd[PROG + '|' + mes] ||= api(urlBbdd('mes=' + mes)));
-const logsParseados = (mes) => (cacheParsed[mes] ||= logsDeMes(mes).then((l) => l.map(([id, ts, key4]) => ({ id, fecha: parseFecha(ts), key4 }))));
+const logsParseados = (mes) => (cacheParsed[mes] ||= logsDeMes(mes).then((l) => l.map(aLog)));
 
 // Dos modos:
 //  - 'dia':  solo los commlogs del día elegido, cruzados con la BBDD elegida.

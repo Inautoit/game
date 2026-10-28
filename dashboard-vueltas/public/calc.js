@@ -11,6 +11,16 @@ export function clasificar(key4) {
   return 'contacto';
 }
 
+// Upsell: las key4 son otras, se mira el texto (key4txt). La exclusión es la misma
+// que en RBE; si el texto dice ilocalizado es no contacto; el resto, contacto.
+// Sin texto (commlogs antiguos) se clasifica como en RBE.
+export function clasificarUpsell(key4, txt) {
+  const t = String(txt ?? '').trim();
+  if (!t) return clasificar(key4);
+  if (EXCLUSION.includes(String(key4 ?? '').trim().toUpperCase())) return 'exclusion';
+  return /ilocaliz/i.test(t) ? 'no_contacto' : 'contacto';
+}
+
 // En commlogs ins_no viene con ceros a la izquierda (030567) y en la BBDD no (30567).
 export function normId(v) {
   return String(v ?? '').trim().toUpperCase().replace(/\.0+$/, '').replace(/^0+(?=.)/, '');
@@ -51,7 +61,7 @@ export function rangoPorDefecto(mesBbdd, hoy = new Date()) {
 
 /**
  * @param bbddIds  array de ids de instalación de la BBDD del mes
- * @param commlogs array de {id, fecha: Date, key4}
+ * @param commlogs array de {id, fecha: Date, key4, tipo?} (tipo ya clasificado, p. ej. Upsell)
  * @param desde,hasta 'YYYY-MM-DD' (ambos incluidos)
  * @param desdePorId opcional {id: 'YYYY-MM-DD'}: cada instalación solo cuenta commlogs
  *        desde esa fecha (p. ej. su día de carga en TakeOver)
@@ -79,7 +89,7 @@ export function calcular(bbddIds, commlogs, desde, hasta, desdePorId) {
     if (!it) { logsFueraBbdd++; continue; }
     if (dia < it.desde) continue;
     logsEnRango++;
-    it.logs.push({ fecha: c.fecha, dia, tipo: clasificar(c.key4), key4: c.key4 });
+    it.logs.push({ fecha: c.fecha, dia, tipo: c.tipo || clasificar(c.key4), key4: c.key4 });
   }
 
   const detalle = [];
