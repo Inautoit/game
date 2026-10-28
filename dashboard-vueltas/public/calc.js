@@ -11,15 +11,16 @@ export function clasificar(key4) {
   return 'contacto';
 }
 
-// Upsell: las key4 son otras, se mira el texto (key4txt). La exclusión es la misma
-// que en RBE; si el texto dice ilocalizado es no contacto; el resto, contacto.
-// Las key4 de ilocalizado de Upsell son MS_ILO1…MS_ILO8 («Ilocalizado 1er intento»…), por si falta el texto.
-export function clasificarUpsell(key4, txt) {
-  const k = String(key4 ?? '').trim().toUpperCase();
-  if (EXCLUSION.includes(k)) return 'exclusion';
-  if (/ilocaliz/i.test(String(txt ?? '')) || /^MS_ILO/.test(k)) return 'no_contacto';
-  // Con texto, todo lo que no es ilocalizado es contacto; sin texto (commlogs antiguos), como en RBE.
-  return String(txt ?? '').trim() ? 'contacto' : clasificar(k);
+// Upsell: las key4 son otras. Exclusión: key3 V_EXC008…V_EXC011 o las key4 de RBE.
+// No contacto: key3 V_ILO002, key4txt de ilocalizado o key4 MS_ILO1…MS_ILO8. El resto, contacto.
+// Sin key4txt ni key3 (commlogs antiguos) se clasifica como en RBE.
+export const EXCLUSION_UP = ['V_EXC008', 'V_EXC009', 'V_EXC010', 'V_EXC011'];
+export const NO_CONTACTO_UP = ['V_ILO002'];
+export function clasificarUpsell(key4, txt, key3) {
+  const k = String(key4 ?? '').trim().toUpperCase(), k3 = String(key3 ?? '').trim().toUpperCase();
+  if (EXCLUSION.includes(k) || EXCLUSION_UP.includes(k3)) return 'exclusion';
+  if (NO_CONTACTO_UP.includes(k3) || /ilocaliz/i.test(String(txt ?? '')) || /^MS_ILO/.test(k)) return 'no_contacto';
+  return String(txt ?? '').trim() || k3 ? 'contacto' : clasificar(k);
 }
 
 // En commlogs ins_no viene con ceros a la izquierda (030567) y en la BBDD no (30567).

@@ -316,15 +316,15 @@ cargarIndice();
 
 // ---------- commlogs guardados (Cloudflare) ----------
 // Se guardan por mes de la fecha del commlog: logs:<AAAA-MM> -> [[id, 'AAAA-MM-DD HH:MM', key4], ...]
-// En Upsell llevan además el key4txt: [id, ts, key4, txt].
+// En Upsell llevan además el key4txt y el key3: [id, ts, key4, txt, key3].
 const cacheLogs = {};
 if (ESP === 'up') {
-  $('gContacto').textContent = 'Gestionables con al menos un contacto válido (todo lo que en key4txt no sea ilocalizado ni exclusión). Contactación = contactadas / gestionables.';
-  $('gIloc').textContent = 'Gestionables con intentos pero ningún contacto válido todavía (solo commlogs con key4txt de ilocalizado).';
-  $('pie').textContent = 'Clasificación Upsell (por key4txt) · Exclusión: key4 R_NOU_02, R_NOU_03, R_NOU_04, igual que en RBE · No contacto: key4txt de ilocalizado · Contacto válido: resto. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.';
+  $('gContacto').textContent = 'Gestionables con al menos un contacto válido (todo lo que no sea ilocalizado ni exclusión). Contactación = contactadas / gestionables.';
+  $('gIloc').textContent = 'Gestionables con intentos pero ningún contacto válido todavía (solo commlogs de ilocalizado: key3 V_ILO002 o key4txt de ilocalizado).';
+  $('pie').textContent = 'Clasificación Upsell · Exclusión: key3 V_EXC008, V_EXC009, V_EXC010, V_EXC011 y key4 R_NOU_02, R_NOU_03, R_NOU_04 (como en RBE) · No contacto: key3 V_ILO002 o key4txt de ilocalizado · Contacto válido: resto. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.';
 }
-const aLog = ([id, ts, key4, txt]) =>
-  ({ id, fecha: parseFecha(ts), key4, tipo: ESP === 'up' ? clasificarUpsell(key4, txt) : undefined });
+const aLog = ([id, ts, key4, txt, key3]) =>
+  ({ id, fecha: parseFecha(ts), key4, tipo: ESP === 'up' ? clasificarUpsell(key4, txt, key3) : undefined });
 let hayLogs = false;
 async function logsDeMes(mes) {
   if (!cacheLogs[mes]) cacheLogs[mes] = api(urlLogs('mes=' + mes)).catch(() => []);
@@ -373,15 +373,18 @@ function buscarCol(cols, patrones) {
   return null;
 }
 
-// Cabecera del fichero de commlogs: posiciones de ins_no, fecha, key4 y (si está) key4txt.
+// Cabecera del fichero de commlogs: posiciones de ins_no, fecha, key4 y (si están) key4txt y key3.
 function mapaCabecera(arr) {
   const n = arr.map((c) => normCol(c));
   const id = n.findIndex((c) => c === 'insno');
   const fecha = n.findIndex((c) => c === 'fecha');
   const key4 = n.findIndex((c) => c === 'key4');
-  const txt = n.findIndex((c) => c === 'key4txt');
   if (id < 0 || fecha < 0 || key4 < 0) return null;
-  return txt >= 0 ? { id, fecha, key4, txt } : { id, fecha, key4 };
+  const m = { id, fecha, key4 };
+  const txt = n.findIndex((c) => c === 'key4txt'), key3 = n.findIndex((c) => c === 'key3');
+  if (txt >= 0) m.txt = txt;
+  if (key3 >= 0) m.key3 = key3;
+  return m;
 }
 
 // Lee los ficheros de commlogs y guarda los nuevos.
@@ -413,14 +416,14 @@ async function procesarFicheros(files) {
       const faltan = [[ci, 'ins_no'], [cf, 'fecha'], [ck, 'key4']].filter(([c]) => !c).map(([, n]) => n);
       if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en ${f.name}. Columnas que veo: ${cols.slice(0, 8).join(', ')}`);
       // Un CSV es una sola tabla: va al dashboard en el que estás.
-      const ct = cols.find((c) => normCol(c) === 'key4txt');
-      const conv = leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck], txt: ct ? x[ct] : '' }));
+      const ct = cols.find((c) => normCol(c) === 'key4txt'), c3 = cols.find((c) => normCol(c) === 'key3');
+      const conv = leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck], txt: ct ? x[ct] : '', key3: c3 ? x[c3] : '' }));
       if (ESP === 'up') filasUp = filasUp.concat(conv); else filas = filas.concat(conv);
     }
   }
   const partes = [];
   if (filas.length) partes.push(await guardarLogs(filas, 'id', 'fecha', 'key4', ''));
-  if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up', 'txt'));
+  if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up', 'txt', 'key3'));
   $('stSubida').textContent = 'Listo: ' + partes.join(' · ');
   await cargarIndiceLogs();
   recalcular();
@@ -512,8 +515,8 @@ if (soportaVinculo) {
   getHandle().then((h) => h && sincronizar(h, false)).catch((err) => ($('stSubida').textContent = 'Error: ' + err.message));
 }
 
-// ct: columna del key4txt (solo Upsell, que clasifica por el texto).
-async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null) {
+// ct, c3: columnas del key4txt y el key3 (solo Upsell, que clasifica con ellos).
+async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null) {
   const etq = esp === 'up' ? 'Upsell' : 'Winback (RBE)';
   const porMes = {};
   let malas = 0;
@@ -523,8 +526,9 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null) {
     if (!d || !id) { malas++; continue; }
     const ts = fmtTs(d);
     const l = [id, ts, String(r[ck] ?? '').trim()];
-    const txt = ct ? String(r[ct] ?? '').trim() : '';
-    if (txt) l.push(txt);
+    const txt = ct ? String(r[ct] ?? '').trim() : '', key3 = c3 ? String(r[c3] ?? '').trim() : '';
+    if (key3) l.push(txt, key3);
+    else if (txt) l.push(txt);
     (porMes[ts.slice(0, 7)] ||= []).push(l);
   }
   const meses = Object.keys(porMes).sort();
@@ -534,7 +538,7 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null) {
   for (const [i, mes] of meses.entries()) {
     $('stSubida').textContent = `Guardando ${etq}: ${nombreMes(mes)} (${i + 1}/${meses.length})…`;
     const actuales = await api(urlLogs('mes=' + mes, esp));
-    // Mismo commlog = misma instalación, hora y key4; si ahora trae key4txt, se completa.
+    // Mismo commlog = misma instalación, hora y key4; si ahora trae key4txt o key3, se completa.
     const clave = (l) => l.slice(0, 3).join('|');
     const pos = new Map(actuales.map((l, i) => [clave(l), i]));
     for (const l of porMes[mes]) {
@@ -548,7 +552,7 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null) {
     if (esp === ESP) { delete cacheLogs[mes]; delete cacheParsed[mes]; }
   }
   return `${etq}: ${fmt(filas.length - malas)} commlogs leídos, ${fmt(nuevos)} nuevos guardados` +
-    (completados ? `, ${fmt(completados)} completados con key4txt` : '') +
+    (completados ? `, ${fmt(completados)} completados con key4txt/key3` : '') +
     (malas ? ` (${fmt(malas)} filas sin instalación o fecha ignoradas)` : '');
 }
 
