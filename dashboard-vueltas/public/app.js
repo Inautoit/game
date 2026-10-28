@@ -286,6 +286,12 @@ async function leerAccess(f) {
     $('accCol').innerHTML = $('accCamp').innerHTML = '';
     $('accBox').classList.remove('hidden');
     $('stAcc').textContent = `${tablas.length} tablas en ${f.name}. Elige la que es la BBDD.`;
+    // La BBDD de Upsell es la tabla «BBDD agent 30 minutos»: si está, se elige sola.
+    const fija = tablas.find((t) => /agent.*30\s*min/i.test(t.n));
+    if (fija) {
+      $('accTabla').value = fija.n;
+      $('accTabla').dispatchEvent(new Event('change'));
+    }
   } catch (err) {
     accDb = null;
     $('stAcc').textContent = 'Error leyendo el Access: ' + err.message;
