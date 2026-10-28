@@ -242,8 +242,10 @@ $('fBbdd').addEventListener('change', async (e) => {
         Object.keys(rows[0] || {}).find((c) => /numero_de_instalacion/i.test(c)) ||
         Object.keys(rows[0] || {}).find((c) => P_ID.some((p) => p.test(c)));
       if (!col) continue;
-      // Vencimiento: si la primera columna pone 4PRO es la campaña 4PRO; el resto, Vencimiento.
-      const primera = Object.keys(rows[0] || {})[0];
+      // Vencimiento: si Tipo_BBDD (o, si no está, la primera columna) pone 4 PRO es la campaña 4PRO;
+      // el resto (Extensions, Upgrade…) es Vencimiento.
+      const cabs = Object.keys(rows[0] || {});
+      const primera = cabs.find((c) => normCol(c) === 'tipobbdd') || cabs[0];
       const campDe = (r) => !ven ? nombre.trim() : /4\s*pro/i.test(String(r[primera] ?? '')) ? '4PRO' : 'Vencimiento';
       const porCamp = {};
       for (const r of rows) {
