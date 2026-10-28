@@ -167,7 +167,17 @@ function mesDeNombre(nombre) {
 }
 
 // Second Attempt: solo estas hojas, cada una con su columna de instalación.
-const HOJAS_SA = { 'BBDD WELCOME': 'INS_NO', CLOSED: 'Installation Number', 'NO ACEPTAS': 'Numero_de_Instalacion', 'BBDD PROSPECTOS MES': 'Old Inst' };
+// Pestañas de Second Attempt y su columna de instalación ('' = se busca sola).
+const HOJAS_SA = { 'BBDD WELCOME': 'INS_NO', CLOSED: 'Installation Number', 'NO ACEPTAS': 'Numero_de_Instalacion', 'BBDD PROSPECTOS MES': 'Old Inst', 'BBDD_PROSP_NO TOCAR': '' };
+const normHoja = (n) => String(n).trim().toUpperCase().replace(/[\s_]+/g, ' ');
+const hojaSa = (n) => Object.keys(HOJAS_SA).find((h) => normHoja(h) === normHoja(n));
+function colSa(nombre, cols) {
+  const fija = HOJAS_SA[hojaSa(nombre)];
+  const conocidas = Object.values(HOJAS_SA).filter(Boolean);
+  return (fija && cols.find((c) => c.trim() === fija)) ||
+    cols.find((c) => conocidas.some((k) => normCol(k) === normCol(c))) ||
+    cols.find((c) => P_ID.some((p) => p.test(c.trim())));
+}
 
 // Lee las pestañas del Excel: cada pestaña es una campaña.
 $('progCarga').addEventListener('change', () => $('fBbdd').files[0] && $('fBbdd').dispatchEvent(new Event('change')));
@@ -221,14 +231,14 @@ $('fBbdd').addEventListener('change', async (e) => {
     const buf = await f.arrayBuffer();
     // Second Attempt: sus 4 hojas. Upsell Vencimiento: solo la hoja "BBDD VENCIMIENTO".
     const todas = sa || ven ? XLSX.read(buf, { bookSheets: true }).SheetNames : null;
-    const nombresSa = sa ? todas.filter((n) => HOJAS_SA[n.trim()]) : ven ? todas.filter((n) => /vencimiento/i.test(n)) : null;
+    const nombresSa = sa ? todas.filter((n) => hojaSa(n)) : ven ? todas.filter((n) => /vencimiento/i.test(n)) : null;
     if (sa && !nombresSa.length) throw new Error(`no encuentro ninguna de las hojas ${Object.keys(HOJAS_SA).join(', ')}`);
     if (ven && !nombresSa.length) throw new Error(`no encuentro la hoja BBDD VENCIMIENTO (hojas: ${todas.join(', ')})`);
     const wb = XLSX.read(buf, { dense: true, ...(nombresSa ? { sheets: nombresSa } : {}) });
     const campanas = {};
     for (const nombre of nombresSa || wb.SheetNames) {
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { defval: '', raw: true });
-      const col = sa ? Object.keys(rows[0] || {}).find((c) => c.trim() === HOJAS_SA[nombre.trim()]) :
+      const col = sa ? colSa(nombre, Object.keys(rows[0] || {})) :
         Object.keys(rows[0] || {}).find((c) => /numero_de_instalacion/i.test(c)) ||
         Object.keys(rows[0] || {}).find((c) => P_ID.some((p) => p.test(c)));
       if (!col) continue;
