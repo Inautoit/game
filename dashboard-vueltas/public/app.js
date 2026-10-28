@@ -225,9 +225,7 @@ $('fBbdd').addEventListener('change', async (e) => {
   }
   carga = null;
   $('btnGuardar').disabled = true;
-  $('accBox').classList.add('hidden');
   if (!f) return;
-  if (/\.(accdb|mdb)$/i.test(f.name)) return leerAccess(f);
   $('stCarga').textContent = 'Leyendo…';
   try {
     const buf = await f.arrayBuffer();
@@ -267,9 +265,16 @@ $('fBbdd').addEventListener('change', async (e) => {
 
 // Access (.accdb/.mdb): tiene muchas tablas; se elige una, su columna de instalación
 // y, si se quiere, una columna que separe campañas. Se lee en el navegador.
-let accDb = null, accNombre = '';
+let accDb = null, accNombre = '', cargaAcc = null;
+if (ESP === 'up') $('cardAccess').classList.remove('hidden');
+$('fAccess').addEventListener('change', (e) => {
+  cargaAcc = null;
+  $('btnGuardarAcc').disabled = true;
+  $('accBox').classList.add('hidden');
+  if (e.target.files[0]) leerAccess(e.target.files[0]);
+});
 async function leerAccess(f) {
-  $('stCarga').textContent = `Leyendo ${f.name}… (con un Access grande puede tardar un minuto)`;
+  $('stAcc').textContent = `Leyendo ${f.name}… (con un Access grande puede tardar un minuto)`;
   try {
     const { MDBReader, Buffer } = await import('/vendor/mdb-reader.js');
     accDb = new MDBReader(Buffer.from(await f.arrayBuffer()));
@@ -280,15 +285,15 @@ async function leerAccess(f) {
       tablas.map((t) => `<option value="${escapeHtml(t.n)}">${escapeHtml(t.n)} (${fmt(t.filas)} filas)</option>`).join('');
     $('accCol').innerHTML = $('accCamp').innerHTML = '';
     $('accBox').classList.remove('hidden');
-    $('stCarga').textContent = `${tablas.length} tablas en ${f.name}. Elige la que es la BBDD.`;
+    $('stAcc').textContent = `${tablas.length} tablas en ${f.name}. Elige la que es la BBDD.`;
   } catch (err) {
     accDb = null;
-    $('stCarga').textContent = 'Error leyendo el Access: ' + err.message;
+    $('stAcc').textContent = 'Error leyendo el Access: ' + err.message;
   }
 }
 $('accTabla').addEventListener('change', () => {
-  carga = null;
-  $('btnGuardar').disabled = true;
+  cargaAcc = null;
+  $('btnGuardarAcc').disabled = true;
   const n = $('accTabla').value;
   if (!accDb || !n) return;
   const cols = accDb.getTable(n).getColumnNames();
@@ -301,8 +306,8 @@ $('accTabla').addEventListener('change', () => {
 $('accCol').addEventListener('change', prepararAccess);
 $('accCamp').addEventListener('change', prepararAccess);
 function prepararAccess() {
-  carga = null;
-  $('btnGuardar').disabled = true;
+  cargaAcc = null;
+  $('btnGuardarAcc').disabled = true;
   const n = $('accTabla').value, col = $('accCol').value, cc = $('accCamp').value;
   if (!accDb || !n || !col) return;
   try {
@@ -315,16 +320,34 @@ function prepararAccess() {
     const camps = Object.keys(porCamp);
     if (!camps.length) throw new Error(`la columna ${col} está vacía`);
     if (camps.length > 40) throw new Error(`la columna ${cc} tiene ${fmt(camps.length)} valores distintos: no parece una columna de campaña`);
-    carga = Object.fromEntries(camps.map((c) => [c, [...porCamp[c]]]));
+    cargaAcc = Object.fromEntries(camps.map((c) => [c, [...porCamp[c]]]));
     const mes = mesDeNombre(n) || mesDeNombre(accNombre);
-    if (mes) $('mesCarga').value = mes;
-    $('stCarga').textContent = Object.entries(carga).map(([c, v]) => `${c}: ${fmt(v.length)}`).join(' · ') +
+    if (mes) $('mesAcc').value = mes;
+    $('stAcc').textContent = Object.entries(cargaAcc).map(([c, v]) => `${c}: ${fmt(v.length)}`).join(' · ') +
       (mes ? '' : ' — no detecto el mes, elígelo a mano');
-    $('btnGuardar').disabled = false;
+    $('btnGuardarAcc').disabled = false;
   } catch (err) {
-    $('stCarga').textContent = 'Error leyendo la tabla: ' + err.message;
+    $('stAcc').textContent = 'Error leyendo la tabla: ' + err.message;
   }
 }
+$('btnGuardarAcc').addEventListener('click', async () => {
+  const mes = $('mesAcc').value, prog = $('progCarga').value;
+  if (!cargaAcc) return;
+  if (!mes) { $('stAcc').textContent = 'Elige el mes de la BBDD.'; return; }
+  $('btnGuardarAcc').disabled = true;
+  $('stAcc').textContent = 'Guardando…';
+  try {
+    delete cacheBbdd[prog + '|' + mes];
+    await api(urlBbdd('mes=' + mes, prog), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mes, campanas: cargaAcc }) });
+    $('stAcc').textContent = `Guardada la BBDD de ${nombreMes(mes)} (${$('accTabla').value}).`;
+    cargaAcc = null;
+    if (prog === PROG) await cargarIndice(mes); else pintarDatos();
+  } catch (err) {
+    $('stAcc').textContent = 'Error guardando: ' + err.message;
+    $('btnGuardarAcc').disabled = false;
+  }
+});
 
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
 

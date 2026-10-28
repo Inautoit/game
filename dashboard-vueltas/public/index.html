@@ -319,23 +319,34 @@
       <div class="row"><label>Fichero de commlogs (pestaña Query, columnas ins_no, fecha y key4) <input type="file" id="fLogs" accept=".csv,.txt,.xlsx,.xls" multiple /></label></div>
       <div class="status" id="stSubida" style="margin-top:6px"></div>
     </section>
+    <section class="card hidden" id="cardAccess">
+      <h2>BBDD desde Access</h2>
+      <p class="sub">Sube el Access (.accdb o .mdb), elige la tabla que es la BBDD y guárdala. Se lee en tu navegador y solo se guarda el número de instalación.</p>
+      <div class="row">
+        <label>Fichero Access <input type="file" id="fAccess" accept=".accdb,.mdb" /></label>
+      </div>
+      <div class="row hidden" id="accBox" style="margin-top:6px">
+        <label>Tabla (BBDD) <select id="accTabla"></select></label>
+        <label>Columna de instalación <select id="accCol"></select></label>
+        <label>Columna de campaña (opcional) <select id="accCamp"></select></label>
+        <label>Mes de la BBDD <input type="month" id="mesAcc" /></label>
+        <button id="btnGuardarAcc" disabled>Guardar BBDD</button>
+      </div>
+      <p class="status" style="margin-top:6px">Las consultas de Access no se pueden leer: si la BBDD es una consulta, guárdala como tabla. Guardar sustituye la BBDD de ese mes.</p>
+      <div class="status" id="stAcc"></div>
+    </section>
     <section class="card">
       <h2>BBDD mensual</h2>
       <p class="sub">Excel exportado (Exportadas_&lt;Mes&gt;&lt;AA&gt;.xlsx). Cada pestaña es una campaña y se mide por separado. Solo se guarda el número de instalación.</p>
       <div class="row">
         <label>Informe <select id="progCarga"><option value="">Dashboard (principal)</option><option value="sa">Second Attempt</option><option value="to">TakeOver</option></select></label>
-        <label>Excel o Access BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv,.accdb,.mdb" /></label>
+        <label>Excel BBDD <input type="file" id="fBbdd" accept=".xlsx,.xls,.csv" /></label>
         <label>Mes de la BBDD <input type="month" id="mesCarga" /></label>
         <label>Nombre (opcional) <input type="text" id="nombreCarga" placeholder="p. ej. Octubre segmentada" /></label>
         <label>Commlogs desde (opcional) <input type="date" id="desdeCarga" /></label>
         <button id="btnGuardar" disabled>Guardar BBDD</button>
       </div>
-      <div class="row hidden" id="accBox" style="margin-top:6px">
-        <label>Tabla de Access <select id="accTabla"></select></label>
-        <label>Columna de instalación <select id="accCol"></select></label>
-        <label>Columna de campaña (opcional) <select id="accCamp"></select></label>
-      </div>
-      <p class="status" style="margin-top:6px">En <b>Second Attempt</b> solo se cogen las hojas BBDD WELCOME (INS_NO), CLOSED (Installation Number), NO ACEPTAS (Numero_de_Instalacion) y BBDD PROSPECTOS MES (Old Inst); cada una es una campaña. Subir una BBDD <b>sustituye</b> la que hubiera: en el Dashboard y en Second Attempt, la de ese mes; en <b>TakeOver</b>, todo TakeOver. En TakeOver se sube el Excel acumulado: se separa solo en una BBDD por mes de Fecha_Carga, se cruza por Ins_no_padre y cada instalación cuenta sus commlogs desde su día de carga hasta ayer. Con <b>nombre</b> se guarda como una BBDD adicional de ese mes, sin sustituir a la principal. Con <b>commlogs desde</b>, solo cuentan las llamadas a partir de esa fecha (por defecto, desde el 15 del mes anterior). También se puede subir un <b>Access</b> (.accdb o .mdb): se elige la tabla que es la BBDD, su columna de instalación y, si se quiere, una columna que separe campañas. Las consultas de Access no se pueden leer: guárdala como tabla.</p>
+      <p class="status" style="margin-top:6px">En <b>Second Attempt</b> solo se cogen las hojas BBDD WELCOME (INS_NO), CLOSED (Installation Number), NO ACEPTAS (Numero_de_Instalacion) y BBDD PROSPECTOS MES (Old Inst); cada una es una campaña. Subir una BBDD <b>sustituye</b> la que hubiera: en el Dashboard y en Second Attempt, la de ese mes; en <b>TakeOver</b>, todo TakeOver. En TakeOver se sube el Excel acumulado: se separa solo en una BBDD por mes de Fecha_Carga, se cruza por Ins_no_padre y cada instalación cuenta sus commlogs desde su día de carga hasta ayer. Con <b>nombre</b> se guarda como una BBDD adicional de ese mes, sin sustituir a la principal. Con <b>commlogs desde</b>, solo cuentan las llamadas a partir de esa fecha (por defecto, desde el 15 del mes anterior).</p>
       <div class="status" id="stCarga"></div>
     </section>
     <section class="card">
