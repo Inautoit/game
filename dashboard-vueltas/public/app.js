@@ -225,7 +225,9 @@ $('fBbdd').addEventListener('change', async (e) => {
   }
   carga = null;
   $('btnGuardar').disabled = true;
+  $('accBox').classList.add('hidden');
   if (!f) return;
+  if (/\.(accdb|mdb)$/i.test(f.name)) return leerAccess(f);
   $('stCarga').textContent = 'Leyendo…';
   try {
     const buf = await f.arrayBuffer();
@@ -262,6 +264,67 @@ $('fBbdd').addEventListener('change', async (e) => {
     $('stCarga').textContent = 'Error leyendo el fichero: ' + err.message;
   }
 });
+
+// Access (.accdb/.mdb): tiene muchas tablas; se elige una, su columna de instalación
+// y, si se quiere, una columna que separe campañas. Se lee en el navegador.
+let accDb = null, accNombre = '';
+async function leerAccess(f) {
+  $('stCarga').textContent = `Leyendo ${f.name}… (con un Access grande puede tardar un minuto)`;
+  try {
+    const { MDBReader, Buffer } = await import('/vendor/mdb-reader.js');
+    accDb = new MDBReader(Buffer.from(await f.arrayBuffer()));
+    accNombre = f.name;
+    const tablas = accDb.getTableNames().map((n) => ({ n, filas: accDb.getTable(n).rowCount }));
+    if (!tablas.length) throw new Error('el Access no tiene tablas (las consultas no se pueden leer: guárdala como tabla)');
+    $('accTabla').innerHTML = '<option value="">— Elige la BBDD —</option>' +
+      tablas.map((t) => `<option value="${escapeHtml(t.n)}">${escapeHtml(t.n)} (${fmt(t.filas)} filas)</option>`).join('');
+    $('accCol').innerHTML = $('accCamp').innerHTML = '';
+    $('accBox').classList.remove('hidden');
+    $('stCarga').textContent = `${tablas.length} tablas en ${f.name}. Elige la que es la BBDD.`;
+  } catch (err) {
+    accDb = null;
+    $('stCarga').textContent = 'Error leyendo el Access: ' + err.message;
+  }
+}
+$('accTabla').addEventListener('change', () => {
+  carga = null;
+  $('btnGuardar').disabled = true;
+  const n = $('accTabla').value;
+  if (!accDb || !n) return;
+  const cols = accDb.getTable(n).getColumnNames();
+  const guess = cols.find((c) => /numero_de_instalacion/i.test(c)) || cols.find((c) => P_ID.some((p) => p.test(c.trim())));
+  const ops = (sel) => cols.map((c) => `<option value="${escapeHtml(c)}"${c === sel ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  $('accCol').innerHTML = ops(guess);
+  $('accCamp').innerHTML = '<option value="">(toda la tabla es una campaña)</option>' + ops(null);
+  prepararAccess();
+});
+$('accCol').addEventListener('change', prepararAccess);
+$('accCamp').addEventListener('change', prepararAccess);
+function prepararAccess() {
+  carga = null;
+  $('btnGuardar').disabled = true;
+  const n = $('accTabla').value, col = $('accCol').value, cc = $('accCamp').value;
+  if (!accDb || !n || !col) return;
+  try {
+    const filas = accDb.getTable(n).getData({ columns: cc ? [col, cc] : [col] });
+    const porCamp = {};
+    for (const r of filas) {
+      const v = String(r[col] ?? '').trim().replace(/\.0+$/, '');
+      if (v) (porCamp[cc ? String(r[cc] ?? '').trim() || '(sin campaña)' : n] ||= new Set()).add(v);
+    }
+    const camps = Object.keys(porCamp);
+    if (!camps.length) throw new Error(`la columna ${col} está vacía`);
+    if (camps.length > 40) throw new Error(`la columna ${cc} tiene ${fmt(camps.length)} valores distintos: no parece una columna de campaña`);
+    carga = Object.fromEntries(camps.map((c) => [c, [...porCamp[c]]]));
+    const mes = mesDeNombre(n) || mesDeNombre(accNombre);
+    if (mes) $('mesCarga').value = mes;
+    $('stCarga').textContent = Object.entries(carga).map(([c, v]) => `${c}: ${fmt(v.length)}`).join(' · ') +
+      (mes ? '' : ' — no detecto el mes, elígelo a mano');
+    $('btnGuardar').disabled = false;
+  } catch (err) {
+    $('stCarga').textContent = 'Error leyendo la tabla: ' + err.message;
+  }
+}
 
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
 
