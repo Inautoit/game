@@ -276,15 +276,24 @@ $('fAccess').addEventListener('change', (e) => {
   if (e.target.files[0]) leerAccess(e.target.files[0]);
 });
 async function leerAccess(f) {
-  $('stAcc').textContent = `Leyendo ${f.name}… (con un Access grande puede tardar un minuto)`;
+  const mb = Math.round(f.size / 1048576);
+  const paso = (t) => new Promise((r) => { $('stAcc').textContent = t; setTimeout(r, 30); });
   try {
+    if (f.size > 1800 * 1048576) {
+      throw new Error(`pesa ${fmt(mb)} MB y el navegador no puede abrir un Access tan grande. Copia solo la tabla a un Access nuevo (o expórtala a Excel) y sube ese`);
+    }
+    await paso(`1/3 · Cargando ${f.name} (${fmt(mb)} MB) en el navegador… con un Access grande puede tardar varios minutos`);
     const { MDBReader, Buffer } = await import('/vendor/mdb-reader.js');
-    accDb = new MDBReader(Buffer.from(await f.arrayBuffer()));
+    const buf = await f.arrayBuffer();
+    await paso('2/3 · Abriendo el Access…');
+    accDb = new MDBReader(Buffer.from(buf));
     accNombre = f.name;
-    const tablas = accDb.getTableNames().map((n) => ({ n, filas: accDb.getTable(n).rowCount }));
+    await paso('3/3 · Buscando las tablas…');
+    // Solo los nombres: contar las filas de todas las tablas es lento en un Access grande.
+    const tablas = accDb.getTableNames().map((n) => ({ n }));
     if (!tablas.length) throw new Error('el Access no tiene tablas (las consultas no se pueden leer: guárdala como tabla)');
     $('accTabla').innerHTML = '<option value="">— Elige la BBDD —</option>' +
-      tablas.map((t) => `<option value="${escapeHtml(t.n)}">${escapeHtml(t.n)} (${fmt(t.filas)} filas)</option>`).join('');
+      tablas.map((t) => `<option value="${escapeHtml(t.n)}">${escapeHtml(t.n)}</option>`).join('');
     $('accCol').innerHTML = $('accCamp').innerHTML = '';
     $('accBox').classList.remove('hidden');
     $('stAcc').textContent = `${tablas.length} tablas en ${f.name}. Elige la que es la BBDD.`;
@@ -318,6 +327,7 @@ function prepararAccess() {
   $('btnGuardarAcc').disabled = true;
   const n = $('accTabla').value, col = $('accCol').value, cc = $('accCamp').value;
   if (!accDb || !n || !col) return;
+  $('stAcc').textContent = `Leyendo la tabla ${n}…`;
   try {
     const filas = accDb.getTable(n).getData({ columns: cc ? [col, cc] : [col] });
     const porCamp = {};
