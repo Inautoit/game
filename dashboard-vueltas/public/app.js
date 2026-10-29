@@ -449,8 +449,9 @@ const pasoBonito = (max) => { const m = Math.max(1e-9, max) / 4, p = 10 ** Math.
 
 // Barras (apiladas si hay varias series) por franja, en SVG. Cada franja tiene su zona de hover.
 // ymax fija la escala (para que dos días se comparen con la misma).
-function graficaFranjas(el, franjas, series, { valor, tooltip, marca, ymax: yfija, fmtEje = (v) => fmt(v) }) {
-  const W = Math.max(320, el.clientWidth || 900), H = 210, ml = 40, mr = 6, mt = 18, mb = 26;
+// linea: {valor, color, ymax} -> una línea con su propio eje a la derecha (p. ej. nº de intentos).
+function graficaFranjas(el, franjas, series, { valor, tooltip, marca, ymax: yfija, fmtEje = (v) => fmt(v), linea }) {
+  const W = Math.max(320, el.clientWidth || 900), H = 210, ml = 40, mr = linea ? 44 : 6, mt = 18, mb = 26;
   const n = Math.max(1, franjas.length), bw = (W - ml - mr) / n, w = Math.max(3, Math.min(28, bw * 0.68));
   const tot = franjas.map((f) => series.reduce((s, se) => s + (valor(f, se) || 0), 0));
   const top0 = yfija || Math.max(1, ...tot);
@@ -478,6 +479,19 @@ function graficaFranjas(el, franjas, series, { valor, tooltip, marca, ymax: yfij
     if (f.franja.endsWith(':00') && (n <= 24 || +f.franja.slice(0, 2) % 2 === 0)) {
       g += `<text x="${ml + bw * i + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--muted)">${f.franja}</text>`;
     }
+  });
+  if (linea) {
+    const top1 = linea.ymax || Math.max(1, ...franjas.map((f) => linea.valor(f) || 0));
+    const p1 = pasoBonito(top1), y1max = p1 * Math.max(1, Math.ceil(top1 / p1 - 1e-9));
+    const yl = (v) => mt + (H - mt - mb) * (1 - Math.min(v, y1max) / y1max);
+    for (let v = 0; v <= y1max + 1e-9; v += p1) {
+      g += `<text x="${W - mr + 6}" y="${yl(v) + 4}" font-size="11" fill="${linea.color}">${fmt(v)}</text>`;
+    }
+    const pts = franjas.map((f, i) => [ml + bw * i + bw / 2, yl(linea.valor(f) || 0)]);
+    g += `<polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="${linea.color}" stroke-width="2" stroke-linejoin="round"/>`;
+    g += pts.map(([x, yy]) => `<circle cx="${x}" cy="${yy}" r="3.5" fill="${linea.color}" stroke="var(--surface)" stroke-width="1.5"/>`).join('');
+  }
+  franjas.forEach((f, i) => {
     g += `<rect class="hit" data-i="${i}" tabindex="0" x="${ml + bw * i}" y="${mt}" width="${bw}" height="${H - mt - mb}"/>`;
   });
   el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfica por franja de media hora">${g}</svg>`;
@@ -561,18 +575,23 @@ async function pintarFranjas(desde, hasta, logs) {
   }
   const maxCont = Math.max(1, ...vistas.flatMap((v) => v.filas.map(cont)));
   const maxMin = Math.max(1, ...vistas.flatMap((v) => v.filas.map((f) => minC(f) || 0)));
+  const maxLlam = Math.max(1, ...vistas.flatMap((v) => v.filas.map(llam)));
+  // Línea de intentos (contactos + ilocalizados) en el eje derecho, igual en todas las gráficas.
+  const linea = { valor: llam, color: 'var(--text-2)', ymax: maxLlam };
+  const keyLinea = '<span><i style="background:var(--text-2); height:2px; width:14px; vertical-align:3px"></i>Intentos (contactos + ilocalizados) · eje derecho</span>';
 
   const juntas = camps.length > 1;
   $('frPaneles').innerHTML = vistas.map((v, i) => `<div class="fr-panel">
       ${frModo !== 'acum' ? `<h3 class="dia">${v.etq ? v.etq + ' · ' : ''}${v.d0 ? fDia(v.d0) : '—'} · BBDD ${escapeHtml(nombreBbdd(v.bb.mes))}${v.dias.length ? '' : ' · sin conexiones'}</h3>` : ''}
       ${v.dias.length && v.nLogs < 30 ? `<p class="status">Ojo: ese día solo hay ${fmt(v.nLogs)} commlogs de instalaciones de esta BBDD${ultLog && v.d1 > ultLog ? ` (los commlogs de Upsell llegan hasta el ${fDia(ultLog)})` : ''}, por eso salen tan pocas franjas.</p>` : ''}
       ${frGraf === 'cont' ? `<h3 class="chart-t">Contactos por franja</h3>
-      <div class="leyenda">${series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('')}</div>
+      <div class="leyenda">${series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('')}${keyLinea}</div>
       <div class="chart" id="frC1_${i}"></div>` : ''}
       ${frGraf === 'pct' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas (contactos + ilocalizados) de la franja</small></h3>
+      <div class="leyenda"><span><i style="background:var(--c3)"></i>% contactación · eje izquierdo</span>${keyLinea}</div>
       <div class="chart" id="frC2_${i}"></div>` : ''}
       ${frGraf === 'min' ? `<h3 class="chart-t">Minutos conectados por contacto <small>· cuanto más baja la barra, más productiva la franja</small></h3>
-      ${juntas ? `<div class="chart" id="frC3_${i}"></div>` : '<p class="status">Con una sola campaña no se calcula: el tiempo de los gestores no se separa por campaña. Elige «Juntas».</p>'}` : ''}
+      ${juntas ? `<div class="leyenda"><span><i style="background:var(--c3)"></i>Min. por contacto · eje izquierdo</span>${keyLinea}</div><div class="chart" id="frC3_${i}"></div>` : '<p class="status">Con una sola campaña no se calcula: el tiempo de los gestores no se separa por campaña. Elige «Juntas».</p>'}` : ''}
       <details style="margin-top:10px"><summary style="cursor:pointer; font-size:13px; color:var(--text-2)">Ver tabla por franja</summary>
         <div class="tablewrap"><table id="frT_${i}"></table></div></details>
     </div>`).join('');
@@ -581,21 +600,21 @@ async function pintarFranjas(desde, hasta, logs) {
     if (!v.dias.length) return;
     const gest = (f) => f.segundos / 1800 / v.dias.length;
     if (frGraf === 'cont') graficaFranjas($('frC1_' + i), v.filas, series, {
-      valor: (f, se) => f.porCamp[se.c]?.contactos || 0, ymax: maxCont,
+      valor: (f, se) => f.porCamp[se.c]?.contactos || 0, ymax: maxCont, linea,
       tooltip: (f) => `${tramo(f.franja)}\n${fmt(cont(f))} contactos de ${fmt(llam(f))} llamadas` +
         (juntas ? '\n' + series.map((se) => `  ${se.nombre}: ${fmt(f.porCamp[se.c]?.contactos || 0)}`).join('\n') : '') +
         `\n${hm(f.segundos)} conectadas (${fmt(gest(f), 1)} gestores de media)`,
     });
     if (frGraf === 'pct') graficaFranjas($('frC2_' + i), v.filas, [{ c: 'pct', color: 'var(--c3)' }], {
-      valor: (f) => pct(f) || 0, ymax: 100, fmtEje: (x) => fmt(x) + ' %',
-      tooltip: (f) => `${tramo(f.franja)}\n${pct(f) == null ? 'Sin llamadas' : fmt(pct(f), 1) + ' % de contactación'}\n${fmt(cont(f))} contactos · ${fmt(suma(f, 'iloc'))} ilocalizados`,
+      valor: (f) => pct(f) || 0, ymax: 100, fmtEje: (x) => fmt(x) + ' %', linea,
+      tooltip: (f) => `${tramo(f.franja)}\n${pct(f) == null ? 'Sin llamadas' : fmt(pct(f), 1) + ' % de contactación'}\n${fmt(llam(f))} intentos: ${fmt(cont(f))} contactos + ${fmt(suma(f, 'iloc'))} ilocalizados`,
     });
     if (juntas && frGraf === 'min') {
       graficaFranjas($('frC3_' + i), v.filas, [{ c: 'min', color: 'var(--c3)' }], {
-        valor: (f) => minC(f) || 0, ymax: maxMin, marca: (f) => f === v.mejor,
+        valor: (f) => minC(f) || 0, ymax: maxMin, marca: (f) => f === v.mejor, linea,
         fmtEje: (x) => fmt(x, x < 10 && x % 1 ? 1 : 0),
         tooltip: (f) => `${tramo(f.franja)}\n${minC(f) == null ? 'Sin contactos o sin conexión' : fmt(minC(f), 1) + ' min conectados por contacto'}\n` +
-          `${hm(f.segundos)} conectadas · ${fmt(cont(f))} contactos${f === v.mejor ? '\n★ La franja más productiva' : ''}`,
+          `${hm(f.segundos)} conectadas · ${fmt(cont(f))} contactos de ${fmt(llam(f))} intentos${f === v.mejor ? '\n★ La franja más productiva' : ''}`,
       });
     }
     $('frT_' + i).innerHTML = `<thead><tr><th>Franja</th><th class="n">Tiempo conectado</th><th class="n">Gestores de media</th>
