@@ -148,6 +148,8 @@
     .chart .hit:hover, .chart .hit:focus { opacity: .06; outline: none; }
     .chart-t { margin: 14px 0 4px; font-size: 14px; font-weight: 600; }
     .chart-t small { font-weight: 400; color: var(--muted); }
+    .fr-panel + .fr-panel { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .fr-panel h3.dia { margin: 6px 0 0; font-size: 15px; }
     .leyenda { display: flex; gap: 16px; font-size: 12.5px; color: var(--text-2); margin-bottom: 4px; }
     .leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
     .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 3px; background: var(--surface-2); }
@@ -214,17 +216,13 @@
 
       <div class="section-title hidden" id="frTit"><h2>Contactación por franja de media hora</h2><span id="stFr"></span></div>
       <section class="card hidden" id="frCard">
-        <div class="row" style="margin-bottom:4px">
-          <div class="seg"><button id="frAcum">Acumulado</button><button class="sec" id="frUno">Un día</button></div>
-          <label id="frDiaLbl" class="hidden">Día <input type="date" id="frDia" /></label>
+        <div class="row" style="margin-bottom:4px; align-items:flex-end">
+          <div class="seg"><button id="frAcum">Acumulado</button><button class="sec" id="frUno">Un día</button><button class="sec" id="frComp">Comparar días</button></div>
+          <label id="frDiaLbl" class="hidden"><span id="frDiaTxt">Día</span> <input type="date" id="frDia" /></label>
+          <label id="frDiaBLbl" class="hidden">Día B <input type="date" id="frDiaB" /></label>
+          <div class="seg" style="margin-left:auto"><button id="frCampJ">Juntas</button><button class="sec" id="frCamp4">4PRO</button><button class="sec" id="frCampV">Vencimiento</button></div>
         </div>
-        <h3 class="chart-t">Contactos por franja</h3>
-        <div class="leyenda" id="frLeg"></div>
-        <div class="chart" id="frChart1"></div>
-        <h3 class="chart-t">Minutos conectados por contacto <small>· cuanto más baja la barra, más productiva la franja</small></h3>
-        <div class="chart" id="frChart2"></div>
-        <details style="margin-top:10px"><summary style="cursor:pointer; font-size:13px; color:var(--text-2)">Ver tabla por franja</summary>
-          <div class="tablewrap"><table id="tablaFr"></table></div></details>
+        <div id="frPaneles"></div>
         <p class="status" id="frNota" style="margin-top:8px"></p>
       </section>
 

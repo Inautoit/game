@@ -419,27 +419,37 @@ $('btnGuardarAcc').addEventListener('click', async () => {
 // ---------- productividad por franja (Upsell) ----------
 const cacheConex = {};
 const conexDeMes = (m) => (cacheConex[m] ||= api('/api/conexiones?mes=' + m).catch(() => ({})));
-// Filtro de la sección: acumulado del rango del dashboard o un solo día.
-let frModo = 'acum', frArgs = null;
-for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia']]) {
-  $(btn).addEventListener('click', () => { frModo = m; if (frArgs) pintarFranjas(...frArgs); });
+// Filtros de la sección: acumulado del rango del dashboard, un día o comparar dos días;
+// y campaña: las dos juntas, solo 4PRO o solo Vencimiento.
+let frModo = 'acum', frCamp = '', frArgs = null;
+const repintarFr = () => frArgs && pintarFranjas(...frArgs);
+for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) {
+  $(btn).addEventListener('click', () => { frModo = m; repintarFr(); });
 }
-$('frDia').addEventListener('change', () => frArgs && pintarFranjas(...frArgs));
-addEventListener('resize', () => { clearTimeout(pintarFranjas.t); pintarFranjas.t = setTimeout(() => frArgs && pintarFranjas(...frArgs), 200); });
+for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) {
+  $(btn).addEventListener('click', () => { frCamp = c; repintarFr(); });
+}
+$('frDia').addEventListener('change', repintarFr);
+$('frDiaB').addEventListener('change', repintarFr);
+addEventListener('resize', () => { clearTimeout(pintarFranjas.t); pintarFranjas.t = setTimeout(repintarFr, 200); });
 
 const COLOR_CAMP = { '4PRO': 'var(--c1)', Vencimiento: 'var(--c2)' };
 const colorCamp = (c, i) => COLOR_CAMP[c] || ['var(--c1)', 'var(--c2)', 'var(--c3)'][i % 3];
 const tramo = (fr) => { const [hh, mm] = fr.split(':').map(Number); const fin = franjaDe(hh * 60 + mm + 30); return `${fr}–${fin === '00:00' ? '24:00' : fin}`; };
 const hm = (seg) => `${Math.floor(seg / 3600)}:${String(Math.round((seg % 3600) / 60)).padStart(2, '0')} h`;
+// Paso del eje: 1, 2, 5 o 10 (y 25, 250… solo cuando no deja decimales).
+const pasoBonito = (max) => { const m = Math.max(1e-9, max) / 4, p = 10 ** Math.floor(Math.log10(m)); return [1, 2, ...(p >= 10 ? [2.5] : []), 5, 10].map((k) => k * p).find((k) => k >= m); };
 
 // Barras (apiladas si hay varias series) por franja, en SVG. Cada franja tiene su zona de hover.
-function graficaFranjas(el, franjas, series, { valor, tooltip, marca, fmtEje = (v) => fmt(v) }) {
-  const W = Math.max(320, el.clientWidth || 900), H = 230, ml = 40, mr = 6, mt = 18, mb = 26;
-  const n = franjas.length, bw = (W - ml - mr) / n, w = Math.max(3, Math.min(28, bw * 0.68));
+// ymax fija la escala (para que dos días se comparen con la misma).
+function graficaFranjas(el, franjas, series, { valor, tooltip, marca, ymax: yfija, fmtEje = (v) => fmt(v) }) {
+  const W = Math.max(320, el.clientWidth || 900), H = 210, ml = 40, mr = 6, mt = 18, mb = 26;
+  const n = Math.max(1, franjas.length), bw = (W - ml - mr) / n, w = Math.max(3, Math.min(28, bw * 0.68));
   const tot = franjas.map((f) => series.reduce((s, se) => s + (valor(f, se) || 0), 0));
-  const paso = (() => { const m = Math.max(1, ...tot) / 4, p = 10 ** Math.floor(Math.log10(m)); return [1, 2, 2.5, 5, 10].map((k) => k * p).find((k) => k >= m); })();
-  const ymax = paso * Math.max(1, Math.ceil(Math.max(...tot, 0) / paso));
-  const y = (v) => mt + (H - mt - mb) * (1 - v / ymax);
+  const top0 = yfija || Math.max(1, ...tot);
+  const paso = pasoBonito(top0);
+  const ymax = paso * Math.max(1, Math.ceil(top0 / paso - 1e-9));
+  const y = (v) => mt + (H - mt - mb) * (1 - Math.min(v, ymax) / ymax);
   let g = '';
   for (let v = 0; v <= ymax + 1e-9; v += paso) {
     g += `<line x1="${ml}" x2="${W - mr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>` +
@@ -451,13 +461,10 @@ function graficaFranjas(el, franjas, series, { valor, tooltip, marca, fmtEje = (
     let base = 0;
     const segs = series.map((se) => ({ se, v: valor(f, se) || 0 })).filter((x) => x.v > 0);
     segs.forEach(({ se, v }, k) => {
-      const y0 = y(base), y1 = y(base + v);
-      const top = k === segs.length - 1;
-      const h = Math.max(0, y0 - y1 - (k ? 2 : 0));       // 2px de separación entre tramos
-      const yt = y1;
-      g += top
-        ? `<path d="M${x},${yt + h} V${yt + r} Q${x},${yt} ${x + r},${yt} H${x + w - r} Q${x + w},${yt} ${x + w},${yt + r} V${yt + h} Z" fill="${se.color}"/>`
-        : `<rect x="${x}" y="${yt}" width="${w}" height="${h}" fill="${se.color}"/>`;
+      const y1 = y(base + v), h = Math.max(0, y(base) - y1 - (k ? 2 : 0));   // 2px entre tramos apilados
+      g += k === segs.length - 1 && h > r
+        ? `<path d="M${x},${y1 + h} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + w - r} Q${x + w},${y1} ${x + w},${y1 + r} V${y1 + h} Z" fill="${se.color}"/>`
+        : `<rect x="${x}" y="${y1}" width="${w}" height="${h}" fill="${se.color}"/>`;
       base += v;
     });
     if (marca && marca(f)) g += `<text x="${x + w / 2}" y="${y(tot[i]) - 6}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text)">★ ${fmtEje(tot[i])}</text>`;
@@ -478,59 +485,111 @@ function graficaFranjas(el, franjas, series, { valor, tooltip, marca, fmtEje = (
 
 async function pintarFranjas(desde, hasta, logs) {
   frArgs = [desde, hasta, logs];
-  const conex = Object.assign({}, ...(await Promise.all(mesesEntre(desde, hasta).map(conexDeMes))));
-  const diasCon = Object.keys(conex).filter((d) => d >= desde && d <= hasta).sort();
-  for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia']]) $(btn).classList.toggle('sec', frModo !== m);
-  $('frDiaLbl').classList.toggle('hidden', frModo !== 'dia');
+  // En «un día» y «comparar» se puede elegir cualquier día con conexiones, también fuera del rango.
+  const mesesCon = (await api('/api/conexiones').catch(() => [])).map((i) => i.mes);
+  const meses = frModo === 'acum' ? mesesEntre(desde, hasta) : mesesCon;
+  const conex = Object.assign({}, ...(await Promise.all(meses.map(conexDeMes))));
+  const diasCon = Object.keys(conex).filter((d) => frModo !== 'acum' || (d >= desde && d <= hasta)).sort();
+  for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) $(btn).classList.toggle('sec', frModo !== m);
+  for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) $(btn).classList.toggle('sec', frCamp !== c);
+  $('frDiaLbl').classList.toggle('hidden', frModo === 'acum');
+  $('frDiaBLbl').classList.toggle('hidden', frModo !== 'comp');
+  $('frDiaTxt').textContent = frModo === 'comp' ? 'Día A' : 'Día';
   $('frTit').classList.remove('hidden');
   $('frCard').classList.remove('hidden');
-  if (diasCon.length) { $('frDia').min = diasCon[0]; $('frDia').max = diasCon.at(-1); }
-  if (frModo === 'dia' && !diasCon.includes($('frDia').value)) $('frDia').value = diasCon.at(-1) || '';
-  const [d0, d1] = frModo === 'dia' ? [$('frDia').value, $('frDia').value] : [desde, hasta];
-  const { dias, franjas: todas } = porFranja(bbdd.campanas, logs, conex, d0 || '9999', d1 || '0000');
-  const vacio = (msg) => {
-    for (const id of ['frChart1', 'frChart2', 'frLeg', 'tablaFr', 'stFr']) $(id).innerHTML = '';
-    $('frNota').innerHTML = msg;
-  };
-  if (!diasCon.length) return vacio('No hay conexiones de gestores para estas fechas. Súbelas desde el Access en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a>.');
-  if (!dias.length) return vacio('Ese día no tiene conexiones de gestores. Elige otro día.');
-  // Solo las franjas con gestores conectados o con commlogs.
-  const franjas = todas.filter((f) => f.segundos || f.commlogs);
-  const camps = Object.keys(bbdd.campanas);
-  const series = camps.map((c, i) => ({ c, nombre: c, color: colorCamp(c, i) }));
-  const totSeg = franjas.reduce((s, f) => s + f.segundos, 0);
-  const minC = (f) => (f.contactos && f.segundos ? f.segundos / 60 / f.contactos : null);
-  const mejor = franjas.filter((f) => f.segundos >= totSeg * 0.02 && f.contactos).sort((a, b) => minC(a) - minC(b))[0];
-  const gest = (f) => f.segundos / 1800 / dias.length;
+  for (const id of ['frDia', 'frDiaB']) if (diasCon.length) { $(id).min = diasCon[0]; $(id).max = diasCon.at(-1); }
+  if (frModo !== 'acum' && !diasCon.includes($('frDia').value)) $('frDia').value = diasCon.at(-1) || '';
+  if (frModo === 'comp' && !diasCon.includes($('frDiaB').value)) $('frDiaB').value = diasCon.at(-2) || diasCon.at(-1) || '';
+  if (!diasCon.length) {
+    $('frPaneles').innerHTML = '';
+    $('stFr').textContent = '';
+    $('frNota').innerHTML = 'No hay conexiones de gestores para estas fechas. Súbelas desde el Access en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a>.';
+    return;
+  }
 
-  $('frLeg').innerHTML = series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('');
-  graficaFranjas($('frChart1'), franjas, series, {
-    valor: (f, se) => f.porCamp[se.c] || 0,
-    tooltip: (f) => `${tramo(f.franja)}\n${fmt(f.contactos)} contactos\n` +
-      series.map((se) => `  ${se.nombre}: ${fmt(f.porCamp[se.c] || 0)}`).join('\n') +
-      `\n${fmt(f.commlogs)} commlogs · ${hm(f.segundos)} conectadas (${fmt(gest(f), 1)} gestores de media)`,
-  });
-  graficaFranjas($('frChart2'), franjas, [{ c: 'min', color: 'var(--c3)' }], {
-    valor: (f) => minC(f) || 0,
-    marca: (f) => f === mejor,
-    fmtEje: (v) => fmt(v, v < 10 && v % 1 ? 1 : 0),
-    tooltip: (f) => `${tramo(f.franja)}\n${minC(f) == null ? 'Sin contactos o sin conexión' : fmt(minC(f), 1) + ' min conectados por contacto'}\n` +
-      `${hm(f.segundos)} conectadas · ${fmt(f.contactos)} contactos${f === mejor ? '\n★ La franja más productiva' : ''}`,
+  // Commlogs de los meses que hagan falta para los días elegidos (pueden estar fuera del rango del dashboard).
+  let todosLogs = logs;
+  if (frModo !== 'acum') {
+    const faltan = [...new Set([$('frDia').value, $('frDiaB').value].filter(Boolean).map((d) => d.slice(0, 7)))]
+      .filter((m) => !mesesEntre(desde, hasta).includes(m));
+    if (faltan.length) todosLogs = logs.concat(...(await Promise.all(faltan.map(logsParseados))));
+  }
+  const camps = Object.keys(bbdd.campanas).filter((c) => !frCamp || c === frCamp);
+  const series = camps.map((c) => ({ c, nombre: c, color: colorCamp(c, Object.keys(bbdd.campanas).indexOf(c)) }));
+  const suma = (f, k) => camps.reduce((s, c) => s + (f.porCamp[c]?.[k] || 0), 0);
+  const cont = (f) => suma(f, 'contactos'), llam = (f) => suma(f, 'contactos') + suma(f, 'iloc');
+  const pct = (f) => (llam(f) ? (100 * cont(f)) / llam(f) : null);
+  const minC = (f) => (cont(f) && f.segundos ? f.segundos / 60 / cont(f) : null);
+
+  const vistas = frModo === 'acum' ? [{ etq: '', d0: desde, d1: hasta }]
+    : frModo === 'dia' ? [{ etq: '', d0: $('frDia').value, d1: $('frDia').value }]
+      : [{ etq: 'Día A', d0: $('frDia').value, d1: $('frDia').value }, { etq: 'Día B', d0: $('frDiaB').value, d1: $('frDiaB').value }];
+  for (const v of vistas) Object.assign(v, porFranja(bbdd.campanas, todosLogs, conex, v.d0 || '9999', v.d1 || '0000'));
+  // Mismas franjas (eje X) y misma escala en los dos días para poder compararlos.
+  const nombres = [...new Set(vistas.flatMap((v) => v.franjas.filter((f) => f.segundos || f.commlogs).map((f) => f.franja)))].sort();
+  for (const v of vistas) {
+    const por = Object.fromEntries(v.franjas.map((f) => [f.franja, f]));
+    v.filas = nombres.map((n) => por[n] || { franja: n, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, porCamp: {} });
+    const totSeg = v.filas.reduce((s, f) => s + f.segundos, 0);
+    v.mejor = v.filas.filter((f) => f.segundos >= totSeg * 0.02 && cont(f)).sort((a, b) => minC(a) - minC(b))[0];
+  }
+  const maxCont = Math.max(1, ...vistas.flatMap((v) => v.filas.map(cont)));
+  const maxMin = Math.max(1, ...vistas.flatMap((v) => v.filas.map((f) => minC(f) || 0)));
+
+  const juntas = camps.length > 1;
+  $('frPaneles').innerHTML = vistas.map((v, i) => `<div class="fr-panel">
+      ${v.etq ? `<h3 class="dia">${v.etq} · ${v.d0 ? fDia(v.d0) : '—'}${v.dias.length ? '' : ' · sin conexiones'}</h3>` : ''}
+      <h3 class="chart-t">Contactos por franja</h3>
+      <div class="leyenda">${series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('')}</div>
+      <div class="chart" id="frC1_${i}"></div>
+      <h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas (contactos + ilocalizados) de la franja</small></h3>
+      <div class="chart" id="frC2_${i}"></div>
+      <h3 class="chart-t">Minutos conectados por contacto <small>· cuanto más baja la barra, más productiva la franja</small></h3>
+      ${juntas ? `<div class="chart" id="frC3_${i}"></div>` : '<p class="status">Con una sola campaña no se calcula: el tiempo de los gestores no se separa por campaña. Elige «Juntas».</p>'}
+      <details style="margin-top:10px"><summary style="cursor:pointer; font-size:13px; color:var(--text-2)">Ver tabla por franja</summary>
+        <div class="tablewrap"><table id="frT_${i}"></table></div></details>
+    </div>`).join('');
+
+  vistas.forEach((v, i) => {
+    if (!v.dias.length) return;
+    const gest = (f) => f.segundos / 1800 / v.dias.length;
+    graficaFranjas($('frC1_' + i), v.filas, series, {
+      valor: (f, se) => f.porCamp[se.c]?.contactos || 0, ymax: maxCont,
+      tooltip: (f) => `${tramo(f.franja)}\n${fmt(cont(f))} contactos de ${fmt(llam(f))} llamadas` +
+        (juntas ? '\n' + series.map((se) => `  ${se.nombre}: ${fmt(f.porCamp[se.c]?.contactos || 0)}`).join('\n') : '') +
+        `\n${hm(f.segundos)} conectadas (${fmt(gest(f), 1)} gestores de media)`,
+    });
+    graficaFranjas($('frC2_' + i), v.filas, [{ c: 'pct', color: 'var(--c3)' }], {
+      valor: (f) => pct(f) || 0, ymax: 100, fmtEje: (x) => fmt(x) + ' %',
+      tooltip: (f) => `${tramo(f.franja)}\n${pct(f) == null ? 'Sin llamadas' : fmt(pct(f), 1) + ' % de contactación'}\n${fmt(cont(f))} contactos · ${fmt(suma(f, 'iloc'))} ilocalizados`,
+    });
+    if (juntas) {
+      graficaFranjas($('frC3_' + i), v.filas, [{ c: 'min', color: 'var(--c3)' }], {
+        valor: (f) => minC(f) || 0, ymax: maxMin, marca: (f) => f === v.mejor,
+        fmtEje: (x) => fmt(x, x < 10 && x % 1 ? 1 : 0),
+        tooltip: (f) => `${tramo(f.franja)}\n${minC(f) == null ? 'Sin contactos o sin conexión' : fmt(minC(f), 1) + ' min conectados por contacto'}\n` +
+          `${hm(f.segundos)} conectadas · ${fmt(cont(f))} contactos${f === v.mejor ? '\n★ La franja más productiva' : ''}`,
+      });
+    }
+    $('frT_' + i).innerHTML = `<thead><tr><th>Franja</th><th class="n">Tiempo conectado</th><th class="n">Gestores de media</th>
+      <th class="n">Llamadas</th><th class="n">Contactos</th>${juntas ? camps.map((c) => `<th class="n">Contactos ${escapeHtml(c)}</th>`).join('') : ''}
+      <th class="n">% contactación</th>${juntas ? '<th class="n">Min. por contacto</th>' : ''}</tr></thead><tbody>` + v.filas.map((f) => `<tr${juntas && f === v.mejor ? ' class="sel"' : ''}>
+        <td>${juntas && f === v.mejor ? '★ ' : ''}${tramo(f.franja)}</td><td class="n">${hm(f.segundos)}</td><td class="n">${fmt(gest(f), 1)}</td>
+        <td class="n">${fmt(llam(f))}</td><td class="n">${fmt(cont(f))}</td>
+        ${juntas ? camps.map((c) => `<td class="n">${fmt(f.porCamp[c]?.contactos || 0)}</td>`).join('') : ''}
+        <td class="n"><b>${pct(f) == null ? '—' : fmt(pct(f), 1) + ' %'}</b></td>
+        ${juntas ? `<td class="n">${minC(f) == null ? '—' : fmt(minC(f), 1)}</td>` : ''}</tr>`).join('') + '</tbody>';
   });
 
-  $('tablaFr').innerHTML = `<thead><tr><th>Franja</th><th class="n">Tiempo conectado</th><th class="n">Gestores de media</th>
-    <th class="n">Commlogs</th><th class="n">Contactos</th>${camps.map((c) => `<th class="n">Contactos ${escapeHtml(c)}</th>`).join('')}
-    <th class="n">Min. por contacto</th></tr></thead><tbody>` + franjas.map((f) => `<tr${f === mejor ? ' class="sel"' : ''}>
-      <td>${f === mejor ? '★ ' : ''}${tramo(f.franja)}</td><td class="n">${hm(f.segundos)}</td><td class="n">${fmt(gest(f), 1)}</td>
-      <td class="n">${fmt(f.commlogs)}</td><td class="n">${fmt(f.contactos)}</td>
-      ${camps.map((c) => `<td class="n">${fmt(f.porCamp[c] || 0)}</td>`).join('')}
-      <td class="n"><b>${minC(f) == null ? '—' : fmt(minC(f), 1)}</b></td></tr>`).join('') + '</tbody>';
-  $('stFr').textContent = frModo === 'dia' ? `Día ${fDia(d0)}` :
-    `Acumulado de ${fmt(dias.length)} días con conexiones (${fDia(dias[0])} – ${fDia(dias.at(-1))})`;
-  $('frNota').innerHTML = (mejor ? `<b>Franja más productiva: ${tramo(mejor.franja)}</b>, con ${fmt(minC(mejor), 1)} min conectados por contacto. ` : '') +
-    'Min. por contacto = suma del Total Time de los gestores en la franja ÷ commlogs de contacto de las instalaciones de la BBDD en esa franja. ' +
-    'El tiempo es de todos los gestores (no se separa por campaña) y solo cuentan los días con conexiones. ' +
-    'La más productiva es la que necesita menos minutos por contacto, entre las franjas con al menos un 2 % del tiempo conectado.';
+  const v0 = vistas[0];
+  $('stFr').textContent = (frCamp ? frCamp + ' · ' : '') + (frModo === 'acum'
+    ? `Acumulado de ${fmt(v0.dias.length)} días con conexiones` + (v0.dias.length ? ` (${fDia(v0.dias[0])} – ${fDia(v0.dias.at(-1))})` : '')
+    : vistas.map((v) => (v.etq ? v.etq + ' ' : 'Día ') + (v.d0 ? fDia(v.d0) : '—')).join(' · '));
+  $('frNota').innerHTML = (juntas ? vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmt(minC(v.mejor), 1)} min por contacto). `).join('') : '') +
+    '% contactación = contactos ÷ llamadas de la franja (contactos + ilocalizados; las exclusiones no cuentan). ' +
+    'Min. por contacto = suma del Total Time de los gestores en la franja ÷ contactos de la franja; el tiempo es de todos los gestores, por eso solo se calcula con las campañas juntas. ' +
+    'Solo cuentan los días con conexiones y las instalaciones de la BBDD elegida.' +
+    (frModo === 'comp' ? ' Los dos días usan la misma escala para poder compararlos.' : '');
 }
 
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);

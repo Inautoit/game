@@ -209,7 +209,8 @@ export function franjaDe(min) {
 /**
  * Productividad por franja de media hora: tiempo conectado de los gestores (suma del
  * Total Time) frente a los commlogs y contactos de las instalaciones de la BBDD.
- * Solo cuentan los días del rango que tienen conexiones.
+ * Solo cuentan los días del rango que tienen conexiones. Por franja (y por campaña en porCamp):
+ * commlogs, contactos, iloc (no contacto) y excl (exclusiones).
  * @param campanas   {campaña: [instalaciones]}
  * @param commlogs   [{id, fecha: Date, key4, tipo?}]
  * @param conexiones {'AAAA-MM-DD': {'HH:MM': segundos}}
@@ -222,7 +223,7 @@ export function porFranja(campanas, commlogs, conexiones, desde, hasta) {
   const dias = Object.keys(conexiones).filter((d) => d >= desde && d <= hasta).sort();
   const enDias = new Set(dias);
   const fr = {};
-  const fila = (f) => (fr[f] ||= { franja: f, segundos: 0, commlogs: 0, contactos: 0, porCamp: {} });
+  const fila = (f) => (fr[f] ||= { franja: f, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, porCamp: {} });
   for (const d of dias) for (const [f, seg] of Object.entries(conexiones[d])) fila(f).segundos += seg;
   for (const c of commlogs) {
     if (!c.fecha || !enDias.has(isoDia(c.fecha))) continue;
@@ -230,8 +231,10 @@ export function porFranja(campanas, commlogs, conexiones, desde, hasta) {
     const tipo = c.tipo || clasificar(c.key4);
     if (!camp || tipo === 'ignorar') continue;
     const r = fila(franjaDe(c.fecha.getHours() * 60 + c.fecha.getMinutes()));
-    r.commlogs++;
-    if (tipo === 'contacto') { r.contactos++; r.porCamp[camp] = (r.porCamp[camp] || 0) + 1; }
+    const pc = (r.porCamp[camp] ||= { commlogs: 0, contactos: 0, iloc: 0, excl: 0 });
+    const k = tipo === 'contacto' ? 'contactos' : tipo === 'exclusion' ? 'excl' : 'iloc';
+    r.commlogs++; pc.commlogs++;
+    r[k]++; pc[k]++;
   }
   return { dias, franjas: Object.values(fr).sort((a, b) => (a.franja < b.franja ? -1 : 1)) };
 }

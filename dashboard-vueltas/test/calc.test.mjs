@@ -80,7 +80,9 @@ const pf = porFranja({ '4PRO': ['A'], Vencimiento: ['B'] }, [
 ], { '2026-07-03': { '10:00': 3600, '10:30': 1800 } }, '2026-07-01', '2026-07-31');
 assert.deepEqual(pf.dias, ['2026-07-03']);
 assert.deepEqual(pf.franjas.map((f) => [f.franja, f.segundos, f.commlogs, f.contactos]), [['10:00', 3600, 2, 1], ['10:30', 1800, 1, 1]]);
-assert.equal(pf.franjas[0].porCamp['4PRO'], 1);
+assert.deepEqual(pf.franjas[0].porCamp['4PRO'], { commlogs: 1, contactos: 1, iloc: 0, excl: 0 });
+assert.deepEqual(pf.franjas[0].porCamp.Vencimiento, { commlogs: 1, contactos: 0, iloc: 1, excl: 0 });
+assert.equal(pf.franjas[0].iloc, 1);
 const ru = calcular(['A'], [{ id: 'A', fecha: d('2026-07-03'), key4: 'U1', tipo: 'no_contacto' }], '2026-07-01', '2026-07-31');
 assert.equal(ru.resumen.ilocalizadas, 1);
 console.log('OK');
