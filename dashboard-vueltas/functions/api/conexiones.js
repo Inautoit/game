@@ -2,8 +2,10 @@
 // por día y franja de media hora, en KV (binding BBDD):
 //   up:con:<AAAA-MM> -> {'AAAA-MM-DD': {'HH:MM': segundos}}
 //   up:con:index     -> [{mes, dias, segundos, actualizado}]
+// ?tipo=llam -> lo mismo para las llamadas del informe de llamadas (tabla «agent skill 30 minutes»):
+//   up:llam:<AAAA-MM> -> {'AAAA-MM-DD': {'HH:MM': nº de llamadas}}
 // GET           -> índice
-// GET ?mes=     -> conexiones del mes
+// GET ?mes=     -> datos del mes
 // PUT ?mes=     -> body {dias: {...}}: sustituye los días que vienen y deja el resto del mes
 
 const json = (d, status = 200) => new Response(JSON.stringify(d), {
@@ -11,12 +13,12 @@ const json = (d, status = 200) => new Response(JSON.stringify(d), {
 });
 const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FRANJA = /^([01]\d|2[0-3]):[03]0$/;
-const PRE = 'up:con:';
 
 export async function onRequest({ request, env }) {
   const kv = env.BBDD;
   const url = new URL(request.url);
   const mes = url.searchParams.get('mes');
+  const PRE = url.searchParams.get('tipo') === 'llam' ? 'up:llam:' : 'up:con:';
   if (mes && !MES.test(mes)) return json({ error: 'mes inválido' }, 400);
   const indice = async () => (await kv.get(PRE + 'index', 'json')) || [];
 

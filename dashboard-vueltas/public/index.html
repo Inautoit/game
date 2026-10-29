@@ -225,7 +225,7 @@
           <div class="seg" style="margin-left:auto"><button id="frCampJ">Juntas</button><button class="sec" id="frCamp4">4PRO</button><button class="sec" id="frCampV">Vencimiento</button></div>
         </div>
         <div class="row" style="margin:6px 0 0">
-          <div class="seg"><button id="frGPct">Contactación</button><button class="sec" id="frGCont">Contactos</button><button class="sec" id="frGMin">Min. por contacto</button></div>
+          <div class="seg"><button id="frGPctL">% contactación</button><button class="sec" id="frGPct">Contactos por hora logada</button><button class="sec" id="frGCont">Contactos</button><button class="sec" id="frGMin">Min. por contacto</button></div>
         </div>
         <div id="frPaneles"></div>
         <p class="status" id="frNota" style="margin-top:8px"></p>
@@ -349,19 +349,23 @@
       <div class="status" id="stSubida" style="margin-top:6px"></div>
     </section>
     <section class="card hidden" id="cardAccess">
-      <h2>Conexiones de los gestores (Access)</h2>
-      <p class="sub">Sube el Access (.accdb o .mdb) con la tabla «BBDD agent 30 minutos». Se lee en tu navegador y solo se guarda la suma del Total Time por día y franja de media hora.</p>
+      <h2>Conexiones y llamadas de los gestores (Access)</h2>
+      <p class="sub">Sube el Access (.accdb o .mdb) con la tabla «BBDD agent 30 minutos» (conexiones: se suma el Total Time) o el del informe de llamadas con «agent skill 30 minutes» (se suman las llamadas). Se lee en tu navegador y solo se guarda la suma por día y franja de media hora.</p>
       <div class="row">
         <label>Fichero Access <input type="file" id="fAccess" accept=".accdb,.mdb" /></label>
       </div>
       <div class="row hidden" id="accBox" style="margin-top:6px">
         <label>Tabla <select id="accTabla"></select></label>
+        <label>Qué es <select id="accTipo"><option value="con">Conexiones (Total Time)</option><option value="llam">Llamadas (informe de llamadas)</option></select></label>
         <label>Columna del día <select id="accDia"></select></label>
         <label>Columna de la franja / hora <select id="accHora"></select></label>
-        <label>Columna Total Time <select id="accTT"></select></label>
-        <label>Unidad del Total Time <select id="accUni"><option value="auto">Automática</option><option value="s">Segundos</option><option value="min">Minutos</option><option value="h">Horas</option><option value="d">Fracción de día</option></select></label>
-        <button id="btnGuardarAcc" disabled>Guardar conexiones</button>
+        <label class="accCon">Columna Total Time <select id="accTT"></select></label>
+        <label class="accCon">Unidad del Total Time <select id="accUni"><option value="auto">Automática</option><option value="s">Segundos</option><option value="min">Minutos</option><option value="h">Horas</option><option value="d">Fracción de día</option></select></label>
+        <label class="accLlam hidden">Columna de llamadas <select id="accLlam"></select></label>
+        <label class="accLlam hidden">Columna de skill (opcional) <select id="accSkill"></select></label>
+        <button id="btnGuardarAcc" disabled>Guardar</button>
       </div>
+      <div class="accLlam hidden" id="accSkillVals" style="margin-top:6px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px 14px"></div>
       <p class="status" style="margin-top:6px">El Access puede ser el acumulado de todo el año: cada subida sustituye los días que trae y deja el resto. Si el Total Time viene como hora (00:25:30) la unidad da igual. Las consultas de Access no se pueden leer: guárdala como tabla.</p>
       <div class="status" id="stAcc"></div>
     </section>
