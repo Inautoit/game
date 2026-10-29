@@ -419,40 +419,118 @@ $('btnGuardarAcc').addEventListener('click', async () => {
 // ---------- productividad por franja (Upsell) ----------
 const cacheConex = {};
 const conexDeMes = (m) => (cacheConex[m] ||= api('/api/conexiones?mes=' + m).catch(() => ({})));
+// Filtro de la sección: acumulado del rango del dashboard o un solo día.
+let frModo = 'acum', frArgs = null;
+for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia']]) {
+  $(btn).addEventListener('click', () => { frModo = m; if (frArgs) pintarFranjas(...frArgs); });
+}
+$('frDia').addEventListener('change', () => frArgs && pintarFranjas(...frArgs));
+addEventListener('resize', () => { clearTimeout(pintarFranjas.t); pintarFranjas.t = setTimeout(() => frArgs && pintarFranjas(...frArgs), 200); });
+
+const COLOR_CAMP = { '4PRO': 'var(--c1)', Vencimiento: 'var(--c2)' };
+const colorCamp = (c, i) => COLOR_CAMP[c] || ['var(--c1)', 'var(--c2)', 'var(--c3)'][i % 3];
+const tramo = (fr) => { const [hh, mm] = fr.split(':').map(Number); const fin = franjaDe(hh * 60 + mm + 30); return `${fr}–${fin === '00:00' ? '24:00' : fin}`; };
+const hm = (seg) => `${Math.floor(seg / 3600)}:${String(Math.round((seg % 3600) / 60)).padStart(2, '0')} h`;
+
+// Barras (apiladas si hay varias series) por franja, en SVG. Cada franja tiene su zona de hover.
+function graficaFranjas(el, franjas, series, { valor, tooltip, marca, fmtEje = (v) => fmt(v) }) {
+  const W = Math.max(320, el.clientWidth || 900), H = 230, ml = 40, mr = 6, mt = 18, mb = 26;
+  const n = franjas.length, bw = (W - ml - mr) / n, w = Math.max(3, Math.min(28, bw * 0.68));
+  const tot = franjas.map((f) => series.reduce((s, se) => s + (valor(f, se) || 0), 0));
+  const paso = (() => { const m = Math.max(1, ...tot) / 4, p = 10 ** Math.floor(Math.log10(m)); return [1, 2, 2.5, 5, 10].map((k) => k * p).find((k) => k >= m); })();
+  const ymax = paso * Math.max(1, Math.ceil(Math.max(...tot, 0) / paso));
+  const y = (v) => mt + (H - mt - mb) * (1 - v / ymax);
+  let g = '';
+  for (let v = 0; v <= ymax + 1e-9; v += paso) {
+    g += `<line x1="${ml}" x2="${W - mr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>` +
+      `<text x="${ml - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${fmtEje(v)}</text>`;
+  }
+  const r = 3;
+  franjas.forEach((f, i) => {
+    const x = ml + bw * i + (bw - w) / 2;
+    let base = 0;
+    const segs = series.map((se) => ({ se, v: valor(f, se) || 0 })).filter((x) => x.v > 0);
+    segs.forEach(({ se, v }, k) => {
+      const y0 = y(base), y1 = y(base + v);
+      const top = k === segs.length - 1;
+      const h = Math.max(0, y0 - y1 - (k ? 2 : 0));       // 2px de separación entre tramos
+      const yt = y1;
+      g += top
+        ? `<path d="M${x},${yt + h} V${yt + r} Q${x},${yt} ${x + r},${yt} H${x + w - r} Q${x + w},${yt} ${x + w},${yt + r} V${yt + h} Z" fill="${se.color}"/>`
+        : `<rect x="${x}" y="${yt}" width="${w}" height="${h}" fill="${se.color}"/>`;
+      base += v;
+    });
+    if (marca && marca(f)) g += `<text x="${x + w / 2}" y="${y(tot[i]) - 6}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text)">★ ${fmtEje(tot[i])}</text>`;
+    if (f.franja.endsWith(':00') && (n <= 24 || +f.franja.slice(0, 2) % 2 === 0)) {
+      g += `<text x="${ml + bw * i + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--muted)">${f.franja}</text>`;
+    }
+    g += `<rect class="hit" data-i="${i}" tabindex="0" x="${ml + bw * i}" y="${mt}" width="${bw}" height="${H - mt - mb}"/>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfica por franja de media hora">${g}</svg>`;
+  el.querySelectorAll('.hit').forEach((h) => {
+    const t = (e) => tip(tooltip(franjas[+h.dataset.i]), e);
+    h.addEventListener('pointermove', t);
+    h.addEventListener('pointerleave', () => tip(''));
+    h.addEventListener('focus', () => { const b = h.getBoundingClientRect(); t({ clientX: b.right, clientY: b.top }); });
+    h.addEventListener('blur', () => tip(''));
+  });
+}
+
 async function pintarFranjas(desde, hasta, logs) {
+  frArgs = [desde, hasta, logs];
   const conex = Object.assign({}, ...(await Promise.all(mesesEntre(desde, hasta).map(conexDeMes))));
-  const { dias, franjas } = porFranja(bbdd.campanas, logs, conex, desde, hasta);
-  const camps = Object.keys(bbdd.campanas);
+  const diasCon = Object.keys(conex).filter((d) => d >= desde && d <= hasta).sort();
+  for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia']]) $(btn).classList.toggle('sec', frModo !== m);
+  $('frDiaLbl').classList.toggle('hidden', frModo !== 'dia');
   $('frTit').classList.remove('hidden');
   $('frCard').classList.remove('hidden');
-  if (!dias.length) {
-    $('tablaFr').innerHTML = '';
-    $('stFr').textContent = '';
-    $('frNota').innerHTML = 'No hay conexiones de gestores para estas fechas. Súbelas desde el Access en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a>.';
-    return;
-  }
-  const tramo = (fr) => { const [hh, mm] = fr.split(':').map(Number); const fin = franjaDe(hh * 60 + mm + 30); return `${fr}–${fin === '00:00' ? '24:00' : fin}`; };
+  if (diasCon.length) { $('frDia').min = diasCon[0]; $('frDia').max = diasCon.at(-1); }
+  if (frModo === 'dia' && !diasCon.includes($('frDia').value)) $('frDia').value = diasCon.at(-1) || '';
+  const [d0, d1] = frModo === 'dia' ? [$('frDia').value, $('frDia').value] : [desde, hasta];
+  const { dias, franjas: todas } = porFranja(bbdd.campanas, logs, conex, d0 || '9999', d1 || '0000');
+  const vacio = (msg) => {
+    for (const id of ['frChart1', 'frChart2', 'frLeg', 'tablaFr', 'stFr']) $(id).innerHTML = '';
+    $('frNota').innerHTML = msg;
+  };
+  if (!diasCon.length) return vacio('No hay conexiones de gestores para estas fechas. Súbelas desde el Access en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a>.');
+  if (!dias.length) return vacio('Ese día no tiene conexiones de gestores. Elige otro día.');
+  // Solo las franjas con gestores conectados o con commlogs.
+  const franjas = todas.filter((f) => f.segundos || f.commlogs);
+  const camps = Object.keys(bbdd.campanas);
+  const series = camps.map((c, i) => ({ c, nombre: c, color: colorCamp(c, i) }));
   const totSeg = franjas.reduce((s, f) => s + f.segundos, 0);
-  const conDatos = franjas.filter((f) => f.segundos >= totSeg * 0.02 && f.contactos);
-  const mejor = conDatos.sort((a, b) => a.segundos / a.contactos - b.segundos / b.contactos)[0];
-  const filas = franjas.map((f) => {
-    const h = f.segundos / 3600;
-    const minC = f.contactos && f.segundos ? f.segundos / 60 / f.contactos : null;
-    const top = f === mejor;
-    return `<tr${top ? ' class="sel"' : ''}><td>${top ? '★ ' : ''}${tramo(f.franja)}</td>
-      <td class="n">${fmt(h, 1)}</td><td class="n">${fmt(f.segundos / 1800 / dias.length, 1)}</td>
+  const minC = (f) => (f.contactos && f.segundos ? f.segundos / 60 / f.contactos : null);
+  const mejor = franjas.filter((f) => f.segundos >= totSeg * 0.02 && f.contactos).sort((a, b) => minC(a) - minC(b))[0];
+  const gest = (f) => f.segundos / 1800 / dias.length;
+
+  $('frLeg').innerHTML = series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('');
+  graficaFranjas($('frChart1'), franjas, series, {
+    valor: (f, se) => f.porCamp[se.c] || 0,
+    tooltip: (f) => `${tramo(f.franja)}\n${fmt(f.contactos)} contactos\n` +
+      series.map((se) => `  ${se.nombre}: ${fmt(f.porCamp[se.c] || 0)}`).join('\n') +
+      `\n${fmt(f.commlogs)} commlogs · ${hm(f.segundos)} conectadas (${fmt(gest(f), 1)} gestores de media)`,
+  });
+  graficaFranjas($('frChart2'), franjas, [{ c: 'min', color: 'var(--c3)' }], {
+    valor: (f) => minC(f) || 0,
+    marca: (f) => f === mejor,
+    fmtEje: (v) => fmt(v, v < 10 && v % 1 ? 1 : 0),
+    tooltip: (f) => `${tramo(f.franja)}\n${minC(f) == null ? 'Sin contactos o sin conexión' : fmt(minC(f), 1) + ' min conectados por contacto'}\n` +
+      `${hm(f.segundos)} conectadas · ${fmt(f.contactos)} contactos${f === mejor ? '\n★ La franja más productiva' : ''}`,
+  });
+
+  $('tablaFr').innerHTML = `<thead><tr><th>Franja</th><th class="n">Tiempo conectado</th><th class="n">Gestores de media</th>
+    <th class="n">Commlogs</th><th class="n">Contactos</th>${camps.map((c) => `<th class="n">Contactos ${escapeHtml(c)}</th>`).join('')}
+    <th class="n">Min. por contacto</th></tr></thead><tbody>` + franjas.map((f) => `<tr${f === mejor ? ' class="sel"' : ''}>
+      <td>${f === mejor ? '★ ' : ''}${tramo(f.franja)}</td><td class="n">${hm(f.segundos)}</td><td class="n">${fmt(gest(f), 1)}</td>
       <td class="n">${fmt(f.commlogs)}</td><td class="n">${fmt(f.contactos)}</td>
       ${camps.map((c) => `<td class="n">${fmt(f.porCamp[c] || 0)}</td>`).join('')}
-      <td class="n"><b>${minC == null ? '—' : fmt(minC, 1)}</b></td><td class="n">${h && f.contactos ? fmt(f.contactos / h, 1) : '—'}</td></tr>`;
-  }).join('');
-  $('tablaFr').innerHTML = `<thead><tr><th>Franja</th><th class="n">Horas conectadas</th><th class="n">Gestores de media</th>
-    <th class="n">Commlogs</th><th class="n">Contactos</th>${camps.map((c) => `<th class="n">Contactos ${escapeHtml(c)}</th>`).join('')}
-    <th class="n">Min. por contacto</th><th class="n">Contactos por hora</th></tr></thead><tbody>${filas}</tbody>`;
-  $('stFr').textContent = `${fmt(dias.length)} días con conexiones (${fDia(dias[0])} – ${fDia(dias.at(-1))})`;
-  $('frNota').innerHTML = (mejor ? `<b>Franja más productiva: ${tramo(mejor.franja)}</b>, con ${fmt(mejor.segundos / 60 / mejor.contactos, 1)} min conectados por contacto. ` : '') +
+      <td class="n"><b>${minC(f) == null ? '—' : fmt(minC(f), 1)}</b></td></tr>`).join('') + '</tbody>';
+  $('stFr').textContent = frModo === 'dia' ? `Día ${fDia(d0)}` :
+    `Acumulado de ${fmt(dias.length)} días con conexiones (${fDia(dias[0])} – ${fDia(dias.at(-1))})`;
+  $('frNota').innerHTML = (mejor ? `<b>Franja más productiva: ${tramo(mejor.franja)}</b>, con ${fmt(minC(mejor), 1)} min conectados por contacto. ` : '') +
     'Min. por contacto = suma del Total Time de los gestores en la franja ÷ commlogs de contacto de las instalaciones de la BBDD en esa franja. ' +
-    'Las horas son de todos los gestores (no se separan por campaña); solo cuentan los días que tienen conexiones. ' +
-    'La más productiva es la que necesita menos minutos por contacto, entre las franjas con al menos un 2 % de las horas.';
+    'El tiempo es de todos los gestores (no se separa por campaña) y solo cuentan los días con conexiones. ' +
+    'La más productiva es la que necesita menos minutos por contacto, entre las franjas con al menos un 2 % del tiempo conectado.';
 }
 
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
