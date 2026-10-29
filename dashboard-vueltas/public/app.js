@@ -552,7 +552,10 @@ async function pintarFranjas(desde, hasta, logs) {
   const series = camps.map((c) => ({ c, nombre: c, color: colorCamp(c, Object.keys(bbdd.campanas).indexOf(c)) }));
   const suma = (f, k) => camps.reduce((s, c) => s + (f.porCamp[c]?.[k] || 0), 0);
   const cont = (f) => suma(f, 'contactos'), llam = (f) => suma(f, 'contactos') + suma(f, 'iloc');
-  const pct = (f) => (llam(f) ? (100 * cont(f)) / llam(f) : null);
+  const pctInt = (f) => (llam(f) ? (100 * cont(f)) / llam(f) : null);
+  // Logados de la franja = Total Time ÷ 30 min (gestores equivalentes conectados toda la media hora).
+  const logados = (f) => f.segundos / 1800;
+  const pct = (f) => (f.segundos ? (100 * cont(f)) / logados(f) : null);
   const minC = (f) => (cont(f) && f.segundos ? f.segundos / 60 / cont(f) : null);
 
   const vistas = frModo === 'acum' ? [{ etq: '', d0: rd, d1: rh }]
@@ -576,6 +579,7 @@ async function pintarFranjas(desde, hasta, logs) {
   const maxCont = Math.max(1, ...vistas.flatMap((v) => v.filas.map(cont)));
   const maxMin = Math.max(1, ...vistas.flatMap((v) => v.filas.map((f) => minC(f) || 0)));
   const maxLlam = Math.max(1, ...vistas.flatMap((v) => v.filas.map(llam)));
+  const maxPct = Math.max(1, ...vistas.flatMap((v) => v.filas.map((f) => pct(f) || 0)));
   // Línea de intentos (contactos + ilocalizados) en el eje derecho, igual en todas las gráficas.
   const linea = { valor: llam, color: 'var(--text-2)', ymax: maxLlam };
   const keyLinea = '<span><i style="background:var(--text-2); height:2px; width:14px; vertical-align:3px"></i>Intentos (contactos + ilocalizados) · eje derecho</span>';
@@ -587,7 +591,8 @@ async function pintarFranjas(desde, hasta, logs) {
       ${frGraf === 'cont' ? `<h3 class="chart-t">Contactos por franja</h3>
       <div class="leyenda">${series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('')}${keyLinea}</div>
       <div class="chart" id="frC1_${i}"></div>` : ''}
-      ${frGraf === 'pct' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas (contactos + ilocalizados) de la franja</small></h3>
+      ${frGraf === 'pct' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ gestores logados en la franja</small></h3>
+      ${juntas ? '' : '<p class="status">Ojo: los logados son de todos los gestores (el tiempo no se separa por campaña), así que con una sola campaña el % sale más bajo.</p>'}
       <div class="leyenda"><span><i style="background:var(--c3)"></i>% contactación · eje izquierdo</span>${keyLinea}</div>
       <div class="chart" id="frC2_${i}"></div>` : ''}
       ${frGraf === 'min' ? `<h3 class="chart-t">Minutos conectados por contacto <small>· cuanto más baja la barra, más productiva la franja</small></h3>
@@ -606,8 +611,9 @@ async function pintarFranjas(desde, hasta, logs) {
         `\n${hm(f.segundos)} conectadas (${fmt(gest(f), 1)} gestores de media)`,
     });
     if (frGraf === 'pct') graficaFranjas($('frC2_' + i), v.filas, [{ c: 'pct', color: 'var(--c3)' }], {
-      valor: (f) => pct(f) || 0, ymax: 100, fmtEje: (x) => fmt(x) + ' %', linea,
-      tooltip: (f) => `${tramo(f.franja)}\n${pct(f) == null ? 'Sin llamadas' : fmt(pct(f), 1) + ' % de contactación'}\n${fmt(llam(f))} intentos: ${fmt(cont(f))} contactos + ${fmt(suma(f, 'iloc'))} ilocalizados`,
+      valor: (f) => pct(f) || 0, ymax: maxPct, fmtEje: (x) => fmt(x) + ' %', linea,
+      tooltip: (f) => `${tramo(f.franja)}\n${pct(f) == null ? 'Sin gestores logados' : fmt(pct(f), 1) + ' % de contactación'}\n${fmt(cont(f))} contactos ÷ ${fmt(logados(f), 1)} logados` +
+        `\n${fmt(llam(f))} intentos: ${fmt(cont(f))} contactos + ${fmt(suma(f, 'iloc'))} ilocalizados`,
     });
     if (juntas && frGraf === 'min') {
       graficaFranjas($('frC3_' + i), v.filas, [{ c: 'min', color: 'var(--c3)' }], {
@@ -619,11 +625,12 @@ async function pintarFranjas(desde, hasta, logs) {
     }
     $('frT_' + i).innerHTML = `<thead><tr><th>Franja</th><th class="n">Tiempo conectado</th><th class="n">Gestores de media</th>
       <th class="n">Llamadas</th><th class="n">Contactos</th>${juntas ? camps.map((c) => `<th class="n">Contactos ${escapeHtml(c)}</th>`).join('') : ''}
-      <th class="n">% contactación</th>${juntas ? '<th class="n">Min. por contacto</th>' : ''}</tr></thead><tbody>` + v.filas.map((f) => `<tr${juntas && f === v.mejor ? ' class="sel"' : ''}>
+      <th class="n">Logados</th><th class="n">% contactación (÷ logados)</th><th class="n">% sobre intentos</th>${juntas ? '<th class="n">Min. por contacto</th>' : ''}</tr></thead><tbody>` + v.filas.map((f) => `<tr${juntas && f === v.mejor ? ' class="sel"' : ''}>
         <td>${juntas && f === v.mejor ? '★ ' : ''}${tramo(f.franja)}</td><td class="n">${hm(f.segundos)}</td><td class="n">${fmt(gest(f), 1)}</td>
         <td class="n">${fmt(llam(f))}</td><td class="n">${fmt(cont(f))}</td>
         ${juntas ? camps.map((c) => `<td class="n">${fmt(f.porCamp[c]?.contactos || 0)}</td>`).join('') : ''}
-        <td class="n"><b>${pct(f) == null ? '—' : fmt(pct(f), 1) + ' %'}</b></td>
+        <td class="n">${fmt(logados(f), 1)}</td><td class="n"><b>${pct(f) == null ? '—' : fmt(pct(f), 1) + ' %'}</b></td>
+        <td class="n">${pctInt(f) == null ? '—' : fmt(pctInt(f), 1) + ' %'}</td>
         ${juntas ? `<td class="n">${minC(f) == null ? '—' : fmt(minC(f), 1)}</td>` : ''}</tr>`).join('') + '</tbody>';
   });
 
@@ -632,7 +639,7 @@ async function pintarFranjas(desde, hasta, logs) {
     ? `Acumulado de ${fmt(v0.dias.length)} ${v0.dias.length === 1 ? 'día' : 'días'} con conexiones` + (v0.dias.length ? ` (${fDia(v0.dias[0])} – ${fDia(v0.dias.at(-1))})` : '')
     : vistas.map((v) => (v.etq ? v.etq + ' ' : 'Día ') + (v.d0 ? fDia(v.d0) : '—')).join(' · '));
   $('frNota').innerHTML = (juntas ? vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmt(minC(v.mejor), 1)} min por contacto). `).join('') : '') +
-    '% contactación = contactos ÷ llamadas de la franja (contactos + ilocalizados; las exclusiones no cuentan). ' +
+    '% contactación = contactos de la franja ÷ gestores logados en la franja (Total Time de la franja ÷ 30 min). ' +
     'Min. por contacto = suma del Total Time de los gestores en la franja ÷ contactos de la franja; el tiempo es de todos los gestores, por eso solo se calcula con las campañas juntas. ' +
     'Solo cuentan los días con conexiones y las instalaciones de la BBDD elegida.' +
     (frModo === 'comp' ? ' Los dos días usan la misma escala para poder compararlos.' : '');
