@@ -11,16 +11,16 @@ export function clasificar(key4) {
   return 'contacto';
 }
 
-// Upsell: las key4 son otras. Exclusión: key3 V_EXC008…V_EXC011 o las key4 de RBE.
-// No contacto: key3 V_ILO002, key4txt de ilocalizado o key4 MS_ILO1…MS_ILO8. El resto, contacto.
-// Sin key4txt ni key3 (commlogs antiguos) se clasifica como en RBE.
-export const EXCLUSION_UP = ['V_EXC008', 'V_EXC009', 'V_EXC010', 'V_EXC011'];
-export const NO_CONTACTO_UP = ['V_ILO002'];
+// Upsell: las key4 son otras. Exclusión: key3 V_EXC… o las key4 de RBE.
+// No contacto: key3 V_ILO…, key4txt de ilocalizado o key4 MS_ILO1…MS_ILO8. El resto, contacto.
+// Sin key3, key4 ni key4txt no es una llamada: se ignora. Con solo key4 (commlogs antiguos), como en RBE.
 export function clasificarUpsell(key4, txt, key3) {
   const k = String(key4 ?? '').trim().toUpperCase(), k3 = String(key3 ?? '').trim().toUpperCase();
-  if (EXCLUSION.includes(k) || EXCLUSION_UP.includes(k3)) return 'exclusion';
-  if (NO_CONTACTO_UP.includes(k3) || /ilocaliz/i.test(String(txt ?? '')) || /^MS_ILO/.test(k)) return 'no_contacto';
-  return String(txt ?? '').trim() || k3 ? 'contacto' : clasificar(k);
+  const t = String(txt ?? '').trim();
+  if (!k && !t && !k3) return 'ignorar';
+  if (EXCLUSION.includes(k) || /^V_EXC/.test(k3)) return 'exclusion';
+  if (/^V_ILO/.test(k3) || /ilocaliz/i.test(t) || /^MS_ILO/.test(k)) return 'no_contacto';
+  return t || k3 ? 'contacto' : clasificar(k);
 }
 
 // En commlogs ins_no viene con ceros a la izquierda (030567) y en la BBDD no (30567).
@@ -87,11 +87,13 @@ export function calcular(bbddIds, commlogs, desde, hasta, desdePorId) {
     if (!c.fecha) continue;
     const dia = isoDia(c.fecha);
     if (dia < desde || dia > hasta) continue;
+    const tipo = c.tipo || clasificar(c.key4);
+    if (tipo === 'ignorar') continue;
     const it = inst.get(normId(c.id));
     if (!it) { logsFueraBbdd++; continue; }
     if (dia < it.desde) continue;
     logsEnRango++;
-    it.logs.push({ fecha: c.fecha, dia, tipo: c.tipo || clasificar(c.key4), key4: c.key4 });
+    it.logs.push({ fecha: c.fecha, dia, tipo, key4: c.key4 });
   }
 
   const detalle = [];
@@ -196,4 +198,40 @@ export function delDia(bbddIds, commlogs, dia, desdePorId) {
     pctSobreBbdd: s.gestionables ? (100 * s.contactadas) / s.gestionables : 0,
     llamadasPorInst: instLlamadas ? s.totalIntentos / instLlamadas : 0,
   };
+}
+
+// Franja de media hora ('HH:MM' de inicio) para unos minutos desde las 00:00.
+export function franjaDe(min) {
+  const m = Math.floor(min / 30) * 30;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Productividad por franja de media hora: tiempo conectado de los gestores (suma del
+ * Total Time) frente a los commlogs y contactos de las instalaciones de la BBDD.
+ * Solo cuentan los días del rango que tienen conexiones.
+ * @param campanas   {campaña: [instalaciones]}
+ * @param commlogs   [{id, fecha: Date, key4, tipo?}]
+ * @param conexiones {'AAAA-MM-DD': {'HH:MM': segundos}}
+ */
+export function porFranja(campanas, commlogs, conexiones, desde, hasta) {
+  const campDe = new Map();
+  for (const [c, ids] of Object.entries(campanas)) {
+    for (const raw of ids) { const id = normId(raw); if (!campDe.has(id)) campDe.set(id, c); }
+  }
+  const dias = Object.keys(conexiones).filter((d) => d >= desde && d <= hasta).sort();
+  const enDias = new Set(dias);
+  const fr = {};
+  const fila = (f) => (fr[f] ||= { franja: f, segundos: 0, commlogs: 0, contactos: 0, porCamp: {} });
+  for (const d of dias) for (const [f, seg] of Object.entries(conexiones[d])) fila(f).segundos += seg;
+  for (const c of commlogs) {
+    if (!c.fecha || !enDias.has(isoDia(c.fecha))) continue;
+    const camp = campDe.get(normId(c.id));
+    const tipo = c.tipo || clasificar(c.key4);
+    if (!camp || tipo === 'ignorar') continue;
+    const r = fila(franjaDe(c.fecha.getHours() * 60 + c.fecha.getMinutes()));
+    r.commlogs++;
+    if (tipo === 'contacto') { r.contactos++; r.porCamp[camp] = (r.porCamp[camp] || 0) + 1; }
+  }
+  return { dias, franjas: Object.values(fr).sort((a, b) => (a.franja < b.franja ? -1 : 1)) };
 }

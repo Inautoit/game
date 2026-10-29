@@ -1,4 +1,4 @@
-import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell } from './calc.js';
+import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell, porFranja, franjaDe } from './calc.js';
 import { leerColumnasXlsx } from './xlsxstream.js';
 
 const $ = (id) => document.getElementById(id);
@@ -265,12 +265,13 @@ $('fBbdd').addEventListener('change', async (e) => {
   }
 });
 
-// Access (.accdb/.mdb): tiene muchas tablas; se elige una, su columna de instalación
-// y, si se quiere, una columna que separe campañas. Se lee en el navegador.
-let accDb = null, accNombre = '', cargaAcc = null;
+// Conexiones de los gestores (Access, tabla «BBDD agent 30 minutos»): se suma el Total Time
+// por día y franja de media hora y solo se guarda esa suma. El Access es un acumulado del año:
+// cada subida sustituye los días que trae y deja el resto.
+let accDb = null, conexAcc = null;
 if (ESP === 'up') $('cardAccess').classList.remove('hidden');
 $('fAccess').addEventListener('change', (e) => {
-  cargaAcc = null;
+  conexAcc = null;
   $('btnGuardarAcc').disabled = true;
   $('accBox').classList.add('hidden');
   if (e.target.files[0]) leerAccess(e.target.files[0]);
@@ -287,20 +288,17 @@ async function leerAccess(f) {
     const buf = await f.arrayBuffer();
     await paso('2/3 · Abriendo el Access…');
     accDb = new MDBReader(Buffer.from(buf));
-    accNombre = f.name;
     await paso('3/3 · Buscando las tablas…');
     // Solo los nombres: contar las filas de todas las tablas es lento en un Access grande.
-    const tablas = accDb.getTableNames().map((n) => ({ n }));
+    const tablas = accDb.getTableNames();
     if (!tablas.length) throw new Error('el Access no tiene tablas (las consultas no se pueden leer: guárdala como tabla)');
-    $('accTabla').innerHTML = '<option value="">— Elige la BBDD —</option>' +
-      tablas.map((t) => `<option value="${escapeHtml(t.n)}">${escapeHtml(t.n)}</option>`).join('');
-    $('accCol').innerHTML = $('accCamp').innerHTML = '';
+    $('accTabla').innerHTML = '<option value="">— Elige la tabla —</option>' +
+      tablas.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
     $('accBox').classList.remove('hidden');
-    $('stAcc').textContent = `${tablas.length} tablas en ${f.name}. Elige la que es la BBDD.`;
-    // La BBDD de Upsell es la tabla «BBDD agent 30 minutos»: si está, se elige sola.
-    const fija = tablas.find((t) => /agent.*30\s*min/i.test(t.n));
+    $('stAcc').textContent = `${tablas.length} tablas en ${f.name}. Elige la de las conexiones de los gestores.`;
+    const fija = tablas.find((n) => /agent.*30\s*min/i.test(n));
     if (fija) {
-      $('accTabla').value = fija.n;
+      $('accTabla').value = fija;
       $('accTabla').dispatchEvent(new Event('change'));
     }
   } catch (err) {
@@ -308,64 +306,154 @@ async function leerAccess(f) {
     $('stAcc').textContent = 'Error leyendo el Access: ' + err.message;
   }
 }
+
+// El Access devuelve las fechas en UTC con la hora de reloj; las horas sueltas van sobre el 30/12/1899.
+const EPOCH_ACC = Date.UTC(1899, 11, 30);
+function diaAcc(v) {
+  if (v instanceof Date) return isNaN(v) ? '' : v.toISOString().slice(0, 10);
+  if (typeof v === 'number') return new Date(EPOCH_ACC + Math.round(v * 86400000)).toISOString().slice(0, 10);
+  const d = parseFecha(v);
+  return d ? isoDia(d) : '';
+}
+// Minutos desde las 00:00 de la franja (o de una fecha con hora).
+function minAcc(v) {
+  if (v instanceof Date) return isNaN(v) ? null : v.getUTCHours() * 60 + v.getUTCMinutes();
+  if (typeof v === 'number') return v > 24 || v < 1 ? Math.round((v % 1) * 1440) % 1440 : Math.round(v * 60);
+  const m = String(v ?? '').match(/(\d{1,2}):(\d{2})/);
+  return m ? +m[1] * 60 + +m[2] : null;
+}
+// Segundos del Total Time: hora (00:25:30), texto hh:mm:ss / mm:ss o número en la unidad elegida.
+const UNIDADES = { s: 1, min: 60, h: 3600, d: 86400 };
+function segAcc(v, uni) {
+  if (v == null || v === '') return 0;
+  if (v instanceof Date) {
+    const s = (v.getTime() - EPOCH_ACC) / 1000;
+    return s >= 0 && s < 86400 ? s : v.getUTCHours() * 3600 + v.getUTCMinutes() * 60 + v.getUTCSeconds();
+  }
+  if (typeof v === 'string') {
+    const m = v.match(/^\s*(\d+):(\d{2})(?::(\d{2}))?/);
+    if (m) return m[3] != null ? +m[1] * 3600 + +m[2] * 60 + +m[3] : +m[1] * 60 + +m[2];
+    v = Number(v.replace(',', '.'));
+  }
+  return Number.isFinite(v) && v > 0 ? v * UNIDADES[uni] : 0;
+}
+
 $('accTabla').addEventListener('change', () => {
-  cargaAcc = null;
-  $('btnGuardarAcc').disabled = true;
   const n = $('accTabla').value;
   if (!accDb || !n) return;
   const cols = accDb.getTable(n).getColumnNames();
-  const guess = cols.find((c) => /numero_de_instalacion/i.test(c)) || cols.find((c) => P_ID.some((p) => p.test(c.trim())));
+  const busca = (re, no) => cols.find((c) => re.test(c) && !(no && no.test(c))) || '';
+  const tt = busca(/total.?time|tiempo.?total/i);
+  const dia = busca(/fecha|date|d[ií]a\b|day/i, /total/i);
+  const hora = busca(/franja|interval|hora|hour|slot|tramo|periodo|time/i, /total/i) || dia;
   const ops = (sel) => cols.map((c) => `<option value="${escapeHtml(c)}"${c === sel ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
-  $('accCol').innerHTML = ops(guess);
-  $('accCamp').innerHTML = '<option value="">(toda la tabla es una campaña)</option>' + ops(null);
+  $('accDia').innerHTML = ops(dia);
+  $('accHora').innerHTML = ops(hora);
+  $('accTT').innerHTML = ops(tt);
   prepararAccess();
 });
-$('accCol').addEventListener('change', prepararAccess);
-$('accCamp').addEventListener('change', prepararAccess);
+for (const id of ['accDia', 'accHora', 'accTT', 'accUni']) $(id).addEventListener('change', prepararAccess);
 function prepararAccess() {
-  cargaAcc = null;
+  conexAcc = null;
   $('btnGuardarAcc').disabled = true;
-  const n = $('accTabla').value, col = $('accCol').value, cc = $('accCamp').value;
-  if (!accDb || !n || !col) return;
+  const n = $('accTabla').value, cd = $('accDia').value, ch = $('accHora').value, ct = $('accTT').value;
+  if (!accDb || !n || !cd || !ch || !ct) return;
   $('stAcc').textContent = `Leyendo la tabla ${n}…`;
   try {
-    const filas = accDb.getTable(n).getData({ columns: cc ? [col, cc] : [col] });
-    const porCamp = {};
-    for (const r of filas) {
-      const v = String(r[col] ?? '').trim().replace(/\.0+$/, '');
-      if (v) (porCamp[cc ? String(r[cc] ?? '').trim() || '(sin campaña)' : n] ||= new Set()).add(v);
+    const filas = accDb.getTable(n).getData({ columns: [...new Set([cd, ch, ct])] });
+    // Unidad automática para un Total Time numérico: en una franja de 30 min un gestor suma como mucho 1.800 s.
+    let uni = $('accUni').value;
+    if (uni === 'auto') {
+      const nums = filas.map((r) => r[ct]).filter((v) => typeof v === 'number');
+      const max = nums.length ? Math.max(...nums.slice(0, 50000)) : 0;
+      uni = max <= 1 ? 'd' : max <= 60 ? 'min' : 's';
     }
-    const camps = Object.keys(porCamp);
-    if (!camps.length) throw new Error(`la columna ${col} está vacía`);
-    if (camps.length > 40) throw new Error(`la columna ${cc} tiene ${fmt(camps.length)} valores distintos: no parece una columna de campaña`);
-    cargaAcc = Object.fromEntries(camps.map((c) => [c, [...porCamp[c]]]));
-    const mes = mesDeNombre(n) || mesDeNombre(accNombre);
-    if (mes) $('mesAcc').value = mes;
-    $('stAcc').textContent = Object.entries(cargaAcc).map(([c, v]) => `${c}: ${fmt(v.length)}`).join(' · ') +
-      (mes ? '' : ' — no detecto el mes, elígelo a mano');
+    const dias = {};
+    let malas = 0;
+    for (const r of filas) {
+      const d = diaAcc(r[cd]), m = minAcc(r[ch]), seg = segAcc(r[ct], uni);
+      if (!d || m == null) { malas++; continue; }
+      if (!seg) continue;
+      const f = franjaDe(m);
+      (dias[d] ||= {})[f] = ((dias[d] ||= {})[f] || 0) + seg;
+    }
+    const lista = Object.keys(dias).sort();
+    if (!lista.length) throw new Error(`no saco ningún día con tiempo de las columnas elegidas (${fmt(malas)} filas sin día u hora válidos)`);
+    conexAcc = dias;
+    const tot = lista.reduce((s, d) => s + Object.values(dias[d]).reduce((a, b) => a + b, 0), 0);
+    const porFr = {};
+    for (const d of lista) for (const [f, seg] of Object.entries(dias[d])) porFr[f] = (porFr[f] || 0) + seg;
+    const [fPunta, sPunta] = Object.entries(porFr).sort((a, b) => b[1] - a[1])[0];
+    const nomUni = { s: 'segundos', min: 'minutos', h: 'horas', d: 'fracción de día' }[uni];
+    $('stAcc').textContent = `${fmt(lista.length)} días (${fDia(lista[0])} – ${fDia(lista.at(-1))}) · ${fmt(tot / 3600, 1)} h conectadas` +
+      ` (${fmt(tot / 3600 / lista.length, 1)} h al día). Franja con más horas: ${fPunta} con ${fmt(sPunta / 1800 / lista.length, 1)} gestores de media.` +
+      (typeof filas[0]?.[ct] === 'number' ? ` Total Time leído en ${nomUni}: si las horas no cuadran, cambia la unidad.` : '') +
+      (malas ? ` (${fmt(malas)} filas sin día u hora ignoradas)` : '');
     $('btnGuardarAcc').disabled = false;
   } catch (err) {
     $('stAcc').textContent = 'Error leyendo la tabla: ' + err.message;
   }
 }
 $('btnGuardarAcc').addEventListener('click', async () => {
-  const mes = $('mesAcc').value, prog = $('progCarga').value;
-  if (!cargaAcc) return;
-  if (!mes) { $('stAcc').textContent = 'Elige el mes de la BBDD.'; return; }
+  if (!conexAcc) return;
   $('btnGuardarAcc').disabled = true;
-  $('stAcc').textContent = 'Guardando…';
   try {
-    delete cacheBbdd[prog + '|' + mes];
-    await api(urlBbdd('mes=' + mes, prog), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mes, campanas: cargaAcc }) });
-    $('stAcc').textContent = `Guardada la BBDD de ${nombreMes(mes)} (${$('accTabla').value}).`;
-    cargaAcc = null;
-    if (prog === PROG) await cargarIndice(mes); else pintarDatos();
+    const porMes = {};
+    for (const [d, fr] of Object.entries(conexAcc)) (porMes[d.slice(0, 7)] ||= {})[d] = fr;
+    const meses = Object.keys(porMes).sort();
+    for (const [i, m] of meses.entries()) {
+      $('stAcc').textContent = `Guardando ${nombreMes(m)} (${i + 1}/${meses.length})…`;
+      await api('/api/conexiones?mes=' + m, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dias: porMes[m] }) });
+      delete cacheConex[m];
+    }
+    $('stAcc').textContent = `Guardadas las conexiones de ${meses.length} ${meses.length === 1 ? 'mes' : 'meses'} (${nombreMes(meses[0])} – ${nombreMes(meses.at(-1))}).`;
+    conexAcc = null;
+    recalcular();
   } catch (err) {
     $('stAcc').textContent = 'Error guardando: ' + err.message;
     $('btnGuardarAcc').disabled = false;
   }
 });
+
+// ---------- productividad por franja (Upsell) ----------
+const cacheConex = {};
+const conexDeMes = (m) => (cacheConex[m] ||= api('/api/conexiones?mes=' + m).catch(() => ({})));
+async function pintarFranjas(desde, hasta, logs) {
+  const conex = Object.assign({}, ...(await Promise.all(mesesEntre(desde, hasta).map(conexDeMes))));
+  const { dias, franjas } = porFranja(bbdd.campanas, logs, conex, desde, hasta);
+  const camps = Object.keys(bbdd.campanas);
+  $('frTit').classList.remove('hidden');
+  $('frCard').classList.remove('hidden');
+  if (!dias.length) {
+    $('tablaFr').innerHTML = '';
+    $('stFr').textContent = '';
+    $('frNota').innerHTML = 'No hay conexiones de gestores para estas fechas. Súbelas desde el Access en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a>.';
+    return;
+  }
+  const tramo = (fr) => { const [hh, mm] = fr.split(':').map(Number); const fin = franjaDe(hh * 60 + mm + 30); return `${fr}–${fin === '00:00' ? '24:00' : fin}`; };
+  const totSeg = franjas.reduce((s, f) => s + f.segundos, 0);
+  const conDatos = franjas.filter((f) => f.segundos >= totSeg * 0.02 && f.contactos);
+  const mejor = conDatos.sort((a, b) => a.segundos / a.contactos - b.segundos / b.contactos)[0];
+  const filas = franjas.map((f) => {
+    const h = f.segundos / 3600;
+    const minC = f.contactos && f.segundos ? f.segundos / 60 / f.contactos : null;
+    const top = f === mejor;
+    return `<tr${top ? ' class="sel"' : ''}><td>${top ? '★ ' : ''}${tramo(f.franja)}</td>
+      <td class="n">${fmt(h, 1)}</td><td class="n">${fmt(f.segundos / 1800 / dias.length, 1)}</td>
+      <td class="n">${fmt(f.commlogs)}</td><td class="n">${fmt(f.contactos)}</td>
+      ${camps.map((c) => `<td class="n">${fmt(f.porCamp[c] || 0)}</td>`).join('')}
+      <td class="n"><b>${minC == null ? '—' : fmt(minC, 1)}</b></td><td class="n">${h && f.contactos ? fmt(f.contactos / h, 1) : '—'}</td></tr>`;
+  }).join('');
+  $('tablaFr').innerHTML = `<thead><tr><th>Franja</th><th class="n">Horas conectadas</th><th class="n">Gestores de media</th>
+    <th class="n">Commlogs</th><th class="n">Contactos</th>${camps.map((c) => `<th class="n">Contactos ${escapeHtml(c)}</th>`).join('')}
+    <th class="n">Min. por contacto</th><th class="n">Contactos por hora</th></tr></thead><tbody>${filas}</tbody>`;
+  $('stFr').textContent = `${fmt(dias.length)} días con conexiones (${fDia(dias[0])} – ${fDia(dias.at(-1))})`;
+  $('frNota').innerHTML = (mejor ? `<b>Franja más productiva: ${tramo(mejor.franja)}</b>, con ${fmt(mejor.segundos / 60 / mejor.contactos, 1)} min conectados por contacto. ` : '') +
+    'Min. por contacto = suma del Total Time de los gestores en la franja ÷ commlogs de contacto de las instalaciones de la BBDD en esa franja. ' +
+    'Las horas son de todos los gestores (no se separan por campaña); solo cuentan los días que tienen conexiones. ' +
+    'La más productiva es la que necesita menos minutos por contacto, entre las franjas con al menos un 2 % de las horas.';
+}
 
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
 
@@ -437,8 +525,8 @@ cargarIndice();
 const cacheLogs = {};
 if (ESP === 'up') {
   $('gContacto').textContent = 'Gestionables con al menos un contacto válido (todo lo que no sea ilocalizado ni exclusión). Contactación = contactadas / gestionables.';
-  $('gIloc').textContent = 'Gestionables con intentos pero ningún contacto válido todavía (solo commlogs de ilocalizado: key3 V_ILO002 o key4txt de ilocalizado).';
-  $('pie').textContent = 'Clasificación Upsell · Exclusión: key3 V_EXC008, V_EXC009, V_EXC010, V_EXC011 y key4 R_NOU_02, R_NOU_03, R_NOU_04 (como en RBE) · No contacto: key3 V_ILO002 o key4txt de ilocalizado · Contacto válido: resto. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.';
+  $('gIloc').textContent = 'Gestionables con intentos pero ningún contacto válido todavía (solo commlogs de ilocalizado: key3 V_ILO… o key4txt de ilocalizado).';
+  $('pie').textContent = 'Clasificación Upsell · Exclusión: key3 V_EXC… y key4 R_NOU_02, R_NOU_03, R_NOU_04 (como en RBE) · No contacto: key3 V_ILO… o key4txt de ilocalizado · Contacto válido: resto · Los commlogs sin key3, key4 ni key4txt no cuentan. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.';
 }
 const aLog = ([id, ts, key4, txt, key3]) =>
   ({ id, fecha: parseFecha(ts), key4, tipo: ESP === 'up' ? clasificarUpsell(key4, txt, key3) : undefined });
@@ -689,6 +777,7 @@ async function recalcular() {
   $('stCalc').textContent = `BBDD ${nombreBbdd(bbdd.mes)} · commlogs del ${f(desde)} al ${f(hasta)}`;
   $('res').classList.remove('hidden');
   pintarCampana();
+  if (ESP === 'up') pintarFranjas(desde, hasta, logs);
 }
 $('btnCalc').addEventListener('click', recalcular);
 

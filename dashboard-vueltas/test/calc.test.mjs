@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell } from '../public/calc.js';
+import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell, porFranja, franjaDe } from '../public/calc.js';
 
 const d = (s) => parseFecha(s);
 const logs = [
@@ -62,6 +62,25 @@ assert.equal(clasificarUpsell('V_REF002', 'Referido No'), 'contacto');
 assert.equal(clasificarUpsell('', '', 'V_ILO002'), 'no_contacto');
 assert.equal(clasificarUpsell('', '', 'V_EXC010'), 'exclusion');
 assert.equal(clasificarUpsell('', '', 'V_OTRO01'), 'contacto');
+assert.equal(clasificarUpsell('', '', 'V_ILO001'), 'no_contacto');
+assert.equal(clasificarUpsell('', '', 'V_EXC004'), 'exclusion');
+assert.equal(clasificarUpsell('', '', ''), 'ignorar');
+// Los commlogs vacíos no cuentan como intento
+const rv = calcular(['A'], [{ id: 'A', fecha: d('2026-07-03'), key4: '', tipo: 'ignorar' }], '2026-07-01', '2026-07-31');
+assert.equal(rv.resumen.sinIntentos, 1);
+// Franjas: 10:10 y 10:29 van a la de las 10:00; 10:30 a la siguiente
+assert.equal(franjaDe(10 * 60 + 29), '10:00');
+assert.equal(franjaDe(10 * 60 + 30), '10:30');
+const pf = porFranja({ '4PRO': ['A'], Vencimiento: ['B'] }, [
+  { id: 'A', fecha: d('2026-07-03 10:10'), tipo: 'contacto' },
+  { id: 'B', fecha: d('2026-07-03 10:29'), tipo: 'no_contacto' },
+  { id: 'B', fecha: d('2026-07-03 10:35'), tipo: 'contacto' },
+  { id: 'Z', fecha: d('2026-07-03 10:40'), tipo: 'contacto' }, // fuera de la BBDD
+  { id: 'A', fecha: d('2026-07-04 10:10'), tipo: 'contacto' }, // día sin conexiones
+], { '2026-07-03': { '10:00': 3600, '10:30': 1800 } }, '2026-07-01', '2026-07-31');
+assert.deepEqual(pf.dias, ['2026-07-03']);
+assert.deepEqual(pf.franjas.map((f) => [f.franja, f.segundos, f.commlogs, f.contactos]), [['10:00', 3600, 2, 1], ['10:30', 1800, 1, 1]]);
+assert.equal(pf.franjas[0].porCamp['4PRO'], 1);
 const ru = calcular(['A'], [{ id: 'A', fecha: d('2026-07-03'), key4: 'U1', tipo: 'no_contacto' }], '2026-07-01', '2026-07-31');
 assert.equal(ru.resumen.ilocalizadas, 1);
 console.log('OK');

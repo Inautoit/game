@@ -202,6 +202,12 @@
         <div class="tablewrap"><table id="tablaCamp"></table></div>
       </section>
 
+      <div class="section-title hidden" id="frTit"><h2>Productividad por franja de media hora</h2><span id="stFr"></span></div>
+      <section class="card hidden" id="frCard" style="padding:8px 8px 4px">
+        <div class="tablewrap"><table id="tablaFr"></table></div>
+        <p class="status" id="frNota" style="margin:8px"></p>
+      </section>
+
       <div class="section-title"><h2 id="tituloCamp"></h2></div>
       <div class="hero" id="hero"></div>
       <div class="kpis" id="kpis"></div>
@@ -320,19 +326,20 @@
       <div class="status" id="stSubida" style="margin-top:6px"></div>
     </section>
     <section class="card hidden" id="cardAccess">
-      <h2>BBDD desde Access</h2>
-      <p class="sub">Sube el Access (.accdb o .mdb), elige la tabla que es la BBDD y guárdala. Se lee en tu navegador y solo se guarda el número de instalación.</p>
+      <h2>Conexiones de los gestores (Access)</h2>
+      <p class="sub">Sube el Access (.accdb o .mdb) con la tabla «BBDD agent 30 minutos». Se lee en tu navegador y solo se guarda la suma del Total Time por día y franja de media hora.</p>
       <div class="row">
         <label>Fichero Access <input type="file" id="fAccess" accept=".accdb,.mdb" /></label>
       </div>
       <div class="row hidden" id="accBox" style="margin-top:6px">
-        <label>Tabla (BBDD) <select id="accTabla"></select></label>
-        <label>Columna de instalación <select id="accCol"></select></label>
-        <label>Columna de campaña (opcional) <select id="accCamp"></select></label>
-        <label>Mes de la BBDD <input type="month" id="mesAcc" /></label>
-        <button id="btnGuardarAcc" disabled>Guardar BBDD</button>
+        <label>Tabla <select id="accTabla"></select></label>
+        <label>Columna del día <select id="accDia"></select></label>
+        <label>Columna de la franja / hora <select id="accHora"></select></label>
+        <label>Columna Total Time <select id="accTT"></select></label>
+        <label>Unidad del Total Time <select id="accUni"><option value="auto">Automática</option><option value="s">Segundos</option><option value="min">Minutos</option><option value="h">Horas</option><option value="d">Fracción de día</option></select></label>
+        <button id="btnGuardarAcc" disabled>Guardar conexiones</button>
       </div>
-      <p class="status" style="margin-top:6px">Las consultas de Access no se pueden leer: si la BBDD es una consulta, guárdala como tabla. Guardar sustituye la BBDD de ese mes.</p>
+      <p class="status" style="margin-top:6px">El Access puede ser el acumulado de todo el año: cada subida sustituye los días que trae y deja el resto. Si el Total Time viene como hora (00:25:30) la unidad da igual. Las consultas de Access no se pueden leer: guárdala como tabla.</p>
       <div class="status" id="stAcc"></div>
     </section>
     <section class="card">
