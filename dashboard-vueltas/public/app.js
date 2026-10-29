@@ -504,6 +504,9 @@ async function pintarFranjas(desde, hasta, logs) {
   const meses = frModo === 'acum' ? mesesEntre(rd, rh) : mesesCon;
   const conex = Object.assign({}, ...(await Promise.all(meses.map(conexDeMes))));
   const diasCon = Object.keys(conex).filter((d) => frModo !== 'acum' || (d >= rd && d <= rh)).sort();
+  // Último día con commlogs: por defecto se elige un día que tenga conexiones y commlogs.
+  const ultLog = ((await api(urlLogs()).catch(() => [])).map((i) => i.max).sort().pop() || '').slice(0, 10);
+  const diasBuenos = diasCon.filter((d) => !ultLog || d <= ultLog);
   for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) $(btn).classList.toggle('sec', frModo !== m);
   for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) $(btn).classList.toggle('sec', frCamp !== c);
   for (const [btn, g] of [['frGPct', 'pct'], ['frGCont', 'cont'], ['frGMin', 'min']]) $(btn).classList.toggle('sec', frGraf !== g);
@@ -515,8 +518,9 @@ async function pintarFranjas(desde, hasta, logs) {
   $('frTit').classList.remove('hidden');
   $('frCard').classList.remove('hidden');
   for (const id of ['frDia', 'frDiaB']) if (diasCon.length) { $(id).min = diasCon[0]; $(id).max = diasCon.at(-1); }
-  if (frModo !== 'acum' && !diasCon.includes($('frDia').value)) $('frDia').value = diasCon.at(-1) || '';
-  if (frModo === 'comp' && !diasCon.includes($('frDiaB').value)) $('frDiaB').value = diasCon.at(-2) || diasCon.at(-1) || '';
+  const porDefecto = diasBuenos.length ? diasBuenos : diasCon;
+  if (frModo !== 'acum' && !diasCon.includes($('frDia').value)) $('frDia').value = porDefecto.at(-1) || '';
+  if (frModo === 'comp' && !diasCon.includes($('frDiaB').value)) $('frDiaB').value = porDefecto.at(-2) || porDefecto.at(-1) || '';
   if (!diasCon.length) {
     $('frPaneles').innerHTML = '';
     $('stFr').textContent = '';
@@ -540,7 +544,13 @@ async function pintarFranjas(desde, hasta, logs) {
   const vistas = frModo === 'acum' ? [{ etq: '', d0: rd, d1: rh }]
     : frModo === 'dia' ? [{ etq: '', d0: $('frDia').value, d1: $('frDia').value }]
       : [{ etq: 'Día A', d0: $('frDia').value, d1: $('frDia').value }, { etq: 'Día B', d0: $('frDiaB').value, d1: $('frDiaB').value }];
-  for (const v of vistas) Object.assign(v, porFranja(bbdd.campanas, todosLogs, conex, v.d0 || '9999', v.d1 || '0000'));
+  // En un día suelto se usa la BBDD del mes de ese día (si existe): sus instalaciones son las que se llaman ese día.
+  for (const v of vistas) {
+    const mesDia = frModo !== 'acum' && v.d0 ? v.d0.slice(0, 7) : '';
+    v.bb = mesDia && mesDia !== bbdd.mes && indiceBbdd[mesDia] ? await bbddDe(mesDia).catch(() => bbdd) : bbdd;
+    Object.assign(v, porFranja(v.bb.campanas, todosLogs, conex, v.d0 || '9999', v.d1 || '0000'));
+    v.nLogs = v.franjas.reduce((n, f) => n + f.commlogs, 0);
+  }
   // Mismas franjas (eje X) y misma escala en los dos días para poder compararlos.
   const nombres = [...new Set(vistas.flatMap((v) => v.franjas.filter((f) => f.segundos || f.commlogs).map((f) => f.franja)))].sort();
   for (const v of vistas) {
@@ -554,7 +564,8 @@ async function pintarFranjas(desde, hasta, logs) {
 
   const juntas = camps.length > 1;
   $('frPaneles').innerHTML = vistas.map((v, i) => `<div class="fr-panel">
-      ${v.etq ? `<h3 class="dia">${v.etq} · ${v.d0 ? fDia(v.d0) : '—'}${v.dias.length ? '' : ' · sin conexiones'}</h3>` : ''}
+      ${frModo !== 'acum' ? `<h3 class="dia">${v.etq ? v.etq + ' · ' : ''}${v.d0 ? fDia(v.d0) : '—'} · BBDD ${escapeHtml(nombreBbdd(v.bb.mes))}${v.dias.length ? '' : ' · sin conexiones'}</h3>` : ''}
+      ${v.dias.length && v.nLogs < 30 ? `<p class="status">Ojo: ese día solo hay ${fmt(v.nLogs)} commlogs de instalaciones de esta BBDD${ultLog && v.d1 > ultLog ? ` (los commlogs de Upsell llegan hasta el ${fDia(ultLog)})` : ''}, por eso salen tan pocas franjas.</p>` : ''}
       ${frGraf === 'cont' ? `<h3 class="chart-t">Contactos por franja</h3>
       <div class="leyenda">${series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('')}</div>
       <div class="chart" id="frC1_${i}"></div>` : ''}
