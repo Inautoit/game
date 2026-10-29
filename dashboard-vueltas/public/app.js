@@ -433,6 +433,10 @@ for (const [btn, g] of [['frGPct', 'pct'], ['frGCont', 'cont'], ['frGMin', 'min'
   $(btn).addEventListener('click', () => { frGraf = g; repintarFr(); });
 }
 $('frDia').addEventListener('change', repintarFr);
+$('frDesde').addEventListener('change', repintarFr);
+$('frHasta').addEventListener('change', repintarFr);
+// El rango del acumulado empieza con el del dashboard y luego es independiente.
+let frRangoDash = '';
 $('frDiaB').addEventListener('change', repintarFr);
 addEventListener('resize', () => { clearTimeout(pintarFranjas.t); pintarFranjas.t = setTimeout(repintarFr, 200); });
 
@@ -488,15 +492,24 @@ function graficaFranjas(el, franjas, series, { valor, tooltip, marca, ymax: yfij
 
 async function pintarFranjas(desde, hasta, logs) {
   frArgs = [desde, hasta, logs];
-  // En «un día» y «comparar» se puede elegir cualquier día con conexiones, también fuera del rango.
+  if (frRangoDash !== desde + hasta || !$('frDesde').value || !$('frHasta').value) {
+    frRangoDash = desde + hasta;
+    $('frDesde').value = desde;
+    $('frHasta').value = hasta;
+  }
+  if ($('frDesde').value > $('frHasta').value) $('frHasta').value = $('frDesde').value;
+  const rd = $('frDesde').value, rh = $('frHasta').value;
+  // Se puede elegir cualquier día o rango con conexiones, también fuera del rango del dashboard.
   const mesesCon = (await api('/api/conexiones').catch(() => [])).map((i) => i.mes);
-  const meses = frModo === 'acum' ? mesesEntre(desde, hasta) : mesesCon;
+  const meses = frModo === 'acum' ? mesesEntre(rd, rh) : mesesCon;
   const conex = Object.assign({}, ...(await Promise.all(meses.map(conexDeMes))));
-  const diasCon = Object.keys(conex).filter((d) => frModo !== 'acum' || (d >= desde && d <= hasta)).sort();
+  const diasCon = Object.keys(conex).filter((d) => frModo !== 'acum' || (d >= rd && d <= rh)).sort();
   for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) $(btn).classList.toggle('sec', frModo !== m);
   for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) $(btn).classList.toggle('sec', frCamp !== c);
   for (const [btn, g] of [['frGPct', 'pct'], ['frGCont', 'cont'], ['frGMin', 'min']]) $(btn).classList.toggle('sec', frGraf !== g);
   $('frDiaLbl').classList.toggle('hidden', frModo === 'acum');
+  $('frDesdeLbl').classList.toggle('hidden', frModo !== 'acum');
+  $('frHastaLbl').classList.toggle('hidden', frModo !== 'acum');
   $('frDiaBLbl').classList.toggle('hidden', frModo !== 'comp');
   $('frDiaTxt').textContent = frModo === 'comp' ? 'Día A' : 'Día';
   $('frTit').classList.remove('hidden');
@@ -507,17 +520,16 @@ async function pintarFranjas(desde, hasta, logs) {
   if (!diasCon.length) {
     $('frPaneles').innerHTML = '';
     $('stFr').textContent = '';
-    $('frNota').innerHTML = 'No hay conexiones de gestores para estas fechas. Súbelas desde el Access en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a>.';
+    $('frNota').innerHTML = 'No hay conexiones de gestores para estas fechas. Cambia el rango o súbelas desde el Access en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a>.';
     return;
   }
 
   // Commlogs de los meses que hagan falta para los días elegidos (pueden estar fuera del rango del dashboard).
   let todosLogs = logs;
-  if (frModo !== 'acum') {
-    const faltan = [...new Set([$('frDia').value, $('frDiaB').value].filter(Boolean).map((d) => d.slice(0, 7)))]
-      .filter((m) => !mesesEntre(desde, hasta).includes(m));
-    if (faltan.length) todosLogs = logs.concat(...(await Promise.all(faltan.map(logsParseados))));
-  }
+  const necesarios = frModo === 'acum' ? mesesEntre(rd, rh)
+    : [...new Set([$('frDia').value, $('frDiaB').value].filter(Boolean).map((d) => d.slice(0, 7)))];
+  const faltan = necesarios.filter((m) => !mesesEntre(desde, hasta).includes(m));
+  if (faltan.length) todosLogs = logs.concat(...(await Promise.all(faltan.map(logsParseados))));
   const camps = Object.keys(bbdd.campanas).filter((c) => !frCamp || c === frCamp);
   const series = camps.map((c) => ({ c, nombre: c, color: colorCamp(c, Object.keys(bbdd.campanas).indexOf(c)) }));
   const suma = (f, k) => camps.reduce((s, c) => s + (f.porCamp[c]?.[k] || 0), 0);
@@ -525,7 +537,7 @@ async function pintarFranjas(desde, hasta, logs) {
   const pct = (f) => (llam(f) ? (100 * cont(f)) / llam(f) : null);
   const minC = (f) => (cont(f) && f.segundos ? f.segundos / 60 / cont(f) : null);
 
-  const vistas = frModo === 'acum' ? [{ etq: '', d0: desde, d1: hasta }]
+  const vistas = frModo === 'acum' ? [{ etq: '', d0: rd, d1: rh }]
     : frModo === 'dia' ? [{ etq: '', d0: $('frDia').value, d1: $('frDia').value }]
       : [{ etq: 'Día A', d0: $('frDia').value, d1: $('frDia').value }, { etq: 'Día B', d0: $('frDiaB').value, d1: $('frDiaB').value }];
   for (const v of vistas) Object.assign(v, porFranja(bbdd.campanas, todosLogs, conex, v.d0 || '9999', v.d1 || '0000'));
@@ -587,7 +599,7 @@ async function pintarFranjas(desde, hasta, logs) {
 
   const v0 = vistas[0];
   $('stFr').textContent = (frCamp ? frCamp + ' · ' : '') + (frModo === 'acum'
-    ? `Acumulado de ${fmt(v0.dias.length)} días con conexiones` + (v0.dias.length ? ` (${fDia(v0.dias[0])} – ${fDia(v0.dias.at(-1))})` : '')
+    ? `Acumulado de ${fmt(v0.dias.length)} ${v0.dias.length === 1 ? 'día' : 'días'} con conexiones` + (v0.dias.length ? ` (${fDia(v0.dias[0])} – ${fDia(v0.dias.at(-1))})` : '')
     : vistas.map((v) => (v.etq ? v.etq + ' ' : 'Día ') + (v.d0 ? fDia(v.d0) : '—')).join(' · '));
   $('frNota').innerHTML = (juntas ? vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmt(minC(v.mejor), 1)} min por contacto). `).join('') : '') +
     '% contactación = contactos ÷ llamadas de la franja (contactos + ilocalizados; las exclusiones no cuentan). ' +
