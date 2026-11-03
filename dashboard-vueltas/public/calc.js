@@ -200,6 +200,36 @@ export function delDia(bbddIds, commlogs, dia, desdePorId) {
   };
 }
 
+/**
+ * Lo mismo que sumar delDia() día a día en el rango, en una sola pasada: una instalación
+ * cuenta una vez por cada día que se llamó (y como contactada los días con contacto válido);
+ * los días que tiene una exclusión no cuenta. Contrasta con el contacto único de calcular().
+ */
+export function sumaDiaria(bbddIds, commlogs, desde, hasta, desdePorId) {
+  const ids = new Set();
+  for (const raw of bbddIds) ids.add(normId(raw));
+  const desdeId = new Map(Object.entries(desdePorId || {}).map(([r, d]) => [normId(r), d]));
+  const dias = new Map(); // 'id|día' -> bits: 1 llamada, 2 contacto, 4 exclusión
+  for (const c of commlogs) {
+    if (!c.fecha) continue;
+    const dia = isoDia(c.fecha);
+    if (dia < desde || dia > hasta) continue;
+    const id = normId(c.id);
+    if (!ids.has(id) || dia < (desdeId.get(id) || '')) continue;
+    const tipo = c.tipo || clasificar(c.key4);
+    if (tipo === 'ignorar') continue;
+    const k = id + '|' + dia;
+    dias.set(k, (dias.get(k) || 0) | (tipo === 'exclusion' ? 4 : tipo === 'contacto' ? 3 : 1));
+  }
+  let tratadasDia = 0, contactadasDia = 0;
+  for (const bits of dias.values()) {
+    if (bits & 4) continue;
+    tratadasDia++;
+    if (bits & 2) contactadasDia++;
+  }
+  return { tratadasDia, contactadasDia };
+}
+
 // Franja de media hora ('HH:MM' de inicio) para unos minutos desde las 00:00.
 export function franjaDe(min) {
   const m = Math.floor(min / 30) * 30;

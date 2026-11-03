@@ -1,4 +1,4 @@
-import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell, porFranja, franjaDe } from './calc.js';
+import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria } from './calc.js';
 import { leerColumnasXlsx } from './xlsxstream.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1386,7 +1386,9 @@ async function estadoAl(mes, dia, modo, desdeElegido) {
   }
   const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(desde, hasta).map(logsParseados)]);
   const logs = [].concat(...porMes);
-  for (const [camp, ids] of Object.entries(campanasComp(bb))) datos[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
+  for (const [camp, ids] of Object.entries(campanasComp(bb))) {
+    datos[camp] = { ...calcular(ids, logs, desde, hasta, bb.cargas).resumen, ...sumaDiaria(ids, logs, desde, hasta, bb.cargas) };
+  }
   return (cacheComp[k] = { datos, desde, hasta, recortado: hasta !== dia });
 }
 
@@ -1416,9 +1418,14 @@ const pctDe = (a, b) => (b ? (100 * a) / b : 0);
 // Tratadas = instalaciones gestionables llamadas al menos una vez en el rango.
 const tratadas = (s) => s.contactadas + s.ilocalizadas;
 const METRICAS_ACUM = [
-  ['Tratadas (llamadas al menos una vez en el rango)', tratadas, 0, ''],
-  ['Contactadas', (s) => s.contactadas, 0, ''],
-  ['% contactación sobre tratadas', (s) => pctDe(s.contactadas, tratadas(s)), 1, ' %'],
+  // Contacto único: cada instalación cuenta una vez en todo el rango (desde → día).
+  ['Tratadas únicas (cada instalación una vez en el rango)', tratadas, 0, ''],
+  ['Contactadas únicas (contacto único)', (s) => s.contactadas, 0, ''],
+  ['% contacto único (contactadas únicas / tratadas únicas)', (s) => pctDe(s.contactadas, tratadas(s)), 1, ' %'],
+  // Sumando cada día: como los reportes diarios (una instalación cuenta cada día que se llama).
+  ['Tratadas sumando cada día', (s) => s.tratadasDia, 0, ''],
+  ['Contactadas sumando cada día', (s) => s.contactadasDia, 0, ''],
+  ['% contactación sumando cada día', (s) => pctDe(s.contactadasDia, s.tratadasDia), 1, ' %'],
   ['Nº de vueltas sobre tratadas (intentos / tratadas)', (s) => (tratadas(s) ? s.totalIntentos / tratadas(s) : 0), 2, ''],
   ['Nº de vueltas', (s) => s.mediaIntentos, 2, ''],
   ['Vueltas completas', (s) => s.vueltasCompletas, 0, ''],
@@ -1473,7 +1480,7 @@ async function comparar() {
   for (const [btn, m] of [['btnModoDia', 'dia'], ['btnModoAcum', 'acum']]) $(btn).classList.toggle('sec', modo !== m);
   $('ayudaModo').textContent = modo === 'dia'
     ? 'Día único: solo los commlogs del día elegido, cruzados con la BBDD que elijas.'
-    : 'Situación a ese día: cómo íbamos con esa BBDD hasta ese día (commlogs desde el 15 del mes anterior hasta el día elegido, sin pasar del fin de mes).';
+    : 'Situación a ese día: cómo íbamos con esa BBDD hasta ese día (commlogs desde el 15 del mes anterior hasta el día elegido, sin pasar del fin de mes). «Contacto único» cuenta cada instalación una vez en el rango; «sumando cada día» la cuenta cada día que se llamó, como los reportes diarios. Con «Desde el lunes» el rango es la semana de ese día.';
   // "Commlogs desde" de cada lado (solo modo situación): por defecto la regla de su BBDD;
   // se reinicia al cambiar de BBDD y se puede editar para mirar antes/después de una fecha.
   for (const l of ['A', 'B']) {
@@ -1563,6 +1570,13 @@ for (const l of ['A', 'B']) {
   });
   $('mes' + l).addEventListener('change', comparar);
   $('desde' + l).addEventListener('change', comparar);
+  // Contacto único de la semana: el rango empieza el lunes de la semana de ese día.
+  $('lunes' + l).addEventListener('click', () => {
+    const d = $('dia' + l).value;
+    if (!d) return;
+    $('desde' + l).value = sumarDias(d, -((parseFecha(d).getDay() + 6) % 7));
+    comparar();
+  });
   $('camp' + l).addEventListener('change', () => { store('camp' + l, $('camp' + l).value); comparar(); });
 }
 $('btnCompMes').addEventListener('click', () => { fijarDias('mes'); comparar(); });

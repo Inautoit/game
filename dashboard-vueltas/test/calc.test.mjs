@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell, porFranja, franjaDe } from '../public/calc.js';
+import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria } from '../public/calc.js';
 
 const d = (s) => parseFecha(s);
 const logs = [
@@ -85,4 +85,11 @@ assert.deepEqual(pf.franjas[0].porCamp.Vencimiento, { commlogs: 1, contactos: 0,
 assert.equal(pf.franjas[0].iloc, 1);
 const ru = calcular(['A'], [{ id: 'A', fecha: d('2026-07-03'), key4: 'U1', tipo: 'no_contacto' }], '2026-07-01', '2026-07-31');
 assert.equal(ru.resumen.ilocalizadas, 1);
+// sumaDiaria = suma de delDia día a día
+{
+  const ids = ['A', 'B', 'C', 'D'], dias = ['2026-06-20', '2026-07-01', '2026-07-02', '2026-07-03', '2026-07-04', '2026-07-05'];
+  const sd = sumaDiaria(ids, logs, '2026-06-15', '2026-07-18');
+  const t = dias.reduce((n, x) => n + delDia(ids, logs, x).instLlamadas, 0), c = dias.reduce((n, x) => n + delDia(ids, logs, x).contactadas, 0);
+  assert.deepEqual(sd, { tratadasDia: t, contactadasDia: c });
+}
 console.log('OK');
