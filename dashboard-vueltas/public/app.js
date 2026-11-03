@@ -736,6 +736,116 @@ async function pintarFranjas(desde, hasta, logs) {
     (frModo === 'comp' ? ' Los dos días usan la misma escala para poder compararlos.' : '');
 }
 
+// ---------- reporte de contactación (RBE): el cuadro que se reporta ----------
+// Cada BBDD empieza a llamarse el último lunes del mes anterior; la semana k va de ese lunes + 7·(k-1)
+// al viernes. Dos formas de contar: en base a tratado (suma de cada día, como el reporte diario) y contacto único.
+const REP_FILAS = [
+  ['csin', 'COMPE sin OPC'], ['ccon', 'COMPE con OPC'], ['cmix', 'COMPE con y sin OPC (sin separar)'], ['ctot', 'Total COMPETENCIA', true],
+  ['tcon', 'TMK con OPC'], ['tsin', 'TMK sin OPC'], ['tmix', 'TMK con y sin OPC (sin separar)'], ['ttot', 'Total TMK', true],
+];
+function grupoRep(nombre) {
+  const n = String(nombre).toUpperCase();
+  const mundo = /COMPE/.test(n) && !/TMK/.test(n) ? 'c' : /TMK/.test(n) ? 't' : '';
+  if (!mundo) return '';
+  return mundo + (/(^|[^A-Z])SIN[\s_]*O[PC][PC]/.test(n) ? 'sin' : /(^|[^A-Z])CON[\s_]*O[PC][PC]/.test(n) ? 'con' : 'mix');
+}
+function inicioBbdd(mes) {
+  const [y, m] = mes.split('-').map(Number);
+  const d = new Date(y, m - 1, 0);
+  while (d.getDay() !== 1) d.setDate(d.getDate() - 1);
+  return isoDia(d);
+}
+const leerLs = (k, def) => { try { return localStorage.getItem('vueltas.' + k) ?? def; } catch { return def; } };
+let repModo = leerLs('rep.modo', 'acum'), repTsv = '';
+for (const [btn, m] of [['repAcum', 'acum'], ['repDias', 'dias']]) $(btn).addEventListener('click', () => { repModo = m; store('rep.modo', m); pintarReporte(); });
+$('repSem').value = leerLs('rep.sem', '1');
+$('repN').value = leerLs('rep.n', '5');
+$('repSem').addEventListener('change', () => { store('rep.sem', $('repSem').value); pintarReporte(); });
+$('repN').addEventListener('change', () => { store('rep.n', $('repN').value); pintarReporte(); });
+$('repCopiar').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(repTsv); $('repCopiar').textContent = 'Copiado ✓'; } catch { $('repCopiar').textContent = 'No se pudo copiar'; }
+  setTimeout(() => { $('repCopiar').textContent = 'Copiar para Excel'; }, 2000);
+});
+
+async function pintarReporte() {
+  $('repTit').classList.remove('hidden');
+  $('repCard').classList.remove('hidden');
+  for (const [btn, m] of [['repAcum', 'acum'], ['repDias', 'dias']]) $(btn).classList.toggle('sec', repModo !== m);
+  // BBDD mensuales (sin las adicionales con nombre): por defecto las tres últimas.
+  const meses = Object.keys(indiceBbdd).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort();
+  let elegidos = (leerLs('rep.meses', '') || '').split(',').filter((m) => meses.includes(m));
+  if (!elegidos.length) elegidos = meses.slice(-3);
+  $('repMeses').innerHTML = '<b>BBDD:</b>' + meses.map((m) => `<label style="display:inline-flex; gap:4px; align-items:center; font-weight:400">
+    <input type="checkbox" value="${m}"${elegidos.includes(m) ? ' checked' : ''}> ${escapeHtml(nombreBbdd(m))}</label>`).join('');
+  $('repMeses').querySelectorAll('input').forEach((i) => i.addEventListener('change', () => {
+    store('rep.meses', [...$('repMeses').querySelectorAll('input:checked')].map((x) => x.value).join(','));
+    pintarReporte();
+  }));
+  const k = +$('repSem').value, n = +$('repN').value, ayer = ayerIso();
+  $('repTablas').innerHTML = '<p class="status">Calculando…</p>';
+  const cols = [];
+  for (const mes of elegidos) {
+    const lunes = sumarDias(inicioBbdd(mes), 7 * (k - 1));
+    const dias = Array.from({ length: n }, (_, i) => sumarDias(lunes, i)).filter((d) => d <= ayer);
+    if (!dias.length) { cols.push({ mes, dias, vacio: true }); continue; }
+    const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(dias[0], dias.at(-1)).map(logsParseados)]);
+    const logs = [].concat(...porMes);
+    const grupos = {};
+    for (const [c, ids] of Object.entries(bb.campanas)) {
+      const g = grupoRep(c);
+      if (!g) continue;
+      for (const key of [g, g[0] + 'tot']) (grupos[key] ||= new Set()); 
+      for (const id of ids) { grupos[g].add(id); grupos[g[0] + 'tot'].add(id); }
+    }
+    const res = {};
+    for (const [g, set] of Object.entries(grupos)) {
+      const ids = [...set];
+      const u = calcular(ids, logs, dias[0], dias.at(-1)).resumen, sd = sumaDiaria(ids, logs, dias[0], dias.at(-1));
+      res[g] = {
+        trat: { c: sd.contactadasDia, t: sd.tratadasDia },
+        unico: { c: u.contactadas, t: u.contactadas + u.ilocalizadas },
+        porDia: repModo === 'dias' ? dias.map((d) => { const r = delDia(ids, logs, d); return { c: r.contactadas, t: r.instLlamadas }; }) : null,
+      };
+    }
+    cols.push({ mes, dias, res });
+  }
+  const pc = (x) => (x && x.t ? `${fmt((100 * x.c) / x.t, 1)} %` : '—');
+  const nn = (x) => (x && x.t ? `${fmt(x.c)} / ${fmt(x.t)}` : '');
+  const celda = (x) => (x ? `${pc(x)}${x.t ? `<br><span style="color:var(--muted); font-size:12px">${nn(x)}</span>` : ''}` : 'N/A');
+  const etqCol = (c) => `${escapeHtml(nombreMes(c.mes).replace(/ de \d{4}$/, ''))} · S${k}`;
+  const rango = (c) => (c.dias.length ? `${fDia(c.dias[0]).slice(0, 5)}–${fDia(c.dias.at(-1)).slice(0, 5)}` : 'sin días todavía');
+  const DS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  let html = '', tsv = '';
+  const tabla = (titulo, sub, clave) => {
+    if (repModo === 'acum') {
+      html += `<h3 class="chart-t">${titulo} <small>· ${sub}</small></h3><div class="tablewrap"><table><thead><tr><th>Campaña</th>${cols.map((c) =>
+        `<th class="n">${etqCol(c)}<br><span style="font-weight:400">${rango(c)}</span></th>`).join('')}</tr></thead><tbody>` +
+        REP_FILAS.map(([g, nombre, neg]) => `<tr${neg ? ' style="font-weight:600"' : ''}><td>${nombre}</td>${cols.map((c) =>
+          `<td class="n">${c.vacio ? '—' : celda(c.res[g]?.[clave])}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+      tsv += `${titulo}\nCampaña\t${cols.map((c) => `${etqCol(c)} (${rango(c)})`).join('\t')}\n` +
+        REP_FILAS.map(([g, nombre]) => [nombre, ...cols.map((c) => (c.vacio ? '-' : c.res[g] ? `${pc(c.res[g][clave])} (${nn(c.res[g][clave])})` : 'N/A'))].join('\t')).join('\n') + '\n\n';
+    } else {
+      const dcols = cols.flatMap((c) => c.dias.map((d, i) => ({ c, d, i })));
+      html += `<h3 class="chart-t">${titulo} <small>· ${sub}</small></h3><div class="tablewrap"><table><thead><tr><th>Campaña</th>${dcols.map(({ c, d }) =>
+        `<th class="n">${escapeHtml(nombreMes(c.mes).replace(/ de \d{4}$/, ''))}<br><span style="font-weight:400">${DS[parseFecha(d).getDay()]} ${fDia(d).slice(0, 5)}</span></th>`).join('')}</tr></thead><tbody>` +
+        REP_FILAS.map(([g, nombre, neg]) => `<tr${neg ? ' style="font-weight:600"' : ''}><td>${nombre}</td>${dcols.map(({ c, i }) =>
+          `<td class="n">${celda(c.res[g]?.porDia[i])}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+      tsv += `${titulo}\nCampaña\t${dcols.map(({ c, d }) => `${nombreMes(c.mes).replace(/ de \d{4}$/, '')} ${DS[parseFecha(d).getDay()]} ${fDia(d).slice(0, 5)}`).join('\t')}\n` +
+        REP_FILAS.map(([g, nombre]) => [nombre, ...dcols.map(({ c, i }) => (c.res[g] ? `${pc(c.res[g].porDia[i])} (${nn(c.res[g].porDia[i])})` : 'N/A'))].join('\t')).join('\n') + '\n\n';
+    }
+  };
+  if (repModo === 'acum') {
+    tabla('Contacto en base a tratado (intentos)', 'una instalación cuenta cada día que se llama, como el cuadro diario', 'trat');
+    tabla('Contacto único', 'cada instalación cuenta una sola vez en esos días', 'unico');
+  } else {
+    tabla('Contactación por día', 'en un solo día el contacto en base a tratado y el contacto único coinciden', 'trat');
+  }
+  $('repTablas').innerHTML = html;
+  repTsv = tsv.trim();
+  $('repNota').textContent = 'Cada BBDD empieza el último lunes del mes anterior (la BBDD de noviembre, el 26/10). Solo días de lunes a viernes y hasta ayer. ' +
+    '«Sin separar» son las BBDD que no distinguen con/sin OPC (p. ej. septiembre y octubre); TMK incluye TMK PILOTO. % = contactadas / tratadas.';
+}
+
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
 
 $('btnGuardar').addEventListener('click', async () => {
@@ -1059,6 +1169,7 @@ async function recalcular() {
   $('res').classList.remove('hidden');
   pintarCampana();
   if (ESP === 'up') pintarFranjas(desde, hasta, logs);
+  if (!ESP && !PROG) pintarReporte();
 }
 $('btnCalc').addEventListener('click', recalcular);
 

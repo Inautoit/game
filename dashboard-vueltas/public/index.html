@@ -238,6 +238,19 @@
       <div class="section-title"><h2>¿En qué intento contactamos?</h2><span>Instalaciones contactadas según el intento del primer contacto válido</span></div>
       <div class="hero" id="porIntento"></div>
 
+      <div class="section-title hidden" id="repTit"><h2>Reporte de contactación</h2><span>Primeros días de cada BBDD, como el cuadro que reportamos.</span></div>
+      <section class="card hidden" id="repCard">
+        <div class="row" style="align-items:flex-end">
+          <div class="seg"><button id="repAcum">Acumulado</button><button class="sec" id="repDias">Por días</button></div>
+          <label>Semana <select id="repSem"><option value="1">S1</option><option value="2">S2</option><option value="3">S3</option><option value="4">S4</option><option value="5">S5</option></select></label>
+          <label>Días <select id="repN"><option value="1">Solo el lunes</option><option value="2">Hasta el martes</option><option value="3">Hasta el miércoles</option><option value="4">Hasta el jueves</option><option value="5" selected>Semana entera (lun–vie)</option></select></label>
+          <button class="sec" id="repCopiar" style="margin-left:auto">Copiar para Excel</button>
+        </div>
+        <div id="repMeses" style="margin:8px 0 4px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px 14px"></div>
+        <div id="repTablas"></div>
+        <p class="status" id="repNota" style="margin-top:8px"></p>
+      </section>
+
       <div class="section-title"><h2>Comparador de días</h2><span>Compara dos días, también de meses distintos.</span></div>
       <section class="card">
         <div class="row" style="margin-bottom:6px">
