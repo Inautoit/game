@@ -756,7 +756,7 @@ function inicioBbdd(mes) {
   return isoDia(d);
 }
 const leerLs = (k, def) => { try { return localStorage.getItem('vueltas.' + k) ?? def; } catch { return def; } };
-let repModo = leerLs('rep.modo', 'acum'), repTsv = '';
+let repModo = leerLs('rep.modo', 'acum'), repBloques = [];
 // Qué enseña cada casilla: el % (por defecto) o el N (contactadas / tratadas).
 let repVer = leerLs('rep.ver', 'pct');
 $('repVer').addEventListener('click', () => { repVer = repVer === 'pct' ? 'n' : 'pct'; store('rep.ver', repVer); pintarReporte(); });
@@ -766,7 +766,36 @@ $('repN').value = leerLs('rep.n', '5');
 $('repSem').addEventListener('change', () => { store('rep.sem', $('repSem').value); pintarReporte(); });
 $('repN').addEventListener('change', () => { store('rep.n', $('repN').value); pintarReporte(); });
 $('repCopiar').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText(repTsv); $('repCopiar').textContent = 'Copiado ✓'; } catch { $('repCopiar').textContent = 'No se pudo copiar'; }
+  // Se copia como tabla HTML (Excel la pega celda a celda, con los % como número) y como texto con tabuladores.
+  const pctTxt = (v) => fmt(100 * v, 1) + '%';
+  const tsv = repBloques.map((b) => [b.titulo, b.cab.join('\t'), ...b.filas.map((f) => f.celdas.map((c) => ('pct' in c ? pctTxt(c.pct) : c.txt)).join('\t'))].join('\n')).join('\n\n');
+  const td = (c, neg) => ('pct' in c
+    ? `<td style="mso-number-format:'0\\.0%';text-align:right${neg ? ';font-weight:bold' : ''}">${pctTxt(c.pct)}</td>`
+    : `<td style="mso-number-format:'\\@'${neg ? ';font-weight:bold' : ''}">${escapeHtml(c.txt)}</td>`);
+  const html = '<html><head><meta charset="utf-8"></head><body>' + repBloques.map((b) => `<table border="1" style="border-collapse:collapse">
+    <tr><td colspan="${b.cab.length}" style="font-weight:bold">${escapeHtml(b.titulo)}</td></tr>
+    <tr>${b.cab.map((h) => `<td style="font-weight:bold;background:#e4002b;color:#ffffff">${escapeHtml(h)}</td>`).join('')}</tr>
+    ${b.filas.map((f) => `<tr>${f.celdas.map((c) => td(c, f.neg)).join('')}</tr>`).join('')}</table><br>`).join('') + '</body></html>';
+  let ok = false;
+  try {
+    if (window.ClipboardItem && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([tsv], { type: 'text/plain' }) })]);
+      ok = true;
+    }
+  } catch {}
+  if (!ok) {
+    // Alternativa para navegadores que no dejan usar el portapapeles: copiar una selección.
+    const div = document.createElement('div');
+    div.style.cssText = 'position:fixed;left:-9999px;top:0';
+    div.innerHTML = html;
+    document.body.appendChild(div);
+    const sel = getSelection(), rango = document.createRange();
+    rango.selectNodeContents(div); sel.removeAllRanges(); sel.addRange(rango);
+    try { ok = document.execCommand('copy'); } catch {}
+    sel.removeAllRanges(); div.remove();
+  }
+  if (!ok) { try { await navigator.clipboard.writeText(tsv); ok = true; } catch {} }
+  $('repCopiar').textContent = ok ? 'Copiado ✓' : 'No se pudo copiar';
   setTimeout(() => { $('repCopiar').textContent = 'Copiar para Excel'; }, 2000);
 });
 
@@ -820,23 +849,27 @@ async function pintarReporte() {
   const etqCol = (c) => `${escapeHtml(nombreMes(c.mes).replace(/ de \d{4}$/, ''))} · S${k}`;
   const rango = (c) => (c.dias.length ? `${fDia(c.dias[0]).slice(0, 5)}–${fDia(c.dias.at(-1)).slice(0, 5)}` : 'sin días todavía');
   const DS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-  let html = '', tsv = '';
+  let html = '';
+  // Lo mismo que se pinta, en bloques para copiar a Excel: {titulo, cab: [...], filas: [[nombre, celda…]]};
+  // celda = {txt} o {pct} (número, para que Excel lo pegue como porcentaje).
+  const bloques = [];
+  const exp = (x) => (!x ? { txt: 'N/A' } : !x.t ? { txt: '—' } : repVer === 'pct' ? { pct: x.c / x.t } : { txt: nn(x) });
   const tabla = (titulo, sub, clave) => {
     if (repModo === 'acum') {
       html += `<h3 class="chart-t">${titulo} <small>· ${sub}</small></h3><div class="tablewrap"><table><thead><tr><th>Campaña</th>${cols.map((c) =>
         `<th class="n">${etqCol(c)}<br><span style="font-weight:400">${rango(c)}</span></th>`).join('')}</tr></thead><tbody>` +
         REP_FILAS.map(([g, nombre, neg]) => `<tr${neg ? ' style="font-weight:600"' : ''}><td>${nombre}</td>${cols.map((c) =>
           `<td class="n">${c.vacio ? '—' : celda(c.res[g]?.[clave])}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
-      tsv += `${titulo}\nCampaña\t${cols.map((c) => `${etqCol(c)} (${rango(c)})`).join('\t')}\n` +
-        REP_FILAS.map(([g, nombre]) => [nombre, ...cols.map((c) => (c.vacio ? '-' : c.res[g] ? val(c.res[g][clave]) : 'N/A'))].join('\t')).join('\n') + '\n\n';
+      bloques.push({ titulo, cab: ['Campaña', ...cols.map((c) => `${nombreMes(c.mes).replace(/ de \d{4}$/, '')} · S${k} (${rango(c)})`)],
+        filas: REP_FILAS.map(([g, nombre, neg]) => ({ neg, celdas: [{ txt: nombre }, ...cols.map((c) => (c.vacio ? { txt: '—' } : exp(c.res[g]?.[clave])))] })) });
     } else {
       const dcols = cols.flatMap((c) => c.dias.map((d, i) => ({ c, d, i })));
       html += `<h3 class="chart-t">${titulo} <small>· ${sub}</small></h3><div class="tablewrap"><table><thead><tr><th>Campaña</th>${dcols.map(({ c, d }) =>
         `<th class="n">${escapeHtml(nombreMes(c.mes).replace(/ de \d{4}$/, ''))}<br><span style="font-weight:400">${DS[parseFecha(d).getDay()]} ${fDia(d).slice(0, 5)}</span></th>`).join('')}</tr></thead><tbody>` +
         REP_FILAS.map(([g, nombre, neg]) => `<tr${neg ? ' style="font-weight:600"' : ''}><td>${nombre}</td>${dcols.map(({ c, i }) =>
           `<td class="n">${celda(c.res[g]?.porDia[i])}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
-      tsv += `${titulo}\nCampaña\t${dcols.map(({ c, d }) => `${nombreMes(c.mes).replace(/ de \d{4}$/, '')} ${DS[parseFecha(d).getDay()]} ${fDia(d).slice(0, 5)}`).join('\t')}\n` +
-        REP_FILAS.map(([g, nombre]) => [nombre, ...dcols.map(({ c, i }) => (c.res[g] ? val(c.res[g].porDia[i]) : 'N/A'))].join('\t')).join('\n') + '\n\n';
+      bloques.push({ titulo, cab: ['Campaña', ...dcols.map(({ c, d }) => `${nombreMes(c.mes).replace(/ de \d{4}$/, '')} ${DS[parseFecha(d).getDay()]} ${fDia(d).slice(0, 5)}`)],
+        filas: REP_FILAS.map(([g, nombre, neg]) => ({ neg, celdas: [{ txt: nombre }, ...dcols.map(({ c, i }) => exp(c.res[g]?.porDia[i]))] })) });
     }
   };
   if (repModo === 'acum') {
@@ -846,7 +879,7 @@ async function pintarReporte() {
     tabla('Contactación por día', 'en un solo día el contacto en base a tratado y el contacto único coinciden', 'trat');
   }
   $('repTablas').innerHTML = html;
-  repTsv = tsv.trim();
+  repBloques = bloques;
   $('repNota').textContent = 'Cada BBDD empieza el último lunes del mes anterior (la BBDD de noviembre, el 26/10). Solo días de lunes a viernes y hasta ayer. ' +
     '«Sin separar» son las BBDD que no distinguen con/sin OPC (p. ej. septiembre y octubre); TMK incluye TMK PILOTO. % = contactadas / tratadas; con «Ver N» se ven contactadas / tratadas.';
 }
