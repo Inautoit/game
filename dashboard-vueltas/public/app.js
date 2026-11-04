@@ -1018,7 +1018,8 @@ async function procesarFicheros(files) {
     }
   }
   const partes = [];
-  if (filas.length) partes.push(await guardarLogs(filas, 'id', 'fecha', 'key4', ''));
+  // RBE también guarda la key3 (si el fichero la trae), solo como información: no cambia la clasificación.
+  if (filas.length) partes.push(await guardarLogs(filas, 'id', 'fecha', 'key4', '', null, 'key3'));
   if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up', 'txt', 'key3'));
   $('stSubida').textContent = 'Listo: ' + partes.join(' · ');
   await cargarIndiceLogs();
