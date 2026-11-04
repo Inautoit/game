@@ -757,6 +757,9 @@ function inicioBbdd(mes) {
 }
 const leerLs = (k, def) => { try { return localStorage.getItem('vueltas.' + k) ?? def; } catch { return def; } };
 let repModo = leerLs('rep.modo', 'acum'), repTsv = '';
+// Qué enseña cada casilla: el % (por defecto) o el N (contactadas / tratadas).
+let repVer = leerLs('rep.ver', 'pct');
+$('repVer').addEventListener('click', () => { repVer = repVer === 'pct' ? 'n' : 'pct'; store('rep.ver', repVer); pintarReporte(); });
 for (const [btn, m] of [['repAcum', 'acum'], ['repDias', 'dias']]) $(btn).addEventListener('click', () => { repModo = m; store('rep.modo', m); pintarReporte(); });
 $('repSem').value = leerLs('rep.sem', '1');
 $('repN').value = leerLs('rep.n', '5');
@@ -771,6 +774,7 @@ async function pintarReporte() {
   $('repTit').classList.remove('hidden');
   $('repCard').classList.remove('hidden');
   for (const [btn, m] of [['repAcum', 'acum'], ['repDias', 'dias']]) $(btn).classList.toggle('sec', repModo !== m);
+  $('repVer').textContent = repVer === 'pct' ? 'Ver N' : 'Ver %';
   // BBDD mensuales (sin las adicionales con nombre): por defecto las tres últimas.
   const meses = Object.keys(indiceBbdd).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort();
   let elegidos = (leerLs('rep.meses', '') || '').split(',').filter((m) => meses.includes(m));
@@ -811,7 +815,8 @@ async function pintarReporte() {
   }
   const pc = (x) => (x && x.t ? `${fmt((100 * x.c) / x.t, 1)} %` : '—');
   const nn = (x) => (x && x.t ? `${fmt(x.c)} / ${fmt(x.t)}` : '');
-  const celda = (x) => (x ? `${pc(x)}${x.t ? `<br><span style="color:var(--muted); font-size:12px">${nn(x)}</span>` : ''}` : 'N/A');
+  const val = (x) => (repVer === 'pct' ? pc(x) : x && x.t ? nn(x) : '—');
+  const celda = (x) => (x ? val(x) : 'N/A');
   const etqCol = (c) => `${escapeHtml(nombreMes(c.mes).replace(/ de \d{4}$/, ''))} · S${k}`;
   const rango = (c) => (c.dias.length ? `${fDia(c.dias[0]).slice(0, 5)}–${fDia(c.dias.at(-1)).slice(0, 5)}` : 'sin días todavía');
   const DS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -823,7 +828,7 @@ async function pintarReporte() {
         REP_FILAS.map(([g, nombre, neg]) => `<tr${neg ? ' style="font-weight:600"' : ''}><td>${nombre}</td>${cols.map((c) =>
           `<td class="n">${c.vacio ? '—' : celda(c.res[g]?.[clave])}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
       tsv += `${titulo}\nCampaña\t${cols.map((c) => `${etqCol(c)} (${rango(c)})`).join('\t')}\n` +
-        REP_FILAS.map(([g, nombre]) => [nombre, ...cols.map((c) => (c.vacio ? '-' : c.res[g] ? `${pc(c.res[g][clave])} (${nn(c.res[g][clave])})` : 'N/A'))].join('\t')).join('\n') + '\n\n';
+        REP_FILAS.map(([g, nombre]) => [nombre, ...cols.map((c) => (c.vacio ? '-' : c.res[g] ? val(c.res[g][clave]) : 'N/A'))].join('\t')).join('\n') + '\n\n';
     } else {
       const dcols = cols.flatMap((c) => c.dias.map((d, i) => ({ c, d, i })));
       html += `<h3 class="chart-t">${titulo} <small>· ${sub}</small></h3><div class="tablewrap"><table><thead><tr><th>Campaña</th>${dcols.map(({ c, d }) =>
@@ -831,7 +836,7 @@ async function pintarReporte() {
         REP_FILAS.map(([g, nombre, neg]) => `<tr${neg ? ' style="font-weight:600"' : ''}><td>${nombre}</td>${dcols.map(({ c, i }) =>
           `<td class="n">${celda(c.res[g]?.porDia[i])}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
       tsv += `${titulo}\nCampaña\t${dcols.map(({ c, d }) => `${nombreMes(c.mes).replace(/ de \d{4}$/, '')} ${DS[parseFecha(d).getDay()]} ${fDia(d).slice(0, 5)}`).join('\t')}\n` +
-        REP_FILAS.map(([g, nombre]) => [nombre, ...dcols.map(({ c, i }) => (c.res[g] ? `${pc(c.res[g].porDia[i])} (${nn(c.res[g].porDia[i])})` : 'N/A'))].join('\t')).join('\n') + '\n\n';
+        REP_FILAS.map(([g, nombre]) => [nombre, ...dcols.map(({ c, i }) => (c.res[g] ? val(c.res[g].porDia[i]) : 'N/A'))].join('\t')).join('\n') + '\n\n';
     }
   };
   if (repModo === 'acum') {
@@ -843,7 +848,7 @@ async function pintarReporte() {
   $('repTablas').innerHTML = html;
   repTsv = tsv.trim();
   $('repNota').textContent = 'Cada BBDD empieza el último lunes del mes anterior (la BBDD de noviembre, el 26/10). Solo días de lunes a viernes y hasta ayer. ' +
-    '«Sin separar» son las BBDD que no distinguen con/sin OPC (p. ej. septiembre y octubre); TMK incluye TMK PILOTO. % = contactadas / tratadas.';
+    '«Sin separar» son las BBDD que no distinguen con/sin OPC (p. ej. septiembre y octubre); TMK incluye TMK PILOTO. % = contactadas / tratadas; con «Ver N» se ven contactadas / tratadas.';
 }
 
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
