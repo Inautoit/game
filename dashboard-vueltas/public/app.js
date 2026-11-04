@@ -804,6 +804,8 @@ async function pintarReporte() {
   $('repCard').classList.remove('hidden');
   for (const [btn, m] of [['repAcum', 'acum'], ['repDias', 'dias']]) $(btn).classList.toggle('sec', repModo !== m);
   $('repVer').textContent = repVer === 'pct' ? 'Ver N' : 'Ver %';
+  // En «Por días» cada casilla lleva el % y el N juntos: el botón solo sirve en el acumulado.
+  $('repVer').classList.toggle('hidden', repModo === 'dias');
   // BBDD mensuales (sin las adicionales con nombre): por defecto las tres últimas.
   const meses = Object.keys(indiceBbdd).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort();
   let elegidos = (leerLs('rep.meses', '') || '').split(',').filter((m) => meses.includes(m));
@@ -844,7 +846,8 @@ async function pintarReporte() {
   }
   const pc = (x) => (x && x.t ? `${fmt((100 * x.c) / x.t, 1)} %` : '—');
   const nn = (x) => (x && x.t ? `${fmt(x.c)} / ${fmt(x.t)}` : '');
-  const val = (x) => (repVer === 'pct' ? pc(x) : x && x.t ? nn(x) : '—');
+  const val = (x) => (repModo === 'dias' ? (x && x.t ? `${pc(x)}<br><span style="color:var(--muted); font-size:12px">${nn(x)}</span>` : '—')
+    : repVer === 'pct' ? pc(x) : x && x.t ? nn(x) : '—');
   const celda = (x) => (x ? val(x) : 'N/A');
   const etqCol = (c) => `${escapeHtml(nombreMes(c.mes).replace(/ de \d{4}$/, ''))} · S${k}`;
   const rango = (c) => (c.dias.length ? `${fDia(c.dias[0]).slice(0, 5)}–${fDia(c.dias.at(-1)).slice(0, 5)}` : 'sin días todavía');
@@ -853,7 +856,8 @@ async function pintarReporte() {
   // Lo mismo que se pinta, en bloques para copiar a Excel: {titulo, cab: [...], filas: [[nombre, celda…]]};
   // celda = {txt} o {pct} (número, para que Excel lo pegue como porcentaje).
   const bloques = [];
-  const exp = (x) => (!x ? { txt: 'N/A' } : !x.t ? { txt: '—' } : repVer === 'pct' ? { pct: x.c / x.t } : { txt: nn(x) });
+  const exp = (x) => (!x ? { txt: 'N/A' } : !x.t ? { txt: '—' } : repModo === 'dias' ? { txt: `${pc(x)} (${nn(x)})` }
+    : repVer === 'pct' ? { pct: x.c / x.t } : { txt: nn(x) });
   const tabla = (titulo, sub, clave) => {
     if (repModo === 'acum') {
       html += `<h3 class="chart-t">${titulo} <small>· ${sub}</small></h3><div class="tablewrap"><table><thead><tr><th>Campaña</th>${cols.map((c) =>
