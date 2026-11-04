@@ -23,6 +23,17 @@ export function clasificarUpsell(key4, txt, key3) {
   return t || k3 ? 'contacto' : clasificar(k);
 }
 
+// Second Attempt: solo cuentan los commlogs con estas key2 (el resto se ignora). De esos,
+// R_ILOC01 y R_ILOC02 son no contacto, R_NOU_04 exclusión y todo lo demás contacto válido.
+export const KEY2_SA = [...Array.from({ length: 16 }, (_, i) => 'R_TLC' + String(i + 1).padStart(3, '0')), 'R_REFE09'];
+export function clasificarSA(key4, key2) {
+  if (!KEY2_SA.includes(String(key2 ?? '').trim().toUpperCase())) return 'ignorar';
+  const k = String(key4 ?? '').trim().toUpperCase();
+  if (k === 'R_NOU_04') return 'exclusion';
+  if (k === 'R_ILOC01' || k === 'R_ILOC02') return 'no_contacto';
+  return 'contacto';
+}
+
 // En commlogs ins_no viene con ceros a la izquierda (030567) y en la BBDD no (30567).
 export function normId(v) {
   return String(v ?? '').trim().toUpperCase().replace(/\.0+$/, '').replace(/^0+(?=.)/, '');

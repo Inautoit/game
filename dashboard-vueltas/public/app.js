@@ -1,4 +1,4 @@
-import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria } from './calc.js';
+import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria, clasificarSA } from './calc.js';
 import { leerColumnasXlsx } from './xlsxstream.js';
 
 const $ = (id) => document.getElementById(id);
@@ -919,8 +919,13 @@ if (ESP === 'up') {
   $('gIloc').textContent = 'Gestionables con intentos pero ningún contacto válido todavía (solo commlogs de ilocalizado: key3 V_ILO… o key4txt de ilocalizado).';
   $('pie').textContent = 'Clasificación Upsell · Exclusión: key3 V_EXC… y key4 R_NOU_02, R_NOU_03, R_NOU_04 (como en RBE) · No contacto: key3 V_ILO… o key4txt de ilocalizado · Contacto válido: resto · Los commlogs sin key3, key4 ni key4txt no cuentan. Una instalación con algún commlog de exclusión cuenta como excluida y no suma intentos.';
 }
-const aLog = ([id, ts, key4, txt, key3]) =>
-  ({ id, fecha: parseFecha(ts), key4, tipo: ESP === 'up' ? clasificarUpsell(key4, txt, key3) : undefined });
+// Commlogs guardados: [id, ts, key4] y, si el fichero los traía, key4txt, key3 y key2: [id, ts, key4, txt, key3, key2].
+// Second Attempt solo cuenta los que tienen una de sus key2 (los guardados sin key2 se cuentan como en RBE).
+const aLog = (l) => {
+  const [id, ts, key4, txt, key3, key2] = l;
+  const tipo = ESP === 'up' ? clasificarUpsell(key4, txt, key3) : PROG === 'sa' && l.length >= 6 ? clasificarSA(key4, key2) : undefined;
+  return { id, fecha: parseFecha(ts), key4, tipo };
+};
 let hayLogs = false;
 async function logsDeMes(mes) {
   if (!cacheLogs[mes]) cacheLogs[mes] = api(urlLogs('mes=' + mes)).catch(() => []);
@@ -977,9 +982,10 @@ function mapaCabecera(arr) {
   const key4 = n.findIndex((c) => c === 'key4');
   if (id < 0 || fecha < 0 || key4 < 0) return null;
   const m = { id, fecha, key4 };
-  const txt = n.findIndex((c) => c === 'key4txt'), key3 = n.findIndex((c) => c === 'key3');
+  const txt = n.findIndex((c) => c === 'key4txt'), key3 = n.findIndex((c) => c === 'key3'), key2 = n.findIndex((c) => c === 'key2');
   if (txt >= 0) m.txt = txt;
   if (key3 >= 0) m.key3 = key3;
+  if (key2 >= 0) m.key2 = key2;
   return m;
 }
 
@@ -1019,7 +1025,7 @@ async function procesarFicheros(files) {
   }
   const partes = [];
   // RBE también guarda la key3 (si el fichero la trae), solo como información: no cambia la clasificación.
-  if (filas.length) partes.push(await guardarLogs(filas, 'id', 'fecha', 'key4', '', null, 'key3'));
+  if (filas.length) partes.push(await guardarLogs(filas, 'id', 'fecha', 'key4', '', null, 'key3', filas.some((r) => 'key2' in r) ? 'key2' : null));
   if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up', 'txt', 'key3'));
   $('stSubida').textContent = 'Listo: ' + partes.join(' · ');
   await cargarIndiceLogs();
@@ -1112,8 +1118,8 @@ if (soportaVinculo) {
   getHandle().then((h) => h && sincronizar(h, false)).catch((err) => ($('stSubida').textContent = 'Error: ' + err.message));
 }
 
-// ct, c3: columnas del key4txt y el key3 (solo Upsell, que clasifica con ellos).
-async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null) {
+// ct, c3, c2: columnas del key4txt, la key3 y la key2 (Upsell clasifica con key4txt/key3; Second Attempt, con la key2).
+async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null, c2 = null) {
   const etq = esp === 'up' ? 'Upsell' : 'Winback (RBE)';
   const porMes = {};
   let malas = 0;
@@ -1124,7 +1130,9 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null) {
     const ts = fmtTs(d);
     const l = [id, ts, String(r[ck] ?? '').trim()];
     const txt = ct ? String(r[ct] ?? '').trim() : '', key3 = c3 ? String(r[c3] ?? '').trim() : '';
-    if (key3) l.push(txt, key3);
+    // Con key2 en el fichero se guardan siempre las seis posiciones: así se sabe que el commlog trae key2 (aunque venga vacía).
+    if (c2) l.push(txt, key3, String(r[c2] ?? '').trim());
+    else if (key3) l.push(txt, key3);
     else if (txt) l.push(txt);
     (porMes[ts.slice(0, 7)] ||= []).push(l);
   }
@@ -1146,10 +1154,10 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null) {
     const max = actuales.reduce((m, l) => (l[1] > m ? l[1] : m), '');
     await api(urlLogs(`mes=${mes}&n=${actuales.length}&max=${encodeURIComponent(max)}`, esp), {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(actuales) });
-    if (esp === ESP) { delete cacheLogs[mes]; delete cacheParsed[mes]; }
+    if (esp === ESP) { delete cacheLogs[mes]; for (const k of Object.keys(cacheParsed)) if (k.endsWith('|' + mes)) delete cacheParsed[k]; }
   }
   return `${etq}: ${fmt(filas.length - malas)} commlogs leídos, ${fmt(nuevos)} nuevos guardados` +
-    (completados ? `, ${fmt(completados)} completados con key4txt/key3` : '') +
+    (completados ? `, ${fmt(completados)} completados con key2/key3/key4txt` : '') +
     (malas ? ` (${fmt(malas)} filas sin instalación o fecha ignoradas)` : '');
 }
 
@@ -1304,8 +1312,12 @@ $('btnCsv').addEventListener('click', () => {
 for (const id of ['desde', 'hasta']) $(id).addEventListener('change', () => recalcular());
 
 // ---------- pestañas: Dashboard / Añadir orígenes ----------
+const PIE_RBE = $('pie').textContent;
+const PIE_SA = 'Clasificación Second Attempt · Solo cuentan los commlogs con key2 R_TLC001 a R_TLC016 o R_REFE09 (el resto no cuenta) · ' +
+  'No contacto: R_ILOC01, R_ILOC02 · Exclusión: R_NOU_04 · Contacto válido: resto. Los commlogs subidos sin key2 se cuentan como en RBE hasta que se vuelva a subir el Excel con la key2.';
 function vista() {
   const orig = location.hash === '#origenes';
+  if (ESP !== 'up') $('pie').textContent = PROG === 'sa' ? PIE_SA : PIE_RBE;
   $('vistaDash').classList.toggle('hidden', orig);
   $('vistaOrig').classList.toggle('hidden', !orig);
   $('tabDash').classList.toggle('on', !orig && PROG === '');
@@ -1383,7 +1395,8 @@ const fDia = (iso) => iso.split('-').reverse().join('/');
 const cacheBbdd = {};
 const cacheParsed = {};
 const bbddDe = (mes) => (cacheBbdd[PROG + '|' + mes] ||= api(urlBbdd('mes=' + mes)));
-const logsParseados = (mes) => (cacheParsed[mes] ||= logsDeMes(mes).then((l) => l.map(aLog)));
+// Se cachea por informe: Second Attempt clasifica distinto que el resto.
+const logsParseados = (mes) => (cacheParsed[PROG + '|' + mes] ||= logsDeMes(mes).then((l) => l.map(aLog)));
 
 // Dos modos:
 //  - 'dia':  solo los commlogs del día elegido, cruzados con la BBDD elegida.

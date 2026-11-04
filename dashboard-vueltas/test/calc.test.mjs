@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria } from '../public/calc.js';
+import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria, clasificarSA } from '../public/calc.js';
 
 const d = (s) => parseFecha(s);
 const logs = [
@@ -92,4 +92,12 @@ assert.equal(ru.resumen.ilocalizadas, 1);
   const t = dias.reduce((n, x) => n + delDia(ids, logs, x).instLlamadas, 0), c = dias.reduce((n, x) => n + delDia(ids, logs, x).contactadas, 0);
   assert.deepEqual(sd, { tratadasDia: t, contactadasDia: c });
 }
+// Second Attempt: filtro por key2 y su propia clasificación
+assert.equal(clasificarSA('R_RPV_75', 'R_TLC003'), 'contacto');
+assert.equal(clasificarSA('R_ILOC02', 'R_TLC016'), 'no_contacto');
+assert.equal(clasificarSA('R_TRA006', 'R_REFE09'), 'contacto');
+assert.equal(clasificarSA('R_NOU_04', 'R_TLC001'), 'exclusion');
+assert.equal(clasificarSA('R_NOU_03', 'R_TLC001'), 'contacto');
+assert.equal(clasificarSA('R_RPV_75', 'R_OTRO'), 'ignorar');
+assert.equal(clasificarSA('R_RPV_75', ''), 'ignorar');
 console.log('OK');
