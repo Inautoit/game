@@ -269,13 +269,21 @@ $('fBbdd').addEventListener('change', async (e) => {
 // por día y franja de media hora y solo se guarda esa suma. El Access es un acumulado del año:
 // cada subida sustituye los días que trae y deja el resto.
 let accDb = null, conexAcc = null;
-if (ESP === 'up') $('cardAccess').classList.remove('hidden');
-$('fAccess').addEventListener('change', (e) => {
-  conexAcc = null;
-  $('btnGuardarAcc').disabled = true;
-  $('accBox').classList.add('hidden');
-  if (e.target.files[0]) leerAccess(e.target.files[0]);
-});
+if (ESP === 'up') { $('cardAccess').classList.remove('hidden'); $('cardAccessLl').classList.remove('hidden'); }
+// Dos tarjetas, una por Access: conexiones («BBDD agent 30 minutos») e informe de llamadas («agent skill 30 minutes»).
+// Comparten los controles, que se mueven a la tarjeta del fichero elegido.
+let accForzado = 'con';
+for (const [inp, tipo, slot] of [['fAccess', 'con', 'accSlotCon'], ['fAccessLl', 'llam', 'accSlotLl']]) {
+  $(inp).addEventListener('change', (e) => {
+    conexAcc = null;
+    accForzado = tipo;
+    $(slot).appendChild($('accZona'));
+    $('btnGuardarAcc').disabled = true;
+    $('accBox').classList.add('hidden');
+    $('stAcc').textContent = '';
+    if (e.target.files[0]) leerAccess(e.target.files[0]);
+  });
+}
 async function leerAccess(f) {
   const mb = Math.round(f.size / 1048576);
   const paso = (t) => new Promise((r) => { $('stAcc').textContent = t; setTimeout(r, 30); });
@@ -295,8 +303,9 @@ async function leerAccess(f) {
     $('accTabla').innerHTML = '<option value="">— Elige la tabla —</option>' +
       tablas.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
     $('accBox').classList.remove('hidden');
-    $('stAcc').textContent = `${tablas.length} tablas en ${f.name}. Elige la de las conexiones de los gestores.`;
-    const fija = tablas.find((n) => /skill.*30/i.test(n)) || tablas.find((n) => /agent.*30\s*min/i.test(n));
+    $('stAcc').textContent = `${tablas.length} tablas en ${f.name}. Elige la ${accForzado === 'llam' ? 'del informe de llamadas («agent skill 30 minutes»)' : 'de las conexiones («BBDD agent 30 minutos»)'}.`;
+    const fija = accForzado === 'llam' ? tablas.find((n) => /skill.*30/i.test(n))
+      : tablas.find((n) => /agent.*30\s*min/i.test(n) && !/skill/i.test(n));
     if (fija) {
       $('accTabla').value = fija;
       $('accTabla').dispatchEvent(new Event('change'));
@@ -350,7 +359,7 @@ $('accTabla').addEventListener('change', () => {
   $('accDia').innerHTML = ops(dia);
   $('accHora').innerHTML = ops(hora);
   $('accTT').innerHTML = ops(tt);
-  $('accTipo').value = /skill/i.test(n) ? 'llam' : 'con';
+  $('accTipo').value = accForzado;
   $('accLlam').innerHTML = '<option value="">(contar filas)</option>' + ops(busca(/llamad|calls|handled|atendid|contestad|outbound|salient|dialed|marcad/i));
   $('accSkill').innerHTML = '<option value="">(todas)</option>' + ops(busca(/skill/i));
   tipoAccess();
@@ -371,7 +380,10 @@ function pintarSkills() {
   for (const r of accDb.getTable(n).getData({ columns: [cs] })) { const v = String(r[cs] ?? '').trim(); cuenta[v] = (cuenta[v] || 0) + 1; }
   const vals = Object.keys(cuenta).sort();
   if (vals.length > 80) { $('accSkillVals').textContent = `La columna ${cs} tiene ${fmt(vals.length)} valores distintos: no parece de skill.`; return; }
-  const up = vals.filter((v) => /upsell|venc|4\s*pro/i.test(v));
+  // Skills de Upsell: Upselling_Técnicos y Vencimiento_Generico (si no aparecen, los que lo parezcan).
+  const sinTilde = (v) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  let up = vals.filter((v) => /^\s*(upselling[\s_]*tecnicos|vencimiento[\s_]*generico)\s*$/i.test(sinTilde(v)));
+  if (!up.length) up = vals.filter((v) => /upsell|venc|4\s*pro/i.test(v));
   $('accSkillVals').innerHTML = '<b style="width:100%">Skills que cuentan:</b>' + vals.map((v) =>
     `<label style="display:inline-flex; gap:4px; align-items:center; font-weight:400"><input type="checkbox" value="${escapeHtml(v)}"${!up.length || up.includes(v) ? ' checked' : ''}> ${escapeHtml(v || '(vacío)')} <span style="color:var(--muted)">(${fmt(cuenta[v])})</span></label>`).join('');
   $('accSkillVals').querySelectorAll('input').forEach((i) => i.addEventListener('change', prepararAccess));

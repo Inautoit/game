@@ -365,14 +365,16 @@
       <div class="status" id="stSubida" style="margin-top:6px"></div>
     </section>
     <section class="card hidden" id="cardAccess">
-      <h2>Conexiones y llamadas de los gestores (Access)</h2>
-      <p class="sub">Sube el Access (.accdb o .mdb) con la tabla «BBDD agent 30 minutos» (conexiones: se suma el Total Time) o el del informe de llamadas con «agent skill 30 minutes» (se suman las llamadas). Se lee en tu navegador y solo se guarda la suma por día y franja de media hora.</p>
+      <h2>Conexiones de los gestores (Access)</h2>
+      <p class="sub">Sube el Access (.accdb o .mdb) con la tabla «BBDD agent 30 minutos». Se suma el Total Time de los gestores por día y franja de media hora (para los contactos por hora logada). Se lee en tu navegador y solo se guarda esa suma.</p>
       <div class="row">
-        <label>Fichero Access <input type="file" id="fAccess" accept=".accdb,.mdb" /></label>
+        <label>Access de conexiones <input type="file" id="fAccess" accept=".accdb,.mdb" /></label>
       </div>
+      <div id="accSlotCon">
+      <div id="accZona">
       <div class="row hidden" id="accBox" style="margin-top:6px">
         <label>Tabla <select id="accTabla"></select></label>
-        <label>Qué es <select id="accTipo"><option value="con">Conexiones (Total Time)</option><option value="llam">Llamadas (informe de llamadas)</option></select></label>
+        <label class="hidden" id="accTipoLbl">Qué es <select id="accTipo"><option value="con">Conexiones (Total Time)</option><option value="llam">Llamadas (informe de llamadas)</option></select></label>
         <label>Columna del día <select id="accDia"></select></label>
         <label>Columna de la franja / hora <select id="accHora"></select></label>
         <label class="accCon">Columna Total Time <select id="accTT"></select></label>
@@ -384,6 +386,16 @@
       <div class="accLlam hidden" id="accSkillVals" style="margin-top:6px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px 14px"></div>
       <p class="status" style="margin-top:6px">El Access puede ser el acumulado de todo el año: cada subida sustituye los días que trae y deja el resto. Si el Total Time viene como hora (00:25:30) la unidad da igual. Las consultas de Access no se pueden leer: guárdala como tabla.</p>
       <div class="status" id="stAcc"></div>
+      </div>
+      </div>
+    </section>
+    <section class="card hidden" id="cardAccessLl">
+      <h2>Informe de llamadas (Access)</h2>
+      <p class="sub">Sube el Access del informe de llamadas con la tabla «agent skill 30 minutes». Se suman las llamadas de los skills Upselling_Técnicos y Vencimiento_Generico por día y franja de media hora (para el % de contactación = contactos ÷ llamadas). Se lee en tu navegador y solo se guarda esa suma.</p>
+      <div class="row">
+        <label>Access del informe de llamadas <input type="file" id="fAccessLl" accept=".accdb,.mdb" /></label>
+      </div>
+      <div id="accSlotLl"></div>
     </section>
     <section class="card">
       <h2>BBDD mensual</h2>
