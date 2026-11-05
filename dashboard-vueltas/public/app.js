@@ -433,7 +433,13 @@ function prepararAccess() {
     $('stAcc').textContent = 'Error leyendo la tabla: ' + err.message;
   }
 }
-// Informe de llamadas («agent skill 30 minutes»): se suman las llamadas por día y franja (solo los skills marcados).
+// Campaña de cada skill del informe de llamadas: Vencimiento_Generico -> Vencimiento, Upselling_Técnicos -> 4PRO.
+const campDeSkill = (v) => {
+  const t = String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return /venc/i.test(t) ? 'Vencimiento' : /upsell|4\s*pro|tecnic/i.test(t) ? '4PRO' : null;
+};
+// Informe de llamadas («agent skill 30 minutes»): se suman las llamadas por día y franja (solo los skills marcados),
+// en total y separadas por campaña según el skill.
 function prepararLlamadas() {
   const n = $('accTabla').value, cd = $('accDia').value, ch = $('accHora').value, cl = $('accLlam').value, cs = $('accSkill').value;
   if (!accDb || !n || !cd || !ch) return;
@@ -441,26 +447,30 @@ function prepararLlamadas() {
   try {
     const marcados = cs ? new Set([...$('accSkillVals').querySelectorAll('input:checked')].map((i) => i.value)) : null;
     const filas = accDb.getTable(n).getData({ columns: [...new Set([cd, ch, cl, cs].filter(Boolean))] });
-    const dias = {};
+    const dias = {}, porCamp = { Vencimiento: {}, '4PRO': {} };
     let malas = 0, fuera = 0;
     for (const r of filas) {
       if (marcados && !marcados.has(String(r[cs] ?? '').trim())) { fuera++; continue; }
+      const camp = cs ? campDeSkill(r[cs] ?? '') : null;
       const d = diaAcc(r[cd]), m = minAcc(r[ch]);
       if (!d || m == null) { malas++; continue; }
       const v = cl ? Number(String(r[cl] ?? '').replace(',', '.')) || 0 : 1;
       if (!v) continue;
       const f = franjaDe(m);
       (dias[d] ||= {})[f] = ((dias[d] ||= {})[f] || 0) + v;
+      if (camp) (porCamp[camp][d] ||= {})[f] = (porCamp[camp][d][f] || 0) + v;
     }
     const lista = Object.keys(dias).sort();
     if (!lista.length) throw new Error(`no saco ninguna llamada de las columnas elegidas (${fmt(malas)} filas sin día u hora válidos${fuera ? `, ${fmt(fuera)} de otros skills` : ''})`);
-    conexAcc = { tipo: 'llam', dias };
-    const tot = lista.reduce((s, d) => s + Object.values(dias[d]).reduce((a, b) => a + b, 0), 0);
+    const sumaDias = (x) => Object.values(x).reduce((s, fr) => s + Object.values(fr).reduce((a, b) => a + b, 0), 0);
+    conexAcc = { tipo: 'llam', dias, extra: cs ? [['llamv', porCamp.Vencimiento], ['llam4', porCamp['4PRO']]] : [] };
+    const tot = sumaDias(dias);
     const porFr = {};
     for (const d of lista) for (const [f, v] of Object.entries(dias[d])) porFr[f] = (porFr[f] || 0) + v;
     const [fPunta, vPunta] = Object.entries(porFr).sort((a, b) => b[1] - a[1])[0];
     $('stAcc').textContent = `${fmt(lista.length)} días (${fDia(lista[0])} – ${fDia(lista.at(-1))}) · ${fmt(tot)} llamadas (${fmt(tot / lista.length)} al día).` +
       ` Franja con más llamadas: ${fPunta} con ${fmt(vPunta / lista.length)} de media.` +
+      (cs ? ` Por campaña: Vencimiento ${fmt(sumaDias(porCamp.Vencimiento))} · 4PRO ${fmt(sumaDias(porCamp['4PRO']))}.` : ' (Sin columna de skill no se pueden separar por campaña.)') +
       (fuera ? ` (${fmt(fuera)} filas de otros skills fuera)` : '') + (malas ? ` (${fmt(malas)} filas sin día u hora ignoradas)` : '');
     $('btnGuardarAcc').disabled = false;
   } catch (err) {
@@ -470,16 +480,21 @@ function prepararLlamadas() {
 $('btnGuardarAcc').addEventListener('click', async () => {
   if (!conexAcc) return;
   $('btnGuardarAcc').disabled = true;
-  const { tipo, dias } = conexAcc;
+  const { tipo, dias, extra = [] } = conexAcc;
   try {
-    const porMes = {};
-    for (const [d, fr] of Object.entries(dias)) (porMes[d.slice(0, 7)] ||= {})[d] = fr;
-    const meses = Object.keys(porMes).sort();
-    for (const [i, m] of meses.entries()) {
-      $('stAcc').textContent = `Guardando ${nombreMes(m)} (${i + 1}/${meses.length})…`;
-      await api(`/api/conexiones?tipo=${tipo}&mes=${m}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dias: porMes[m] }) });
-      delete (tipo === 'llam' ? cacheLlam : cacheConex)[m];
+    const meses = [...new Set(Object.keys(dias).map((d) => d.slice(0, 7)))].sort();
+    for (const [t, ds] of [[tipo, dias], ...extra]) {
+      const porMes = {};
+      for (const [d, fr] of Object.entries(ds)) (porMes[d.slice(0, 7)] ||= {})[d] = fr;
+      // Los meses sin llamadas de esa campaña también se guardan (vacíos) para que sustituyan a lo anterior.
+      for (const [i, m] of meses.entries()) {
+        $('stAcc').textContent = `Guardando ${t === 'con' ? 'conexiones' : 'llamadas'} de ${nombreMes(m)} (${i + 1}/${meses.length})…`;
+        const diasMes = porMes[m] || {};
+        if (t !== tipo) for (const d of Object.keys(dias)) if (d.startsWith(m) && !diasMes[d]) diasMes[d] = {};
+        await api(`/api/conexiones?tipo=${t}&mes=${m}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dias: diasMes }) });
+        if (t === 'con') delete cacheConex[m]; else delete cacheLlam[t + '|' + m];
+      }
     }
     $('stAcc').textContent = `Guardadas las ${tipo === 'llam' ? 'llamadas' : 'conexiones'} de ${meses.length} ${meses.length === 1 ? 'mes' : 'meses'} (${nombreMes(meses[0])} – ${nombreMes(meses.at(-1))}).`;
     conexAcc = null;
@@ -494,7 +509,7 @@ $('btnGuardarAcc').addEventListener('click', async () => {
 const cacheConex = {};
 const conexDeMes = (m) => (cacheConex[m] ||= api('/api/conexiones?mes=' + m).catch(() => ({})));
 const cacheLlam = {};
-const llamDeMes = (m) => (cacheLlam[m] ||= api('/api/conexiones?tipo=llam&mes=' + m).catch(() => ({})));
+const llamDeMes = (m, tipo = 'llam') => (cacheLlam[tipo + '|' + m] ||= api(`/api/conexiones?tipo=${tipo}&mes=${m}`).catch(() => ({})));
 // Filtros de la sección: acumulado del rango del dashboard, un día o comparar dos días;
 // y campaña: las dos juntas, solo 4PRO o solo Vencimiento.
 let frModo = 'acum', frCamp = '', frGraf = 'pctl', frArgs = null;
@@ -594,8 +609,14 @@ async function pintarFranjas(desde, hasta, logs) {
   const meses = frModo === 'acum' ? mesesEntre(rd, rh) : mesesCon;
   const conex = Object.assign({}, ...(await Promise.all(meses.map(conexDeMes))));
   // Llamadas del informe de llamadas (otro Access): para el % de contactación = contactos ÷ llamadas.
-  const mesesLl = frModo === 'acum' ? meses : (await api('/api/conexiones?tipo=llam').catch(() => [])).map((i) => i.mes);
-  const llamInf = Object.assign({}, ...(await Promise.all(mesesLl.map(llamDeMes))));
+  // Con una sola campaña se usan las llamadas de su skill (si se guardaron separadas); con «Juntas», todas.
+  const idxLl = (t) => api('/api/conexiones?tipo=' + t).catch(() => []);
+  let tipoLl = frCamp === '4PRO' ? 'llam4' : frCamp === 'Vencimiento' ? 'llamv' : 'llam';
+  let indLl = await idxLl(tipoLl);
+  const llSeparadas = tipoLl === 'llam' || indLl.length > 0;
+  if (!llSeparadas) { tipoLl = 'llam'; indLl = await idxLl('llam'); }
+  const mesesLl = frModo === 'acum' ? meses : indLl.map((i) => i.mes);
+  const llamInf = Object.assign({}, ...(await Promise.all(mesesLl.map((m) => llamDeMes(m, tipoLl)))));
   const diasCon = Object.keys(conex).filter((d) => frModo !== 'acum' || (d >= rd && d <= rh)).sort();
   // Último día con commlogs: por defecto se elige un día que tenga conexiones y commlogs.
   const ultLog = ((await api(urlLogs()).catch(() => [])).map((i) => i.max).sort().pop() || '').slice(0, 10);
@@ -685,7 +706,8 @@ async function pintarFranjas(desde, hasta, logs) {
       <div class="leyenda">${series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('')}${keyLinea}</div>
       <div class="chart" id="frC1_${i}"></div>` : ''}
       ${frGraf === 'pctl' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas del informe de llamadas</small></h3>
-      ${v.diasLlam.length ? `${juntas ? '' : '<p class="status">Ojo: las llamadas del informe no se separan por campaña, así que con una sola campaña el % sale más bajo.</p>'}
+      ${v.diasLlam.length ? `${juntas ? '' : llSeparadas ? `<p class="status">Llamadas solo del skill de ${escapeHtml(frCamp)} (${frCamp === '4PRO' ? 'Upselling_Técnicos' : 'Vencimiento_Generico'}).</p>`
+        : '<p class="status">Ojo: las llamadas guardadas no están separadas por skill (vuelve a subir el informe de llamadas), así que con una sola campaña el % sale más bajo.</p>'}
       <div class="leyenda"><span><i style="background:var(--c3)"></i>% contactación · eje izquierdo</span>${keyLineaI}</div>
       <div class="chart" id="frC4_${i}"></div>` : '<p class="status">No hay llamadas del informe de llamadas para estas fechas. Súbelo en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a> (Access con la tabla «agent skill 30 minutes»).</p>'}` : ''}
       ${frGraf === 'pct' ? `<h3 class="chart-t">Contactación por franja <small>· contactos ÷ horas logadas en la franja</small></h3>

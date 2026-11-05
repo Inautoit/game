@@ -4,6 +4,7 @@
 //   up:con:index     -> [{mes, dias, segundos, actualizado}]
 // ?tipo=llam -> lo mismo para las llamadas del informe de llamadas (tabla «agent skill 30 minutes»):
 //   up:llam:<AAAA-MM> -> {'AAAA-MM-DD': {'HH:MM': nº de llamadas}}
+// ?tipo=llamv / llam4 -> solo las llamadas del skill de Vencimiento / de 4PRO (Upselling_Técnicos).
 // GET           -> índice
 // GET ?mes=     -> datos del mes
 // PUT ?mes=     -> body {dias: {...}}: sustituye los días que vienen y deja el resto del mes
@@ -18,7 +19,8 @@ export async function onRequest({ request, env }) {
   const kv = env.BBDD;
   const url = new URL(request.url);
   const mes = url.searchParams.get('mes');
-  const PRE = url.searchParams.get('tipo') === 'llam' ? 'up:llam:' : 'up:con:';
+  // llam = llamadas de todos los skills marcados; llamv / llam4 = solo las del skill de Vencimiento / de 4PRO.
+  const PRE = { llam: 'up:llam:', llamv: 'up:llamv:', llam4: 'up:llam4:' }[url.searchParams.get('tipo')] || 'up:con:';
   if (mes && !MES.test(mes)) return json({ error: 'mes inválido' }, 400);
   const indice = async () => (await kv.get(PRE + 'index', 'json')) || [];
 
