@@ -292,10 +292,21 @@ async function leerAccess(f) {
       throw new Error(`pesa ${fmt(mb)} MB y el navegador no puede abrir un Access tan grande. Copia solo la tabla a un Access nuevo (o expórtala a Excel) y sube ese`);
     }
     await paso(`1/3 · Cargando ${f.name} (${fmt(mb)} MB) en el navegador… con un Access grande puede tardar varios minutos`);
-    const { MDBReader, Buffer } = await import('/vendor/mdb-reader.js');
     const buf = await f.arrayBuffer();
-    await paso('2/3 · Abriendo el Access…');
-    accDb = new MDBReader(Buffer.from(buf));
+    if (/\.xlsx?$/i.test(f.name)) {
+      // También vale un Excel con la misma tabla (cada pestaña hace de tabla).
+      await paso('2/3 · Abriendo el Excel…');
+      const wb = XLSX.read(buf, { dense: true, cellDates: true });
+      const filasDe = (n) => XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: '', raw: true });
+      accDb = {
+        getTableNames: () => wb.SheetNames,
+        getTable: (n) => ({ getColumnNames: () => Object.keys(filasDe(n)[0] || {}), getData: () => filasDe(n) }),
+      };
+    } else {
+      const { MDBReader, Buffer } = await import('/vendor/mdb-reader.js');
+      await paso('2/3 · Abriendo el Access…');
+      accDb = new MDBReader(Buffer.from(buf));
+    }
     await paso('3/3 · Buscando las tablas…');
     // Solo los nombres: contar las filas de todas las tablas es lento en un Access grande.
     const tablas = accDb.getTableNames();
@@ -304,7 +315,8 @@ async function leerAccess(f) {
       tablas.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
     $('accBox').classList.remove('hidden');
     $('stAcc').textContent = `${tablas.length} tablas en ${f.name}. Elige la ${accForzado === 'llam' ? 'del informe de llamadas («agent skill 30 minutes»)' : 'de las conexiones («BBDD agent 30 minutos»)'}.`;
-    const fija = accForzado === 'llam' ? tablas.find((n) => /skill.*30/i.test(n))
+    // Informe de llamadas: la tabla de OUTBOUND (llamadas que hacen los gestores).
+    const fija = accForzado === 'llam' ? (tablas.find((n) => /outbound/i.test(n)) || tablas.find((n) => /skill.*30/i.test(n)))
       : tablas.find((n) => /agent.*30\s*min/i.test(n) && !/skill/i.test(n));
     if (fija) {
       $('accTabla').value = fija;
@@ -354,14 +366,24 @@ $('accTabla').addEventListener('change', () => {
   const busca = (re, no) => cols.find((c) => re.test(c) && !(no && no.test(c))) || '';
   const tt = busca(/total.?time|tiempo.?total/i);
   const dia = busca(/fecha|date|d[ií]a\b|day/i, /total/i);
-  const hora = busca(/franja|interval|hora|hour|slot|tramo|periodo|time/i, /total/i) || dia;
+  // Antes la columna de media hora («30 minutes», «Intervalo»…) que la de la hora suelta («Hour» no trae los minutos).
+  const hora = busca(/30\s*min|franja|interval|slot|tramo|periodo/i, /total/i) || busca(/hora|hour|time/i, /total/i) || dia;
   const ops = (sel) => cols.map((c) => `<option value="${escapeHtml(c)}"${c === sel ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
   $('accDia').innerHTML = ops(dia);
   $('accHora').innerHTML = ops(hora);
   $('accTT').innerHTML = ops(tt);
   $('accTipo').value = accForzado;
-  $('accLlam').innerHTML = '<option value="">(contar filas)</option>' + ops(busca(/llamad|calls|handled|atendid|contestad|outbound|salient|dialed|marcad/i));
-  $('accSkill').innerHTML = '<option value="">(todas)</option>' + ops(busca(/skill/i));
+  // Informe de llamadas: las columnas «… - N …» son números y las «… - T …» tiempos; las llamadas emitidas son
+  // una «N … Outbound …». El servicio va en «Service Outbound Call».
+  const esN = /(^|[\s-])N\s/;
+  // En la pestaña OUTBOUND las llamadas emitidas son «N Dialing» (marcadas); si no está, una «N … Outbound».
+  const llamCol = cols.find((c) => esN.test(c) && /dialing|emitid|marcad/i.test(c)) ||
+    cols.find((c) => esN.test(c) && /outbound|salient|dialed/i.test(c) && /call|llamad/i.test(c)) ||
+    cols.find((c) => esN.test(c) && /outbound|salient|emitid/i.test(c)) ||
+    cols.find((c) => esN.test(c) && /call|llamad/i.test(c)) ||
+    busca(/llamad|calls|handled|atendid|contestad|salient|dialed|marcad/i, /(^|[\s-])T\s|service|servicio/i);
+  $('accLlam').innerHTML = '<option value="">(contar filas)</option>' + ops(llamCol);
+  $('accSkill').innerHTML = '<option value="">(todas)</option>' + ops(busca(/service|servicio|skill/i, /(^|[\s-])[NT]\s/));
   tipoAccess();
   pintarSkills();
   prepararAccess();
@@ -382,7 +404,8 @@ function pintarSkills() {
   if (vals.length > 80) { $('accSkillVals').textContent = `La columna ${cs} tiene ${fmt(vals.length)} valores distintos: no parece de skill.`; return; }
   // Skills de Upsell: Upselling_Técnicos y Vencimiento_Generico (si no aparecen, los que lo parezcan).
   const sinTilde = (v) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  let up = vals.filter((v) => /^\s*(upselling[\s_]*tecnicos|vencimiento[\s_]*generico)\s*$/i.test(sinTilde(v)));
+  // En el informe vienen como «Upselling_tecnicos» y «Vencimiento_gen?rico» (la tilde llega rota): se aceptan las dos formas.
+  let up = vals.filter((v) => /^\s*(upselling[\s_]*t.{0,2}cnicos|vencimiento[\s_]*gen.{0,2}rico)\s*$/i.test(sinTilde(v)));
   if (!up.length) up = vals.filter((v) => /upsell|venc|4\s*pro/i.test(v));
   $('accSkillVals').innerHTML = '<b style="width:100%">Skills que cuentan:</b>' + vals.map((v) =>
     `<label style="display:inline-flex; gap:4px; align-items:center; font-weight:400"><input type="checkbox" value="${escapeHtml(v)}"${!up.length || up.includes(v) ? ' checked' : ''}> ${escapeHtml(v || '(vacío)')} <span style="color:var(--muted)">(${fmt(cuenta[v])})</span></label>`).join('');
