@@ -456,10 +456,10 @@ function prepararAccess() {
     $('stAcc').textContent = 'Error leyendo la tabla: ' + err.message;
   }
 }
-// Campaña de cada skill del informe de llamadas: Vencimiento_Generico -> Vencimiento, Upselling_Técnicos -> 4PRO.
+// Campaña de cada servicio del informe de llamadas: Vencimiento_genérico llama a 4PRO y Upselling_tecnicos a Vencimiento.
 const campDeSkill = (v) => {
   const t = String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  return /venc/i.test(t) ? 'Vencimiento' : /upsell|4\s*pro|tecnic/i.test(t) ? '4PRO' : null;
+  return /venc/i.test(t) ? '4PRO' : /upsell|tecnic/i.test(t) ? 'Vencimiento' : null;
 };
 // Informe de llamadas («agent skill 30 minutes»): se suman las llamadas por día y franja (solo los skills marcados),
 // en total y separadas por campaña según el skill.
@@ -729,7 +729,7 @@ async function pintarFranjas(desde, hasta, logs) {
       <div class="leyenda">${series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('')}${keyLinea}</div>
       <div class="chart" id="frC1_${i}"></div>` : ''}
       ${frGraf === 'pctl' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas del informe de llamadas</small></h3>
-      ${v.diasLlam.length ? `${juntas ? '' : llSeparadas ? `<p class="status">Llamadas solo del skill de ${escapeHtml(frCamp)} (${frCamp === '4PRO' ? 'Upselling_Técnicos' : 'Vencimiento_Generico'}).</p>`
+      ${v.diasLlam.length ? `${juntas ? '' : llSeparadas ? `<p class="status">Llamadas solo del servicio de ${escapeHtml(frCamp)} (${frCamp === '4PRO' ? 'Vencimiento_genérico' : 'Upselling_tecnicos'}).</p>`
         : '<p class="status">Ojo: las llamadas guardadas no están separadas por skill (vuelve a subir el informe de llamadas), así que con una sola campaña el % sale más bajo.</p>'}
       <div class="leyenda"><span><i style="background:var(--c3)"></i>% contactación · eje izquierdo</span>${keyLineaI}</div>
       <div class="chart" id="frC4_${i}"></div>` : '<p class="status">No hay llamadas del informe de llamadas para estas fechas. Súbelo en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a> (Access con la tabla «agent skill 30 minutes»).</p>'}` : ''}

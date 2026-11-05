@@ -4,7 +4,7 @@
 //   up:con:index     -> [{mes, dias, segundos, actualizado}]
 // ?tipo=llam -> lo mismo para las llamadas del informe de llamadas (tabla «agent skill 30 minutes»):
 //   up:llam:<AAAA-MM> -> {'AAAA-MM-DD': {'HH:MM': nº de llamadas}}
-// ?tipo=llamv / llam4 -> solo las llamadas del skill de Vencimiento / de 4PRO (Upselling_Técnicos).
+// ?tipo=llamv / llam4 -> solo las llamadas de la campaña Vencimiento (servicio Upselling_tecnicos) / 4PRO (Vencimiento_genérico).
 // GET           -> índice
 // GET ?mes=     -> datos del mes
 // PUT ?mes=     -> body {dias: {...}}: sustituye los días que vienen y deja el resto del mes
