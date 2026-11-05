@@ -686,13 +686,46 @@ async function pintarFranjas(desde, hasta, logs) {
     : frModo === 'dia' ? [{ etq: '', d0: $('frDia').value, d1: $('frDia').value }]
       : [{ etq: 'Día A', d0: $('frDia').value, d1: $('frDia').value }, { etq: 'Día B', d0: $('frDiaB').value, d1: $('frDiaB').value }];
   // En un día suelto se usa la BBDD del mes de ese día (si existe): sus instalaciones son las que se llaman ese día.
+  // Cada día se cruza con la BBDD de su mes: las llamadas y las conexiones de un día son de la BBDD que se
+  // llama ese día. En el acumulado el rango se parte por meses y se suma; los meses sin BBDD no cuentan.
+  const tramosDe = async (d0, d1) => {
+    if (!d0 || !d1) return [];
+    if (frModo !== 'acum') {
+      const m = d0.slice(0, 7);
+      return [{ d0, d1, bb: m !== bbdd.mes && indiceBbdd[m] ? await bbddDe(m).catch(() => bbdd) : bbdd }];
+    }
+    const out = [];
+    for (const m of mesesEntre(d0, d1)) {
+      if (m !== bbdd.mes && !indiceBbdd[m]) continue;
+      const [y, mm] = m.split('-').map(Number);
+      const a = d0 > m + '-01' ? d0 : m + '-01', fin = isoDia(new Date(y, mm, 0)), z = d1 < fin ? d1 : fin;
+      out.push({ d0: a, d1: z, bb: m === bbdd.mes ? bbdd : await bbddDe(m).catch(() => null) });
+    }
+    return out.filter((t) => t.bb);
+  };
+  const sumaFranjas = (rs) => {
+    const fr = {}, dias = [];
+    for (const r of rs) {
+      dias.push(...r.dias);
+      for (const f of r.franjas) {
+        const x = (fr[f.franja] ||= { franja: f.franja, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, porCamp: {} });
+        for (const k of ['segundos', 'commlogs', 'contactos', 'iloc', 'excl']) x[k] += f[k];
+        for (const [c, pc] of Object.entries(f.porCamp)) {
+          const y = (x.porCamp[c] ||= { commlogs: 0, contactos: 0, iloc: 0, excl: 0 });
+          for (const k of Object.keys(y)) y[k] += pc[k];
+        }
+      }
+    }
+    return { dias: dias.sort(), franjas: Object.values(fr).sort((a, b) => (a.franja < b.franja ? -1 : 1)) };
+  };
   for (const v of vistas) {
-    const mesDia = frModo !== 'acum' && v.d0 ? v.d0.slice(0, 7) : '';
-    v.bb = mesDia && mesDia !== bbdd.mes && indiceBbdd[mesDia] ? await bbddDe(mesDia).catch(() => bbdd) : bbdd;
-    Object.assign(v, porFranja(v.bb.campanas, todosLogs, conex, v.d0 || '9999', v.d1 || '0000'));
+    const tramos = await tramosDe(v.d0, v.d1);
+    v.bb = tramos[0]?.bb || bbdd;
+    v.mesesSinBbdd = frModo === 'acum' && v.d0 && v.d1 ? mesesEntre(v.d0, v.d1).filter((m) => m !== bbdd.mes && !indiceBbdd[m]) : [];
+    Object.assign(v, sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, conex, t.d0, t.d1))));
     v.nLogs = v.franjas.reduce((n, f) => n + f.commlogs, 0);
     // Mismo cálculo con las llamadas del informe en lugar del tiempo: solo cuentan los días que tienen llamadas.
-    const inf = porFranja(v.bb.campanas, todosLogs, llamInf, v.d0 || '9999', v.d1 || '0000');
+    const inf = sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, llamInf, t.d0, t.d1)));
     v.diasLlam = inf.dias;
     v.inf = Object.fromEntries(inf.franjas.map((f) => [f.franja, f]));
   }
@@ -785,7 +818,9 @@ async function pintarFranjas(desde, hasta, logs) {
   $('stFr').textContent = (frCamp ? frCamp + ' · ' : '') + (frModo === 'acum'
     ? `Acumulado de ${fmt(v0.dias.length)} ${v0.dias.length === 1 ? 'día' : 'días'} con conexiones` + (v0.dias.length ? ` (${fDia(v0.dias[0])} – ${fDia(v0.dias.at(-1))})` : '')
     : vistas.map((v) => (v.etq ? v.etq + ' ' : 'Día ') + (v.d0 ? fDia(v.d0) : '—')).join(' · '));
-  $('frNota').innerHTML = (juntas ? vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmt(minC(v.mejor), 1)} min por contacto). `).join('') : '') +
+  $('frNota').innerHTML = (vistas[0].mesesSinBbdd?.length ? `<b>Ojo:</b> no cuentan los días de ${vistas[0].mesesSinBbdd.map(nombreMes).join(', ')} porque no hay BBDD de ese mes. ` : '') +
+    (frModo === 'acum' ? 'En el acumulado cada día se cruza con la BBDD de su mes. ' : '') +
+    (juntas ? vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmt(minC(v.mejor), 1)} min por contacto). `).join('') : '') +
     '% contactación = contactos de la franja ÷ llamadas de la franja según el informe de llamadas (agent skill 30 minutes). ' +
     'Contactos por hora logada = contactos de la franja ÷ horas logadas de la franja (suma del Total Time de los gestores), así se comparan igual franjas con 2 o con 10 gestores. ' +
     'Min. por contacto = suma del Total Time de los gestores en la franja ÷ contactos de la franja; el tiempo es de todos los gestores, por eso solo se calcula con las campañas juntas. ' +
