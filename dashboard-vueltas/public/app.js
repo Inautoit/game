@@ -117,7 +117,8 @@ async function cargarIndice(preferido) {
     }
     indiceBbdd = Object.fromEntries(idx.map((i) => [i.mes, i]));
     $('mes').innerHTML = idx.map((i) => `<option value="${i.mes}">${escapeHtml(nombreBbdd(i.mes))}</option>`).join('');
-    const sel = preferido || load(kp('mes'));
+    // En Upsell no se ve el selector de BBDD: siempre la más reciente (cada día usa además la de su mes).
+    const sel = ESP === 'up' ? '' : preferido || load(kp('mes'));
     $('mes').value = idx.some((i) => i.mes === sel) ? sel : idx[idx.length - 1].mes;
     await cambiarMes();
   } catch (err) {
@@ -272,7 +273,7 @@ let accDb = null, conexAcc = null;
 if (ESP === 'up') { $('cardAccess').classList.remove('hidden'); $('cardAccessLl').classList.remove('hidden'); }
 if (ESP === 'up') {
   for (const el of $('res').children) if (!['frTit', 'frCard'].includes(el.id)) el.classList.add('oculto-up');
-  $('campana').closest('label')?.classList.add('oculto-up');
+  $('campana').closest('.filters')?.classList.add('oculto-up');
 }
 // Dos tarjetas, una por Access: conexiones («BBDD agent 30 minutos») e informe de llamadas («agent skill 30 minutes»).
 // Comparten los controles, que se mueven a la tarjeta del fichero elegido.
