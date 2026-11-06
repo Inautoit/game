@@ -835,11 +835,26 @@ const REP_FILAS = [
   ['csin', 'COMPE sin OPC'], ['ccon', 'COMPE con OPC'], ['cmix', 'COMPE con y sin OPC (sin separar)'], ['ctot', 'Total COMPETENCIA', true],
   ['tcon', 'TMK con OPC'], ['tsin', 'TMK sin OPC'], ['tmix', 'TMK con y sin OPC (sin separar)'], ['ttot', 'Total TMK', true],
 ];
+// Con/sin OPC por el nombre: «SIN_OCP» o «400» = sin OPC; «CON_OCP» o «93» = con OPC.
 function grupoRep(nombre) {
   const n = String(nombre).toUpperCase();
   const mundo = /COMPE/.test(n) && !/TMK/.test(n) ? 'c' : /TMK/.test(n) ? 't' : '';
   if (!mundo) return '';
-  return mundo + (/(^|[^A-Z])SIN[\s_]*O[PC][PC]/.test(n) ? 'sin' : /(^|[^A-Z])CON[\s_]*O[PC][PC]/.test(n) ? 'con' : 'mix');
+  const sin = /(^|[^A-Z])SIN[\s_]*O[PC][PC]/.test(n) || /(^|\D)400(\D|$)/.test(n);
+  const con = /(^|[^A-Z])CON[\s_]*O[PC][PC]/.test(n) || /(^|\D)93(\D|$)/.test(n);
+  return mundo + (sin ? 'sin' : con ? 'con' : 'mix');
+}
+// Si en una BBDD un mundo tiene una campaña marcada con/sin OPC y otra sin marcar, la sin marcar es la otra
+// (p. ej. noviembre: «Tmk 400» es sin OPC y «TMK» la de con OPC).
+function gruposRep(campanas) {
+  const g = Object.fromEntries(Object.keys(campanas).map((c) => [c, grupoRep(c)]));
+  for (const m of ['c', 't']) {
+    const de = Object.values(g).filter((x) => x[0] === m);
+    const tiene = (k) => de.includes(m + k);
+    if (tiene('mix') && tiene('sin') && !tiene('con')) for (const c in g) if (g[c] === m + 'mix') g[c] = m + 'con';
+    if (tiene('mix') && tiene('con') && !tiene('sin')) for (const c in g) if (g[c] === m + 'mix') g[c] = m + 'sin';
+  }
+  return g;
 }
 function inicioBbdd(mes) {
   const [y, m] = mes.split('-').map(Number);
@@ -917,9 +932,9 @@ async function pintarReporte() {
     if (!dias.length) { cols.push({ mes, dias, vacio: true }); continue; }
     const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(dias[0], dias.at(-1)).map(logsParseados)]);
     const logs = [].concat(...porMes);
-    const grupos = {};
+    const grupos = {}, grupoDe = gruposRep(bb.campanas);
     for (const [c, ids] of Object.entries(bb.campanas)) {
-      const g = grupoRep(c);
+      const g = grupoDe[c];
       if (!g) continue;
       for (const key of [g, g[0] + 'tot']) (grupos[key] ||= new Set()); 
       for (const id of ids) { grupos[g].add(id); grupos[g[0] + 'tot'].add(id); }
