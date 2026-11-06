@@ -270,6 +270,10 @@ $('fBbdd').addEventListener('change', async (e) => {
 // cada subida sustituye los días que trae y deja el resto.
 let accDb = null, conexAcc = null;
 if (ESP === 'up') { $('cardAccess').classList.remove('hidden'); $('cardAccessLl').classList.remove('hidden'); }
+if (ESP === 'up') {
+  for (const el of $('res').children) if (!['frTit', 'frCard'].includes(el.id)) el.classList.add('oculto-up');
+  $('campana').closest('label')?.classList.add('oculto-up');
+}
 // Dos tarjetas, una por Access: conexiones («BBDD agent 30 minutos») e informe de llamadas («agent skill 30 minutes»).
 // Comparten los controles, que se mueven a la tarjeta del fichero elegido.
 let accForzado = 'con';
@@ -535,7 +539,7 @@ const cacheLlam = {};
 const llamDeMes = (m, tipo = 'llam') => (cacheLlam[tipo + '|' + m] ||= api(`/api/conexiones?tipo=${tipo}&mes=${m}`).catch(() => ({})));
 // Filtros de la sección: acumulado del rango del dashboard, un día o comparar dos días;
 // y campaña: las dos juntas, solo 4PRO o solo Vencimiento.
-let frModo = 'acum', frCamp = '', frGraf = 'pctl', frArgs = null;
+let frModo = 'acum', frCamp = '', frGraf = 'pctl', frUnico = false, frArgs = null;
 const repintarFr = () => frArgs && pintarFranjas(...frArgs);
 for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) {
   $(btn).addEventListener('click', () => { frModo = m; repintarFr(); });
@@ -543,7 +547,9 @@ for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']
 for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) {
   $(btn).addEventListener('click', () => { frCamp = c; repintarFr(); });
 }
-for (const [btn, g] of [['frGPctL', 'pctl'], ['frGPct', 'pct'], ['frGCont', 'cont'], ['frGMin', 'min']]) {
+// Contactos en base a tratado (cada commlog de contacto) o contacto único (cada instalación una vez, en la franja de su primer contacto).
+for (const [btn, u] of [['frCtT', false], ['frCtU', true]]) $(btn).addEventListener('click', () => { frUnico = u; repintarFr(); });
+for (const [btn, g] of [['frGPctL', 'pctl'], ['frGPct', 'pct']]) {
   $(btn).addEventListener('click', () => { frGraf = g; repintarFr(); });
 }
 $('frDia').addEventListener('change', repintarFr);
@@ -554,8 +560,6 @@ let frRangoDash = '';
 $('frDiaB').addEventListener('change', repintarFr);
 addEventListener('resize', () => { clearTimeout(pintarFranjas.t); pintarFranjas.t = setTimeout(repintarFr, 200); });
 
-const COLOR_CAMP = { '4PRO': 'var(--c1)', Vencimiento: 'var(--c2)' };
-const colorCamp = (c, i) => COLOR_CAMP[c] || ['var(--c1)', 'var(--c2)', 'var(--c3)'][i % 3];
 const tramo = (fr) => { const [hh, mm] = fr.split(':').map(Number); const fin = franjaDe(hh * 60 + mm + 30); return `${fr}–${fin === '00:00' ? '24:00' : fin}`; };
 const hm = (seg) => `${Math.floor(seg / 3600)}:${String(Math.round((seg % 3600) / 60)).padStart(2, '0')} h`;
 // Paso del eje: 1, 2, 5 o 10 (y 25, 250… solo cuando no deja decimales).
@@ -646,7 +650,8 @@ async function pintarFranjas(desde, hasta, logs) {
   const diasBuenos = diasCon.filter((d) => !ultLog || d <= ultLog);
   for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) $(btn).classList.toggle('sec', frModo !== m);
   for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) $(btn).classList.toggle('sec', frCamp !== c);
-  for (const [btn, g] of [['frGPctL', 'pctl'], ['frGPct', 'pct'], ['frGCont', 'cont'], ['frGMin', 'min']]) $(btn).classList.toggle('sec', frGraf !== g);
+  for (const [btn, g] of [['frGPctL', 'pctl'], ['frGPct', 'pct']]) $(btn).classList.toggle('sec', frGraf !== g);
+  for (const [btn, u] of [['frCtT', false], ['frCtU', true]]) $(btn).classList.toggle('sec', frUnico !== u);
   $('frDiaLbl').classList.toggle('hidden', frModo === 'acum');
   $('frDesdeLbl').classList.toggle('hidden', frModo !== 'acum');
   $('frHastaLbl').classList.toggle('hidden', frModo !== 'acum');
@@ -672,7 +677,6 @@ async function pintarFranjas(desde, hasta, logs) {
   const faltan = necesarios.filter((m) => !mesesEntre(desde, hasta).includes(m));
   if (faltan.length) todosLogs = logs.concat(...(await Promise.all(faltan.map(logsParseados))));
   const camps = Object.keys(bbdd.campanas).filter((c) => !frCamp || c === frCamp);
-  const series = camps.map((c) => ({ c, nombre: c, color: colorCamp(c, Object.keys(bbdd.campanas).indexOf(c)) }));
   const suma = (f, k) => camps.reduce((s, c) => s + (f.porCamp[c]?.[k] || 0), 0);
   const cont = (f) => suma(f, 'contactos'), llam = (f) => suma(f, 'contactos') + suma(f, 'iloc');
   const pctInt = (f) => (llam(f) ? (100 * cont(f)) / llam(f) : null);
@@ -680,7 +684,6 @@ async function pintarFranjas(desde, hasta, logs) {
   const horasLog = (f) => f.segundos / 3600;
   const pct = (f) => (f.segundos ? cont(f) / horasLog(f) : null);
   const fmtR = (x) => fmt(x, 2);
-  const minC = (f) => (cont(f) && f.segundos ? f.segundos / 60 / cont(f) : null);
 
   const vistas = frModo === 'acum' ? [{ etq: '', d0: rd, d1: rh }]
     : frModo === 'dia' ? [{ etq: '', d0: $('frDia').value, d1: $('frDia').value }]
@@ -722,10 +725,10 @@ async function pintarFranjas(desde, hasta, logs) {
     const tramos = await tramosDe(v.d0, v.d1);
     v.bb = tramos[0]?.bb || bbdd;
     v.mesesSinBbdd = frModo === 'acum' && v.d0 && v.d1 ? mesesEntre(v.d0, v.d1).filter((m) => m !== bbdd.mes && !indiceBbdd[m]) : [];
-    Object.assign(v, sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, conex, t.d0, t.d1))));
+    Object.assign(v, sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, conex, t.d0, t.d1, { unico: frUnico }))));
     v.nLogs = v.franjas.reduce((n, f) => n + f.commlogs, 0);
     // Mismo cálculo con las llamadas del informe en lugar del tiempo: solo cuentan los días que tienen llamadas.
-    const inf = sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, llamInf, t.d0, t.d1)));
+    const inf = sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, llamInf, t.d0, t.d1, { unico: frUnico })));
     v.diasLlam = inf.dias;
     v.inf = Object.fromEntries(inf.franjas.map((f) => [f.franja, f]));
   }
@@ -736,20 +739,21 @@ async function pintarFranjas(desde, hasta, logs) {
     const por = Object.fromEntries(v.franjas.map((f) => [f.franja, f]));
     v.filas = nombres.map((n) => ({ ...(por[n] || { franja: n, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, porCamp: {} }), inf: v.inf[n] || null }));
     const totSeg = v.filas.reduce((s, f) => s + f.segundos, 0);
-    v.mejor = v.filas.filter((f) => f.segundos >= totSeg * 0.02 && cont(f)).sort((a, b) => minC(a) - minC(b))[0];
+    v.mejor = v.filas.filter((f) => f.segundos >= totSeg * 0.02 && cont(f)).sort((a, b) => pct(b) - pct(a))[0];
   }
-  const maxCont = Math.max(1, ...vistas.flatMap((v) => v.filas.map(cont)));
-  const maxMin = Math.max(1, ...vistas.flatMap((v) => v.filas.map((f) => minC(f) || 0)));
   const maxLlam = Math.max(1, ...vistas.flatMap((v) => v.filas.map(llam)));
   // % contactación = contactos ÷ llamadas del informe de llamadas en la franja (en el campo «segundos» del informe van las llamadas).
   const llamI = (f) => f.inf?.segundos || 0;
   const contI = (f) => camps.reduce((s, c) => s + (f.inf?.porCamp[c]?.contactos || 0), 0);
   const pctL = (f) => (llamI(f) ? (100 * contI(f)) / llamI(f) : null);
-  const maxPctL = Math.max(1, ...vistas.flatMap((v) => v.filas.map((f) => pctL(f) || 0)));
   const maxLlamI = Math.max(1, ...vistas.flatMap((v) => v.filas.map(llamI)));
+  // La escala no tiene en cuenta las franjas con muy pocas llamadas o horas (menos del 5 % de la que más tiene),
+  // como las 21:00, donde se tipifican contactos de llamadas ya terminadas: su barra se corta arriba.
+  const maxSeg = Math.max(1, ...vistas.flatMap((v) => v.filas.map((f) => f.segundos)));
+  const maxPctL = Math.max(1, ...vistas.flatMap((v) => v.filas.filter((f) => llamI(f) >= maxLlamI * 0.05).map((f) => pctL(f) || 0)));
   const lineaI = { valor: llamI, color: 'var(--text-2)', ymax: maxLlamI };
   const keyLineaI = '<span><i style="background:var(--text-2); height:2px; width:14px; vertical-align:3px"></i>Llamadas del informe · eje derecho</span>';
-  const maxPct = Math.max(1, ...vistas.flatMap((v) => v.filas.map((f) => pct(f) || 0)));
+  const maxPct = Math.max(0.1, ...vistas.flatMap((v) => v.filas.filter((f) => f.segundos >= maxSeg * 0.05).map((f) => pct(f) || 0)));
   // Línea de intentos (contactos + ilocalizados) en el eje derecho, igual en todas las gráficas.
   const linea = { valor: llam, color: 'var(--text-2)', ymax: maxLlam };
   const keyLinea = '<span><i style="background:var(--text-2); height:2px; width:14px; vertical-align:3px"></i>Intentos (contactos + ilocalizados) · eje derecho</span>';
@@ -758,9 +762,6 @@ async function pintarFranjas(desde, hasta, logs) {
   $('frPaneles').innerHTML = vistas.map((v, i) => `<div class="fr-panel">
       ${frModo !== 'acum' ? `<h3 class="dia">${v.etq ? v.etq + ' · ' : ''}${v.d0 ? fDia(v.d0) : '—'} · BBDD ${escapeHtml(nombreBbdd(v.bb.mes))}${v.dias.length ? '' : ' · sin conexiones'}</h3>` : ''}
       ${v.dias.length && v.nLogs < 30 ? `<p class="status">Ojo: ese día solo hay ${fmt(v.nLogs)} commlogs de instalaciones de esta BBDD${ultLog && v.d1 > ultLog ? ` (los commlogs de Upsell llegan hasta el ${fDia(ultLog)})` : ''}, por eso salen tan pocas franjas.</p>` : ''}
-      ${frGraf === 'cont' ? `<h3 class="chart-t">Contactos por franja</h3>
-      <div class="leyenda">${series.map((se) => `<span><i style="background:${se.color}"></i>${escapeHtml(se.nombre)}</span>`).join('')}${keyLinea}</div>
-      <div class="chart" id="frC1_${i}"></div>` : ''}
       ${frGraf === 'pctl' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas del informe de llamadas</small></h3>
       ${v.diasLlam.length ? `${juntas ? '' : llSeparadas ? `<p class="status">Llamadas solo del servicio de ${escapeHtml(frCamp)} (${frCamp === '4PRO' ? 'Vencimiento_genérico' : 'Upselling_tecnicos'}).</p>`
         : '<p class="status">Ojo: las llamadas guardadas no están separadas por skill (vuelve a subir el informe de llamadas), así que con una sola campaña el % sale más bajo.</p>'}
@@ -770,8 +771,6 @@ async function pintarFranjas(desde, hasta, logs) {
       ${juntas ? '' : '<p class="status">Ojo: las horas logadas son de todos los gestores (el tiempo no se separa por campaña), así que con una sola campaña sale más bajo.</p>'}
       <div class="leyenda"><span><i style="background:var(--c3)"></i>Contactos por hora logada · eje izquierdo</span>${keyLinea}</div>
       <div class="chart" id="frC2_${i}"></div>` : ''}
-      ${frGraf === 'min' ? `<h3 class="chart-t">Minutos conectados por contacto <small>· cuanto más baja la barra, más productiva la franja</small></h3>
-      ${juntas ? `<div class="leyenda"><span><i style="background:var(--c3)"></i>Min. por contacto · eje izquierdo</span>${keyLinea}</div><div class="chart" id="frC3_${i}"></div>` : '<p class="status">Con una sola campaña no se calcula: el tiempo de los gestores no se separa por campaña. Elige «Juntas».</p>'}` : ''}
       <details style="margin-top:10px"><summary style="cursor:pointer; font-size:13px; color:var(--text-2)">Ver tabla por franja</summary>
         <div class="tablewrap"><table id="frT_${i}"></table></div></details>
     </div>`).join('');
@@ -779,39 +778,24 @@ async function pintarFranjas(desde, hasta, logs) {
   vistas.forEach((v, i) => {
     if (!v.dias.length) return;
     const gest = (f) => f.segundos / 1800 / v.dias.length;
-    if (frGraf === 'cont') graficaFranjas($('frC1_' + i), v.filas, series, {
-      valor: (f, se) => f.porCamp[se.c]?.contactos || 0, ymax: maxCont, linea,
-      tooltip: (f) => `${tramo(f.franja)}\n${fmt(cont(f))} contactos de ${fmt(llam(f))} llamadas` +
-        (juntas ? '\n' + series.map((se) => `  ${se.nombre}: ${fmt(f.porCamp[se.c]?.contactos || 0)}`).join('\n') : '') +
-        `\n${hm(f.segundos)} conectadas (${fmt(gest(f), 1)} gestores de media)`,
-    });
     if (frGraf === 'pctl' && v.diasLlam.length) graficaFranjas($('frC4_' + i), v.filas, [{ c: 'pctl', color: 'var(--c3)' }], {
       valor: (f) => pctL(f) || 0, ymax: maxPctL, fmtEje: (x) => fmt(x) + ' %', linea: lineaI,
       tooltip: (f) => `${tramo(f.franja)}\n${pctL(f) == null ? 'Sin llamadas en el informe' : fmt(pctL(f), 1) + ' % de contactación'}\n${fmt(contI(f))} contactos ÷ ${fmt(llamI(f))} llamadas`,
     });
     if (frGraf === 'pct') graficaFranjas($('frC2_' + i), v.filas, [{ c: 'pct', color: 'var(--c3)' }], {
-      valor: (f) => pct(f) || 0, ymax: maxPct, fmtEje: (x) => fmt(x, x % 1 ? 2 : 0), linea,
+      valor: (f) => pct(f) || 0, ymax: maxPct, fmtEje: (x) => fmt(x, x % 1 ? 2 : 0), linea, marca: (f) => f === v.mejor,
       tooltip: (f) => `${tramo(f.franja)}\n${pct(f) == null ? 'Sin gestores logados' : fmtR(pct(f)) + ' contactos por hora logada'}\n${fmt(cont(f))} contactos ÷ ${fmt(horasLog(f), 1)} h logadas` +
         `\n${fmt(llam(f))} intentos: ${fmt(cont(f))} contactos + ${fmt(suma(f, 'iloc'))} ilocalizados`,
     });
-    if (juntas && frGraf === 'min') {
-      graficaFranjas($('frC3_' + i), v.filas, [{ c: 'min', color: 'var(--c3)' }], {
-        valor: (f) => minC(f) || 0, ymax: maxMin, marca: (f) => f === v.mejor, linea,
-        fmtEje: (x) => fmt(x, x < 10 && x % 1 ? 1 : 0),
-        tooltip: (f) => `${tramo(f.franja)}\n${minC(f) == null ? 'Sin contactos o sin conexión' : fmt(minC(f), 1) + ' min conectados por contacto'}\n` +
-          `${hm(f.segundos)} conectadas · ${fmt(cont(f))} contactos de ${fmt(llam(f))} intentos${f === v.mejor ? '\n★ La franja más productiva' : ''}`,
-      });
-    }
     $('frT_' + i).innerHTML = `<thead><tr><th>Franja</th><th class="n">Tiempo conectado</th><th class="n">Gestores de media</th>
       <th class="n">Llamadas</th><th class="n">Contactos</th>${juntas ? camps.map((c) => `<th class="n">Contactos ${escapeHtml(c)}</th>`).join('') : ''}
-      <th class="n">Llamadas (informe)</th><th class="n">% contactación (÷ llamadas)</th><th class="n">Horas logadas</th><th class="n">Contactación (contactos ÷ h logadas)</th><th class="n">% sobre intentos</th>${juntas ? '<th class="n">Min. por contacto</th>' : ''}</tr></thead><tbody>` + v.filas.map((f) => `<tr${juntas && f === v.mejor ? ' class="sel"' : ''}>
-        <td>${juntas && f === v.mejor ? '★ ' : ''}${tramo(f.franja)}</td><td class="n">${hm(f.segundos)}</td><td class="n">${fmt(gest(f), 1)}</td>
+      <th class="n">Llamadas (informe)</th><th class="n">% contactación (÷ llamadas)</th><th class="n">Horas logadas</th><th class="n">Contactación (contactos ÷ h logadas)</th><th class="n">% sobre intentos</th></tr></thead><tbody>` + v.filas.map((f) => `<tr${f === v.mejor ? ' class="sel"' : ''}>
+        <td>${f === v.mejor ? '★ ' : ''}${tramo(f.franja)}</td><td class="n">${hm(f.segundos)}</td><td class="n">${fmt(gest(f), 1)}</td>
         <td class="n">${fmt(llam(f))}</td><td class="n">${fmt(cont(f))}</td>
         ${juntas ? camps.map((c) => `<td class="n">${fmt(f.porCamp[c]?.contactos || 0)}</td>`).join('') : ''}
         <td class="n">${f.inf ? fmt(llamI(f)) : '—'}</td><td class="n"><b>${pctL(f) == null ? '—' : fmt(pctL(f), 1) + ' %'}</b></td>
         <td class="n">${fmt(horasLog(f), 1)}</td><td class="n"><b>${pct(f) == null ? '—' : fmtR(pct(f))}</b></td>
-        <td class="n">${pctInt(f) == null ? '—' : fmt(pctInt(f), 1) + ' %'}</td>
-        ${juntas ? `<td class="n">${minC(f) == null ? '—' : fmt(minC(f), 1)}</td>` : ''}</tr>`).join('') + '</tbody>';
+        <td class="n">${pctInt(f) == null ? '—' : fmt(pctInt(f), 1) + ' %'}</td></tr>`).join('') + '</tbody>';
   });
 
   const v0 = vistas[0];
@@ -820,10 +804,11 @@ async function pintarFranjas(desde, hasta, logs) {
     : vistas.map((v) => (v.etq ? v.etq + ' ' : 'Día ') + (v.d0 ? fDia(v.d0) : '—')).join(' · '));
   $('frNota').innerHTML = (vistas[0].mesesSinBbdd?.length ? `<b>Ojo:</b> no cuentan los días de ${vistas[0].mesesSinBbdd.map(nombreMes).join(', ')} porque no hay BBDD de ese mes. ` : '') +
     (frModo === 'acum' ? 'En el acumulado cada día se cruza con la BBDD de su mes. ' : '') +
-    (juntas ? vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmt(minC(v.mejor), 1)} min por contacto). `).join('') : '') +
+    (frUnico ? '<b>Contacto único:</b> cada instalación cuenta como contacto una sola vez, en la franja de su primer contacto del periodo. '
+      : '<b>Contacto en base a tratado:</b> cuenta cada commlog de contacto. ') +
+    vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmtR(pct(v.mejor))} contactos por hora logada). `).join('') +
     '% contactación = contactos de la franja ÷ llamadas de la franja según el informe de llamadas (agent skill 30 minutes). ' +
     'Contactos por hora logada = contactos de la franja ÷ horas logadas de la franja (suma del Total Time de los gestores), así se comparan igual franjas con 2 o con 10 gestores. ' +
-    'Min. por contacto = suma del Total Time de los gestores en la franja ÷ contactos de la franja; el tiempo es de todos los gestores, por eso solo se calcula con las campañas juntas. ' +
     'Solo cuentan los días con conexiones y las instalaciones de la BBDD elegida.' +
     (frModo === 'comp' ? ' Los dos días usan la misma escala para poder compararlos.' : '');
 }

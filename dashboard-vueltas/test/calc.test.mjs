@@ -100,4 +100,17 @@ assert.equal(clasificarSA('R_NOU_04', 'R_TLC001'), 'exclusion');
 assert.equal(clasificarSA('R_NOU_03', 'R_TLC001'), 'contacto');
 assert.equal(clasificarSA('R_RPV_75', 'R_OTRO'), 'ignorar');
 assert.equal(clasificarSA('R_RPV_75', ''), 'ignorar');
+// Contacto único por franja: la instalación cuenta una vez, en la franja de su primer contacto
+{
+  const con = { '2026-07-03': { '10:00': 1800, '10:30': 1800 } };
+  const ls = [
+    { id: 'A', fecha: d('2026-07-03 10:40'), tipo: 'contacto' },
+    { id: 'A', fecha: d('2026-07-03 10:05'), tipo: 'contacto' },
+    { id: 'B', fecha: d('2026-07-03 10:35'), tipo: 'contacto' },
+  ];
+  const t = porFranja({ X: ['A', 'B'] }, ls, con, '2026-07-01', '2026-07-31').franjas.map((f) => f.contactos);
+  const u = porFranja({ X: ['A', 'B'] }, ls, con, '2026-07-01', '2026-07-31', { unico: true }).franjas.map((f) => f.contactos);
+  assert.deepEqual(t, [1, 2]);
+  assert.deepEqual(u, [1, 1]);
+}
 console.log('OK');

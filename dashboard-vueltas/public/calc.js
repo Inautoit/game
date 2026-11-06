@@ -256,7 +256,7 @@ export function franjaDe(min) {
  * @param commlogs   [{id, fecha: Date, key4, tipo?}]
  * @param conexiones {'AAAA-MM-DD': {'HH:MM': segundos}}
  */
-export function porFranja(campanas, commlogs, conexiones, desde, hasta) {
+export function porFranja(campanas, commlogs, conexiones, desde, hasta, { unico = false } = {}) {
   const campDe = new Map();
   for (const [c, ids] of Object.entries(campanas)) {
     for (const raw of ids) { const id = normId(raw); if (!campDe.has(id)) campDe.set(id, c); }
@@ -266,11 +266,22 @@ export function porFranja(campanas, commlogs, conexiones, desde, hasta) {
   const fr = {};
   const fila = (f) => (fr[f] ||= { franja: f, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, porCamp: {} });
   for (const d of dias) for (const [f, seg] of Object.entries(conexiones[d])) fila(f).segundos += seg;
+  const validos = [];
   for (const c of commlogs) {
     if (!c.fecha || !enDias.has(isoDia(c.fecha))) continue;
     const camp = campDe.get(normId(c.id));
     const tipo = c.tipo || clasificar(c.key4);
-    if (!camp || tipo === 'ignorar') continue;
+    if (camp && tipo !== 'ignorar') validos.push({ c, camp, tipo });
+  }
+  // Contacto único: cada instalación cuenta como contacto una sola vez, en la franja de su primer contacto del periodo.
+  if (unico) validos.sort((a, b) => a.c.fecha - b.c.fecha);
+  const yaContactada = new Set();
+  for (const { c, camp, tipo } of validos) {
+    if (unico && tipo === 'contacto') {
+      const id = normId(c.id);
+      if (yaContactada.has(id)) continue;
+      yaContactada.add(id);
+    }
     const r = fila(franjaDe(c.fecha.getHours() * 60 + c.fecha.getMinutes()));
     const pc = (r.porCamp[camp] ||= { commlogs: 0, contactos: 0, iloc: 0, excl: 0 });
     const k = tipo === 'contacto' ? 'contactos' : tipo === 'exclusion' ? 'excl' : 'iloc';
