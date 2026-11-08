@@ -1,64 +1,107 @@
-# Rayo Runner ⚡
+# Corte Perfecto ✂️
 
-Runner infinito con estilo neón retro, pensado para **iPhone, iPad y Android**
-(también funciona en PC). Corre por una autopista al atardecer, esquiva
-obstáculos, recoge monedas y bate tu récord.
+**¿Eres capaz de cortar exactamente 50/50?**
 
-Es un juego web (HTML5 + Canvas, sin librerías ni compilación) e **instalable
-como app (PWA)**: funciona a pantalla completa y sin conexión.
+Juego de habilidad para **iPhone, iPad y Android** (también PC). Aparece una
+figura (manzana, tarta, pez, pizza, estrella…) y tienes que **cortarla en dos
+mitades exactas** con un deslizamiento del dedo. El juego calcula el área real
+de cada trozo y te dice el porcentaje: `49,8% / 50,2%`.
 
-## Cómo jugar
+- ⏱️ **Partidas de ~30 segundos**: 10 cortes, cada uno con su cuenta atrás.
+- 📅 **Reto diario**: las mismas 10 figuras para todo el mundo cada día (#1, #2, #3…).
+- 🔥 **Racha de días** jugando el reto diario.
+- 🎯 **Combos** al encadenar cortes perfectos.
+- 📤 **Compartir resultado** en un mensaje con emojis, al estilo Wordle:
+  ```
+  ✂️ Corte Perfecto #12
+  🎯🟩🟨🟩🎯🟧🟩🟩🎯🟩
+  Precisión: 96,4 % · 1534 pts
+  ```
+- 📲 **Instalable** en la pantalla de inicio y **funciona sin conexión** (PWA).
+- Sin librerías, sin compilación, sin servidor: solo archivos estáticos.
 
-| Gesto (móvil / iPad) | Teclado | Acción |
-|----------------------|---------|--------|
-| Deslizar ← / → | `←` `→` / `A` `D` | Cambiar de carril |
-| Deslizar ↑ o tocar | `↑` / `W` / `Espacio` | Saltar |
-| Deslizar ↓ | `↓` / `S` | Agacharse (en el aire: caída rápida) |
-| Botón ❚❚ | `Esc` / `P` | Pausa |
+## Cómo se juega
 
-### Obstáculos
-- **Muro morado (✕)**: solo se puede esquivar cambiando de carril.
-- **Valla naranja (baja)**: sáltala o cambia de carril.
-- **Barra roja (alta)**: agáchate por debajo o cambia de carril.
+1. Desliza el dedo en línea recta a través de la figura.
+2. Al soltar, se corta por esa línea (la guía punteada te ayuda a apuntar).
+3. Cuanto más cerca del 50/50, más puntos:
 
-### Objetos
-- **Monedas**: +10 puntos cada una; se acumulan en tu hucha total.
-- **Escudo (S)**: aguanta un choque durante 10 segundos.
+| Diferencia con 50 % | Resultado | Emoji |
+|---|---|---|
+| < 0,25 % | ¡PERFECTO! | 🎯 |
+| < 2,5 % | ¡Genial! | 🟩 |
+| < 5 % | Bien | 🟨 |
+| < 10 % | Regular | 🟧 |
+| ≥ 10 % | ¡Uy! | 🟥 |
+| Se acaba el tiempo | — | ⬛ |
 
-La velocidad aumenta poco a poco. Los puntos son la distancia recorrida más las monedas.
+A partir de la 4.ª figura empiezan a **girar**, y desde la 7.ª también **se mueven**.
+Las figuras no están centradas en la tabla y casi ninguna es simétrica: no vale
+cortar siempre por el medio 😉
 
-## Probarlo en local
+## Probarlo en tu ordenador
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Abre <http://localhost:8000>. Para probarlo en el móvil, conéctalo a la misma
-wifi y abre `http://IP-DE-TU-ORDENADOR:8000`.
+Abre <http://localhost:8000>. Desde el móvil (misma wifi):
+`http://IP-DE-TU-ORDENADOR:8000`.
 
-## Instalarlo en iPhone / iPad
+## Publicarlo en Cloudflare Pages (gratis)
 
-1. Publica la carpeta en cualquier hosting con HTTPS (GitHub Pages, Netlify, Vercel…).
-2. Ábrelo en **Safari** → botón **Compartir** → **Añadir a pantalla de inicio**.
-3. Se abrirá a pantalla completa como una app, también sin conexión.
+### Opción A — Conectado a GitHub (recomendada: se actualiza solo)
+1. Entra en <https://dash.cloudflare.com> → **Workers & Pages** → **Create** → pestaña **Pages** → **Connect to Git**.
+2. Elige este repositorio y la rama que quieras publicar.
+3. Configuración de compilación:
+   - **Framework preset:** `None`
+   - **Build command:** *(vacío)*
+   - **Build output directory:** `/`
+4. **Save and Deploy**. Tendrás una dirección tipo `https://corte-perfecto.pages.dev`.
+   Cada `git push` vuelve a publicar automáticamente.
 
-En Android (Chrome): menú ⋮ → **Instalar aplicación**.
+### Opción B — Subir la carpeta a mano
+**Workers & Pages** → **Create** → **Pages** → **Upload assets** → arrastra la
+carpeta del proyecto (sin la carpeta `.git`).
+
+### Opción C — Desde la terminal
+```bash
+npx wrangler pages deploy . --project-name corte-perfecto
+```
+
+### Después de publicar
+- Cambia `og-image.png` en `index.html` por la URL completa
+  (`https://tu-dominio/og-image.png`) para que la vista previa salga bien al
+  compartir el enlace en WhatsApp o redes.
+- Si cambias archivos, sube la versión de caché en `sw.js`
+  (`corte-perfecto-v1` → `v2`) para que los móviles cojan la versión nueva.
+- Puedes poner un dominio propio en **Custom domains** del proyecto de Pages.
+
+## Añadirlo a la pantalla de inicio
+
+- **iPhone / iPad (Safari):** botón **Compartir** → **Añadir a pantalla de inicio**.
+- **Android (Chrome):** menú ⋮ → **Instalar aplicación**.
+
+Se abre a pantalla completa con su icono, como una app.
 
 ## Estructura
 
 ```
-index.html            Página, HUD y menús
-styles.css            Estilos (adaptados a notch / zonas seguras)
-src/game.js           Todo el juego: lógica, dibujo, sonido y controles
+index.html            Página, HUD, menú y resultados
+styles.css            Estilos (adaptados a notch y zonas seguras)
+src/game.js           Todo el juego: figuras, corte, puntuación, sonido, controles
 manifest.webmanifest  Datos de la app instalable
 sw.js                 Service worker (modo sin conexión)
+_headers              Cabeceras para Cloudflare Pages
 icons/                Iconos de la app
+og-image.png          Imagen para compartir en redes
 ```
 
-## Ideas para seguir
+## Ideas para seguir (y para monetizar)
 
-- Tienda para gastar monedas en personajes o colores
-- Más power-ups (imán de monedas, multiplicador)
-- Misiones diarias y logros
-- Música de fondo
-- Publicarlo en App Store / Google Play con Capacitor
+- **Ranking mundial del reto diario** con Cloudflare Workers + D1.
+- **Retar a un amigo**: enlace con tu puntuación para que intente superarla.
+- **Modo infinito / contrarreloj** y nuevas figuras cada semana.
+- **Cuchillos y tablas personalizados** (cosméticos de pago).
+- **Vídeo del corte** listo para TikTok / Reels.
+- Publicarlo en App Store / Google Play empaquetado con Capacitor.

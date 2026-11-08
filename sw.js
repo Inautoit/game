@@ -1,6 +1,6 @@
 // Service worker: permite jugar sin conexión.
-// Red primero (para recibir siempre la última versión) y caché como respaldo.
-const CACHE = 'rayo-runner-v1';
+// Red primero (siempre la última versión) y caché como respaldo.
+const CACHE = 'corte-perfecto-v1';
 const FILES = [
   './', 'index.html', 'styles.css', 'src/game.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
@@ -19,7 +19,7 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {

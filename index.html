@@ -3,13 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>Rayo Runner</title>
-  <meta name="description" content="Runner infinito de estilo neón para móvil y iPad.">
-  <meta name="theme-color" content="#0b0221">
+  <title>Corte Perfecto ✂️</title>
+  <meta name="description" content="¿Eres capaz de cortar en dos mitades exactas? Un reto nuevo cada día. Partidas de 30 segundos.">
+  <meta name="theme-color" content="#ff8a65">
+
+  <!-- Al compartir el enlace (WhatsApp, redes...) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Corte Perfecto ✂️ ¿Puedes cortar 50/50?">
+  <meta property="og:description" content="Corta frutas, tartas y más en dos mitades exactas. Reto diario, partidas de 30 segundos.">
+  <meta property="og:image" content="og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Instalable en la pantalla de inicio -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Rayo Runner">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Corte Perfecto">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -20,51 +29,47 @@
 
   <!-- HUD -->
   <div id="hud" class="hidden">
-    <div class="pill"><span class="label">PUNTOS</span><span id="score">0</span></div>
-    <div class="pill coins"><span class="coin-dot"></span><span id="coins">0</span></div>
-    <div id="shield" class="pill shield hidden">🛡️ <span id="shieldTime">0</span></div>
-    <button id="pauseBtn" class="icon-btn" aria-label="Pausa">❚❚</button>
+    <div class="pill"><span class="label">PUNTOS</span><b id="score">0</b></div>
+    <div class="pill"><b id="round">1/10</b></div>
+    <div id="combo" class="pill combo hidden">🔥 x<b id="comboN">2</b></div>
   </div>
 
-  <!-- Menú principal -->
+  <!-- Menú -->
   <div id="menu" class="overlay">
     <div class="card">
-      <h1 class="title">RAYO<br><span>RUNNER</span></h1>
-      <p class="best">Récord: <b id="best">0</b> · Monedas totales: <b id="bank">0</b></p>
-      <ul class="howto">
-        <li><span class="k">← →</span> Desliza para cambiar de carril</li>
-        <li><span class="k">↑</span> Desliza o toca para saltar</li>
-        <li><span class="k">↓</span> Desliza abajo para agacharte</li>
-      </ul>
-      <button id="playBtn" class="btn">JUGAR</button>
-      <button id="soundBtn" class="btn ghost small">🔊 Sonido: Sí</button>
-    </div>
-  </div>
-
-  <!-- Pausa -->
-  <div id="pause" class="overlay hidden">
-    <div class="card">
-      <h2>PAUSA</h2>
-      <button id="resumeBtn" class="btn">CONTINUAR</button>
-      <button id="quitBtn" class="btn ghost">SALIR AL MENÚ</button>
-    </div>
-  </div>
-
-  <!-- Game over -->
-  <div id="over" class="overlay hidden">
-    <div class="card">
-      <h2>¡CHOCASTE!</h2>
-      <div id="record" class="record hidden">✨ ¡NUEVO RÉCORD! ✨</div>
-      <div class="stats">
-        <div><span class="label">PUNTOS</span><b id="finalScore">0</b></div>
-        <div><span class="label">MONEDAS</span><b id="finalCoins">0</b></div>
-        <div><span class="label">RÉCORD</span><b id="finalBest">0</b></div>
+      <div class="logo">✂️</div>
+      <h1>CORTE<br><span>PERFECTO</span></h1>
+      <p class="tagline">Corta cada cosa en <b>dos mitades exactas</b>.<br>Desliza el dedo para cortar.</p>
+      <div class="streak" id="streak"></div>
+      <button id="dailyBtn" class="btn">RETO DIARIO <span id="dailyN"></span></button>
+      <div id="dailyDone" class="note hidden"></div>
+      <button id="freeBtn" class="btn alt">PARTIDA LIBRE</button>
+      <div class="row">
+        <span class="note">Récord libre: <b id="best">0</b></span>
+        <button id="soundBtn" class="chip">🔊</button>
       </div>
-      <button id="againBtn" class="btn">OTRA VEZ</button>
+    </div>
+  </div>
+
+  <!-- Resultados -->
+  <div id="results" class="overlay hidden">
+    <div class="card">
+      <h2 id="resTitle">¡Muy fino!</h2>
+      <div id="resMode" class="note"></div>
+      <div id="resRecord" class="record hidden">✨ ¡NUEVO RÉCORD! ✨</div>
+      <div class="stats">
+        <div><span class="label">PUNTOS</span><b id="resScore">0</b></div>
+        <div><span class="label">PRECISIÓN</span><b id="resPrec">0 %</b></div>
+      </div>
+      <div id="resGrid" class="grid"></div>
+      <div id="resBest" class="note"></div>
+      <button id="shareBtn" class="btn">COMPARTIR 📤</button>
+      <button id="againBtn" class="btn alt">OTRA PARTIDA</button>
       <button id="menuBtn" class="btn ghost">MENÚ</button>
     </div>
   </div>
 
+  <div id="toast" class="toast hidden"></div>
 
   <script src="src/game.js"></script>
   <script>
