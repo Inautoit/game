@@ -121,3 +121,175 @@ export function sample(track) {
 export function laneOffsets(n) {
   return Array.from({ length: n }, (_, i) => (i - (n - 1) / 2) * LANE_W);
 }
+
+// ---------------------------------------------------------------------------
+// Editor de circuitos: muestreo de un trazado abierto, cierre automático y validación
+// (lo usan el juego y el servidor para comprobar los circuitos de la comunidad)
+// ---------------------------------------------------------------------------
+export const EDITOR = {
+  maxPieces: 80,
+  minLen: 3,      // metros de cuerda
+  maxLen: 60,
+  radii: { cerrada: 2.2, media: 3.2, abierta: 4.6 },   // radio de la línea central (unidades), 2 carriles
+  radius4: 0.6,   // con 4 carriles las curvas son más abiertas
+  scenery: ['verde', 'arena', 'noche'],
+};
+const SCALE_M = 0.126;
+
+// Recorre piezas sin cerrar (rectas con largo fijo) y devuelve el final y los puntos
+export function walkOpen(pieces, step = 0.2) {
+  let x = 0, z = 0, h = 0;
+  const pts = [{ x, z, h }];
+  for (const p of pieces) {
+    const isS = p[0] === 'S';
+    const len = isS ? p[1] : (Math.abs(p[1]) * Math.PI / 180) * p[2];
+    const k = isS ? 0 : Math.sign(p[1]) / p[2];
+    const n = Math.max(1, Math.ceil(len / step));
+    const st = len / n;
+    for (let i = 0; i < n; i++) {
+      x += Math.cos(h + (k * st) / 2) * st;
+      z += Math.sin(h + (k * st) / 2) * st;
+      h += k * st;
+      pts.push({ x, z, h });
+    }
+  }
+  return { x, z, h, pts };
+}
+
+// ¿Se cruza o se pisa el circuito? (ignora tramos con más de 0,6 de diferencia de altura)
+export function selfOverlap(pts, lanes) {
+  const half = (lanes * LANE_W) / 2 + 0.28, need = 2 * half + 0.9;
+  const n = pts.length;
+  const step = Math.max(1, Math.round(0.12 / DS));
+  const skip = Math.ceil((need * 2.2) / DS);
+  let worst = Infinity;
+  // Rejilla espacial para no comparar todos con todos
+  const cell = need, grid = new Map();
+  const key = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
+  for (let i = 0; i < n; i += step) {
+    const k = key(pts[i].x, pts[i].z);
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(i);
+  }
+  for (let i = 0; i < n; i += step) {
+    const p = pts[i], cx = Math.floor(p.x / cell), cz = Math.floor(p.z / cell);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const list = grid.get(`${cx + a},${cz + b}`);
+      if (!list) continue;
+      for (const j of list) {
+        if (j <= i) continue;
+        const gap = Math.min(j - i, n - j + i);
+        if (gap < skip) continue;
+        const q = pts[j];
+        if (Math.abs((p.y || 0) - (q.y || 0)) > 0.6) continue;
+        const d = Math.hypot(p.x - q.x, p.z - q.z);
+        if (d < worst) worst = d;
+      }
+    }
+  }
+  return { ok: worst >= need, worst, need };
+}
+
+// Comprueba un circuito (de la comunidad o del editor). Devuelve { ok, error, length (m) }
+export function validateTrack(def) {
+  if (!def || !Array.isArray(def.pieces)) return { ok: false, error: 'Circuito no válido' };
+  if (![2, 4].includes(def.lanes)) return { ok: false, error: 'Elige 2 o 4 carriles' };
+  if (def.pieces.length < 3 || def.pieces.length > EDITOR.maxPieces) return { ok: false, error: `El circuito debe tener entre 3 y ${EDITOR.maxPieces} piezas` };
+  const minR = def.lanes === 4 ? 2.0 : 1.4;
+  for (const p of def.pieces) {
+    if (!Array.isArray(p)) return { ok: false, error: 'Pieza no válida' };
+    if (p[0] === 'S') {
+      if (!(Number.isFinite(p[1]) && p[1] >= 0 && p[1] <= 80) || p.length > 2) return { ok: false, error: 'Recta no válida' };
+    } else if (p[0] === 'C') {
+      if (!(Number.isFinite(p[1]) && Math.abs(p[1]) >= 5 && Math.abs(p[1]) <= 360) || !(Number.isFinite(p[2]) && p[2] >= minR && p[2] <= 12) || p.length > 3) return { ok: false, error: 'Curva no válida' };
+    } else return { ok: false, error: 'Pieza no válida' };
+  }
+  const end = walkOpen(def.pieces, 0.05);
+  const turn = def.pieces.reduce((a, p) => a + (p[0] === 'C' ? p[1] : 0), 0);
+  if (Math.hypot(end.x, end.z) > 0.05 || Math.abs(Math.abs(turn) - 360) > 0.5) return { ok: false, error: 'El circuito no está cerrado' };
+  let S;
+  try { S = sample(def); } catch { return { ok: false, error: 'Circuito no válido' }; }
+  const length = S.length * SCALE_M;
+  if (length < EDITOR.minLen) return { ok: false, error: `Muy corto: mínimo ${EDITOR.minLen} m` };
+  if (length > EDITOR.maxLen) return { ok: false, error: `Muy largo: máximo ${EDITOR.maxLen} m` };
+  const ov = selfOverlap(S.pts, def.lanes);
+  if (!ov.ok) return { ok: false, error: 'El circuito se cruza o se toca consigo mismo' };
+  return { ok: true, length };
+}
+
+// Cierra un trazado abierto: añade la curva que falta para dar la vuelta completa y
+// mete dos rectas donde haga falta para que el final llegue a la salida.
+// Devuelve { pieces } (todas con largo fijo) o { error }.
+export function autoClose(pieces, lanes, radius) {
+  if (!pieces.length) return { error: 'Pon alguna pieza primero' };
+  const turn = pieces.reduce((a, p) => a + (p[0] === 'C' ? p[1] : 0), 0);
+  let target = Math.round(turn / 360) * 360;
+  if (target === 0) target = turn >= 0 ? 360 : -360;
+  const missing = target - turn;
+  // Las curvas se parten en trozos de 45° para tener más sitios donde meter rectas
+  const base = [];
+  const inside = new Set();   // huecos que caen dentro de una curva del jugador (mejor no tocarlos)
+  for (const p of pieces) {
+    if (p[0] !== 'C') { base.push(p.slice()); continue; }
+    let r = p[1], first = true;
+    while (Math.abs(r) > 0.5) {
+      if (!first) inside.add(base.length);
+      const a = Math.sign(r) * Math.min(45, Math.abs(r)); base.push(['C', a, p[2]]); r -= a; first = false;
+    }
+  }
+  if (Math.abs(target) > 360) return { error: 'Has girado más de una vuelta completa: quita alguna curva' };
+  // La curva que falta, en trozos de 90° como mucho
+  let rest = missing;
+  while (Math.abs(rest) > 0.5) {
+    const a = Math.sign(rest) * Math.min(45, Math.abs(rest));
+    base.push(['C', a, radius]);
+    rest -= a;
+  }
+  // Rumbo al principio de cada hueco entre piezas (donde se puede meter una recta)
+  const heads = [];
+  let h = 0;
+  for (let i = 0; i <= base.length; i++) {
+    heads.push(h);
+    const p = base[i];
+    if (p && p[0] === 'C') h += (p[1] * Math.PI) / 180;
+  }
+  const end = walkOpen(base, 0.1);
+  const gx = -end.x, gz = -end.z;   // lo que falta para llegar a la salida
+  const cands = [];
+  for (let i = 0; i <= base.length; i++) for (let j = i + 1; j <= base.length; j++) {
+    const d1 = [Math.cos(heads[i]), Math.sin(heads[i])], d2 = [Math.cos(heads[j]), Math.sin(heads[j])];
+    const det = d1[0] * d2[1] - d1[1] * d2[0];
+    if (Math.abs(det) < 0.2) continue;
+    // Insertar una recta en el hueco i desplaza todo lo que va detrás en su dirección
+    const L1 = (gx * d2[1] - gz * d2[0]) / det;
+    const L2 = (gz * d1[0] - gx * d1[1]) / det;
+    if (L1 < -1e-6 || L2 < -1e-6) continue;
+    cands.push({ i, j, L1: Math.max(0, L1), L2: Math.max(0, L2), cost: L1 + L2 + (inside.has(i) ? 4 : 0) + (inside.has(j) ? 4 : 0) });
+  }
+  if (!Math.hypot(gx, gz) || Math.hypot(gx, gz) < 1e-3) cands.unshift({ i: 0, j: 0, L1: 0, L2: 0, cost: 0 });
+  cands.sort((a, b) => a.cost - b.cost);
+  let lastErr = 'No se puede cerrar así: prueba con otras curvas';
+  for (const c of cands.slice(0, 60)) {
+    const out = [];
+    for (let k = 0; k <= base.length; k++) {
+      if (k === c.i && c.L1 > 1e-4) out.push(['S', +c.L1.toFixed(4)]);
+      if (k === c.j && c.j !== c.i && c.L2 > 1e-4) out.push(['S', +c.L2.toFixed(4)]);
+      if (k < base.length) out.push(base[k]);
+    }
+    // Junta rectas seguidas y redondea
+    const merged = [];
+    for (const p of out) {
+      const last = merged[merged.length - 1];
+      if (p[0] === 'S' && last && last[0] === 'S') last[1] = +(last[1] + p[1]).toFixed(4);
+      else if (p[0] === 'C' && last && last[0] === 'C' && last[2] === p[2] && Math.sign(last[1]) === Math.sign(p[1])) last[1] += p[1];
+      else merged.push(p.slice());
+    }
+    // Corrige el pequeño error de redondeo con la última recta
+    const e2 = walkOpen(merged, 0.05);
+    if (Math.hypot(e2.x, e2.z) > 0.05) continue;
+    const v = validateTrack({ pieces: merged, lanes });
+    if (v.ok) return { pieces: merged, added: c.cost, length: v.length };
+    lastErr = v.error;
+  }
+  return { error: lastErr };
+}

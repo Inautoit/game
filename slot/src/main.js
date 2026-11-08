@@ -1,6 +1,8 @@
 // Turbo Slot — simulador de coches de slot 1:32.
 import * as THREE from '../vendor/three.module.min.js';
 import { TRACKS, sample, laneOffsets, LANE_W, DS } from './tracks.js';
+import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } from './editor.js';
+import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
 import { makeTelemetry, telStep, telLap, dangerColor, drawTrace, SECTORS } from './telemetry.js';
@@ -1127,9 +1129,11 @@ function makeCar({ liv, lane, human, player, name, setupRaw, skill }) {
 function ghostKey(trackId, cls) { return `ghost.${trackId}.${cls}`; }
 
 // mode: 'practica' | '1p' | '2p'
-function startRace({ trackIdx, mode, entries }) {
+function startRace({ def, trackIdx, mode, entries, online }) {
   initAudio();
-  const def = TRACKS[trackIdx];
+  def = def || TRACKS[trackIdx];
+  trackIdx = TRACKS.indexOf(def);
+  if (def.cid && !playedCids.has(def.cid)) { playedCids.add(def.cid); apiPost(`/api/tracks/${def.cid}/play`); }
   buildTrack(def);
   physTrack = { L: T.L, DSU: DS, pts: T.pts };
   clearCars();
@@ -1138,13 +1142,22 @@ function startRace({ trackIdx, mode, entries }) {
   const used = new Set(entries.map((e) => e.liv.id));
   const others = LIVERIES.filter((l) => !used.has(l.id));
   entries.forEach((e, i) => {
-    const lane = humans === 2 ? i : (lanes === 2 ? 1 : Math.min(lanes - 1, 1));
+    const lane = online ? online.lane : humans === 2 ? i : (lanes === 2 ? 1 : Math.min(lanes - 1, 1));
     makeCar({ liv: e.liv, lane, human: true, player: i, name: humans === 2 ? `Jugador ${i + 1}` : 'Tú', setupRaw: e.setupRaw });
   });
   for (const c of cars) if (c.human) buildBrakeMarks(c);
-  if (mode !== 'practica') {
+  // Online: los coches de los demás pilotos (se mueven con lo que llega por la red)
+  if (online) {
+    for (const p of online.players) {
+      if (p.id === online.me) continue;
+      const liv = LIVERIES.find((l) => l.id === p.liv) || LIVERIES[(p.lane + 1) % LIVERIES.length];
+      const c = makeCar({ liv, lane: p.lane, human: false, name: p.name, setupRaw: DEFAULT_SETUP });
+      c.remote = p.id; c.net = [];
+    }
+  }
+  if (mode !== 'practica' && mode !== 'online') {
     const free = [...Array(lanes).keys()].filter((l) => !cars.some((c) => c.lane === l));
-    const base = 0.86 + trackIdx * 0.018;
+    const base = trackIdx >= 0 ? 0.86 + trackIdx * 0.018 : 0.93;
     free.forEach((l, i) => {
       const setupRaw = { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet === 'sin' ? 'sin' : 'medio' };
       const skill = clamp(base + (i - (free.length - 1) / 2) * 0.025, 0.82, 0.97);
@@ -1162,8 +1175,8 @@ function startRace({ trackIdx, mode, entries }) {
     }
   }
   race = {
-    trackIdx, def, mode, laps: mode === 'practica' ? Infinity : def.laps, simT: 0, acc: 0,
-    goT: mode === 'practica' ? 1.2 : 4.2 + Math.random() * 0.8, lightsOn: 0, started: false, finishedAt: null, humans, entries,
+    trackIdx, def, mode, online, laps: mode === 'practica' ? Infinity : (online ? online.laps : def.laps), simT: 0, acc: 0,
+    goT: mode === 'practica' ? 1.2 : online ? Math.max(1, (online.startAt - room.serverNow()) / 1000) : 4.2 + Math.random() * 0.8, lightsOn: 0, started: false, finishedAt: null, humans, entries,
     cls: classOf(entries[0].setupRaw),
   };
   state = 'countdown';
@@ -1211,7 +1224,7 @@ function animateCrash(c, dt) {
 
 // Un paso de física para un coche
 function physStep(c) {
-  if (c.crash) return;
+  if (c.crash || c.remote) return;
   const hold = !race.started;
   let thr = c.human ? c.thrIn : aiThrottle(c.st, c.prof, physTrack, c.skill * (c.mistake > 0 ? 1.06 : 1), c.setup);
   if (c.finished && !c.human) thr = Math.min(thr, 0.35);
@@ -1254,7 +1267,16 @@ function crossLine(c, now) {
       flashText(c.player, rec ? '🏆 ¡Récord personal!' : '¡Primera vuelta!');
       if (race.mode === 'practica') store.set(ghostKey(race.def.id, race.cls), { t: lt, d: c.d, s: c.rec });
     } else if (lt < prevBest) { sfx.best(); flashText(c.player, '¡Mejor vuelta!'); } else sfx.lap();
+    // Récord del circuito de la comunidad (el servidor guarda solo el mejor)
+    if (race.def.cid && lt === c.best && race.humans === 1) {
+      const wr = race.def.community && race.def.community.best_time;
+      if (!wr || lt < wr) apiPost(`/api/tracks/${race.def.cid}/lap`, { time: lt, name: settings.pilot || 'Anónimo' }).catch(() => {});
+    }
     c.rec = []; c.recT = 0;
+  }
+  if (race.mode === 'online' && c.human) {
+    if (c.lap >= race.laps) room && room.send({ t: 'fin', time: now, best: c.best });
+    else room && room.send({ t: 'lap', lap: c.lap, time: lt });
   }
   if (c.lap >= race.laps) {
     c.finished = true;
@@ -1294,6 +1316,7 @@ function stepRace(dt) {
     }
   }
   for (const c of cars) if (c.human) c.thrIn = readThrottle(c.player, dt);
+  if (race.mode === 'online') onlineTick();
   // Física a paso fijo
   race.acc += dt;
   let n = 0;
@@ -1305,6 +1328,7 @@ function stepRace(dt) {
   for (const c of cars) {
     if (!c.human && race.started && !c.crash && Math.random() < dt * 0.02) c.mistake = 0.8;
     if (c.mistake > 0) c.mistake -= dt;
+    if (c.remote) updateRemote(c);
     if (c.crash) animateCrash(c, dt);
     else {
       const p = placeCar(c.mesh, c.st.s, c.d, c.st.th);
@@ -1369,15 +1393,24 @@ function endRace() {
     const pos = store.get('pos', {});
     if (!pos[race.def.id] || myPos < pos[race.def.id]) { pos[race.def.id] = myPos; store.set('pos', pos); }
   }
+  if (race.mode === 'online') {
+    $('nextBtn').hidden = true; $('againBtn').hidden = true;
+    $('resMenuBtn').querySelector('.btn-main').textContent = 'Volver a la sala';
+  } else { $('againBtn').hidden = false; $('resMenuBtn').querySelector('.btn-main').textContent = 'Circuitos'; }
   $('resTitle').textContent = title;
-  $('resSub').textContent = `${race.def.name} · ${race.laps} vueltas · ${CLASS_NAME[race.cls]}`;
+  $('resSub').textContent = `${race.def.name} · ${race.laps} ${race.laps === 1 ? 'vuelta' : 'vueltas'} · ${CLASS_NAME[race.cls]}`;
   const best = store.get('best', {})[`${race.def.id}|${race.cls}`];
   $('resBest').textContent = best ? `Tu récord (${CLASS_NAME[race.cls].toLowerCase()}): ${fmt(best)}` : '';
   const nextIdx = race.trackIdx + 1;
-  $('nextBtn').hidden = !(nextIdx < TRACKS.length && isUnlocked(nextIdx));
-  const unlockedNow = race.mode !== '2p' && myPos === 1 && nextIdx < TRACKS.length;
+  $('nextBtn').hidden = !(race.trackIdx >= 0 && nextIdx < TRACKS.length);
+  const unlockedNow = false;
   $('resUnlock').hidden = !unlockedNow;
   if (unlockedNow) $('resUnlock').textContent = `🔓 Desbloqueado: ${TRACKS[nextIdx].name}`;
+  const liked = store.get('liked', []);
+  $('likeBtn').hidden = !race.def.cid || race.mode === 'online';
+  $('likeBtn').disabled = liked.includes(race.def.cid);
+  $('likeBtn').querySelector('.btn-main').textContent = liked.includes(race.def.cid) ? '♥ Te gusta' : '♥ Me gusta este circuito';
+  if (race.mode === 'online') { $('nextBtn').hidden = true; setTimeout(() => openModal('mResults'), 300); return; }
   setTimeout(() => openModal('mResults'), 300);
   const stats = store.get('stats', { races: 0, wins: 0, crashes: 0, laps: 0 });
   stats.races++; if (myPos === 1 && race.mode !== '2p') stats.wins++;
@@ -1392,11 +1425,8 @@ function endPractice() {
   store.set('stats', stats);
 }
 
-function isUnlocked(i) {
-  if (i === 0) return true;
-  const pos = store.get('pos', {});
-  return pos[TRACKS[i - 1].id] === 1 || !!pos[TRACKS[i].id];
-}
+// Todos los circuitos están abiertos desde el principio
+function isUnlocked() { return true; }
 
 // ---------------------------------------------------------------------------
 // Mandos: gatillo en pantalla, teclado y mando de consola (gatillo analógico)
@@ -1591,7 +1621,7 @@ const ui = {
   splash: $('splash'), menu: $('menu'), circuits: $('circuits'), garage: $('garage'), hud: $('hud'),
   count: $('count'), toast: $('toast'), hudRows: $('hudRows'), timing: $('timing'),
 };
-const SCREENS = { menu: ui.menu, circuits: ui.circuits, garage: ui.garage, hud: ui.hud };
+const SCREENS = { menu: ui.menu, circuits: ui.circuits, garage: ui.garage, hud: ui.hud, editor: $('editor'), online: $('online') };
 function setScreen(name) { for (const [k, el] of Object.entries(SCREENS)) el.classList.toggle('open', k === name); }
 function openModal(id) { if (id === 'mSettings') fillSettings(); if (id === 'mStats') fillStats(); $(id).classList.add('open'); }
 function closeModal(id) { $(id).classList.remove('open'); }
@@ -1719,7 +1749,7 @@ function buildVtop(c) { return c.vtop || (c.vtop = Math.max(...c.tel.lim) * 1.02
 
 // ---- Menú ----
 let mode = '1p';
-let trackSel = 0;
+let selDef = TRACKS[0];
 function showMenu() {
   state = 'menu';
   closeModal('mResults'); closeModal('mPause');
@@ -1765,34 +1795,446 @@ function miniTrack(def) {
   g.fillStyle = '#fff'; g.beginPath(); g.arc((p0.x - mnx) * sc + ox, (p0.z - mnz) * sc + oz, 4, 0, Math.PI * 2); g.fill();
   return c;
 }
+// ---- API de la comunidad (en Claude o en local se usa el servidor publicado) ----
+const API = /turbo-slot\.[a-z0-9-]+\.workers\.dev$/.test(location.hostname) ? '' : 'https://turbo-slot.inautoit.workers.dev';
+const playedCids = new Set();
+async function apiGet(path) {
+  const r = await fetch(API + path, { cache: 'no-store' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Sin conexión');
+  return j;
+}
+function apiPost(path, data) {
+  return fetch(API + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data || {}) })
+    .then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Sin conexión'); return j; });
+}
+// Circuito de la comunidad → definición jugable
+const commDef = (t) => ({ id: 'c_' + t.id, cid: t.id, name: t.name, author: t.author, lanes: t.lanes, laps: t.laps, scenery: t.scenery, pieces: t.pieces, community: t });
+const myTracks = () => store.get('mytracks', []);
+const saveMyTracks = (l) => store.set('mytracks', l);
+
+let circTab = 'oficial', commSort = 'top', commCache = { top: null, new: null };
+let pickForOnline = false;   // la lista de circuitos se usa para elegir el de la sala online
+function circButton(def, lines, onClick) {
+  const b = document.createElement('button');
+  b.className = 'circ';
+  try { b.appendChild(miniTrack(def)); } catch { /* circuito raro: sin miniatura */ }
+  const info = document.createElement('div');
+  info.className = 'ci';
+  lines.forEach(([cls, text], i) => { const el = document.createElement(i === 0 ? 'b' : 'small'); if (cls) el.className = cls; el.textContent = text; info.appendChild(el); });
+  b.appendChild(info);
+  b.addEventListener('click', () => { sfx.click(); onClick(); });
+  return b;
+}
+function chooseTrack(def) {
+  selDef = def;
+  if (pickForOnline) { pickForOnline = false; onlinePickTrack(def); return; }
+  showGarage();
+}
+const lenTxt = (def) => `${(sample(def).length * SCALE).toFixed(1).replace('.', ',')} m`;
 function showCircuits() {
   state = 'circuits';
-  $('circTitle').textContent = mode === '2p' ? '2 Jugadores · Circuito' : mode === 'practica' ? 'Práctica · Circuito' : 'Carrera · Circuito';
+  $('circTitle').textContent = pickForOnline ? 'Circuito de la sala' : mode === '2p' ? '2 Jugadores' : mode === 'practica' ? 'Práctica' : 'Carrera';
+  document.querySelectorAll('#circTabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === circTab));
+  document.querySelectorAll('#commSort button').forEach((b) => b.classList.toggle('on', b.dataset.sort === commSort));
+  $('commSort').hidden = circTab !== 'comunidad';
+  $('circCreate').hidden = pickForOnline;
   const box = $('circList');
   box.innerHTML = '';
   const pos = store.get('pos', {}), best = store.get('best', {});
-  TRACKS.forEach((def, i) => {
-    const b = document.createElement('button');
-    const un = mode === 'practica' || isUnlocked(i);
-    b.className = 'circ' + (un ? '' : ' locked');
-    b.appendChild(miniTrack(def));
-    const info = document.createElement('div');
-    info.className = 'ci';
-    const nm = document.createElement('b'); nm.textContent = `${i + 1}. ${def.name}`;
-    const meta = document.createElement('small'); meta.textContent = `${(sample(def).length * SCALE).toFixed(1).replace('.', ',')} m · ${def.lanes} carriles · ${def.laps} vueltas`;
-    const rec = document.createElement('small'); rec.className = 'rec';
-    const medal = pos[def.id] === 1 ? '🥇' : pos[def.id] === 2 ? '🥈' : pos[def.id] === 3 ? '🥉' : '';
+  const recTxt = (def) => {
+    const medal = pos[def.id] === 1 ? '🥇 ' : pos[def.id] === 2 ? '🥈 ' : pos[def.id] === 3 ? '🥉 ' : '';
     const bi = best[`${def.id}|iman`], bp = best[`${def.id}|pro`];
-    rec.textContent = un ? `${medal} ${bi ? 'Imán ' + fmt(bi) : ''}${bi && bp ? ' · ' : ''}${bp ? 'Sin imán ' + fmt(bp) : ''}${!bi && !bp ? 'Sin récord' : ''}` : '🔒 Gana el anterior';
-    info.append(nm, meta, rec);
-    b.appendChild(info);
-    b.disabled = !un;
-    b.addEventListener('click', () => { sfx.click(); trackSel = i; showGarage(); });
-    box.appendChild(b);
-  });
+    return `${medal}${bi ? 'Imán ' + fmt(bi) : ''}${bi && bp ? ' · ' : ''}${bp ? 'Sin imán ' + fmt(bp) : ''}${!bi && !bp ? 'Sin récord' : ''}`;
+  };
+  const empty = (t) => { const d = document.createElement('div'); d.className = 'circ-empty'; d.textContent = t; box.appendChild(d); };
+  if (circTab === 'oficial') {
+    TRACKS.forEach((def, i) => box.appendChild(circButton(def, [
+      ['', `${i + 1}. ${def.name}`], ['', `${lenTxt(def)} · ${def.lanes} carriles · ${def.laps} vueltas`], ['rec', recTxt(def)],
+    ], () => chooseTrack(def))));
+  } else if (circTab === 'comunidad') {
+    const list = commCache[commSort];
+    const render = (tracks) => {
+      box.innerHTML = '';
+      if (!tracks.length) { empty('Todavía no hay circuitos. ¡Crea el primero!'); return; }
+      for (const t of tracks) {
+        const def = commDef(t);
+        box.appendChild(circButton(def, [
+          ['', t.name], ['by', `de ${t.author} · ${t.length.toFixed(1).replace('.', ',')} m · ${t.lanes} carriles`],
+          ['', `▶ ${t.plays}  ·  ♥ ${t.likes}${t.best_time ? `  ·  🏆 ${fmt(t.best_time)} (${t.best_name || 'Anónimo'})` : ''}`],
+          ['rec', recTxt(def)],
+        ], () => chooseTrack(def)));
+      }
+    };
+    if (list) render(list);
+    else empty('Cargando circuitos…');
+    apiGet(`/api/tracks?sort=${commSort}`).then((j) => { commCache[commSort] = j.tracks; if (state === 'circuits' && circTab === 'comunidad') render(j.tracks); })
+      .catch(() => { if (!list && circTab === 'comunidad') { box.innerHTML = ''; empty('No se puede conectar con la comunidad. Comprueba la conexión.'); } });
+  } else {
+    const mine = myTracks();
+    if (!mine.length) empty('Aún no has creado circuitos. Pulsa «＋ Crear».');
+    for (const d of mine) {
+      const closed = closeDraft(d);
+      if (!closed.pieces) continue;
+      const def = draftDef(d, closed);
+      const wrap = document.createElement('div'); wrap.className = 'circ-wrap';
+      wrap.appendChild(circButton(def, [
+        ['', d.name || 'Sin nombre'], ['', `${lenTxt(def)} · ${d.lanes} carriles · ${d.laps} ${d.laps === 1 ? 'vuelta' : 'vueltas'}`],
+        ['by', d.published ? '🌍 Publicado' : '📝 Solo en este dispositivo'], ['rec', recTxt(def)],
+      ], () => chooseTrack(def)));
+      if (!pickForOnline) {
+        const act = document.createElement('div'); act.className = 'circ-act';
+        const ed = document.createElement('button'); ed.textContent = 'Editar';
+        ed.addEventListener('click', (e) => { e.stopPropagation(); sfx.click(); openEditor(d); });
+        const del = document.createElement('button'); del.textContent = 'Borrar'; del.className = 'del';
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (del.dataset.sure) { saveMyTracks(myTracks().filter((x) => x.lid !== d.lid)); showCircuits(); }
+          else { del.dataset.sure = '1'; del.textContent = '¿Seguro?'; }
+        });
+        act.append(ed, del); wrap.appendChild(act);
+      }
+      box.appendChild(wrap);
+    }
+  }
   setScreen('circuits');
 }
-$('circBack').addEventListener('click', () => { sfx.click(); showMenu(); });
+document.querySelectorAll('#circTabs button').forEach((b) => b.addEventListener('click', () => { sfx.click(); circTab = b.dataset.tab; showCircuits(); }));
+document.querySelectorAll('#commSort button').forEach((b) => b.addEventListener('click', () => { sfx.click(); commSort = b.dataset.sort; showCircuits(); }));
+$('circCreate').addEventListener('click', () => { sfx.click(); openEditor(null); });
+$('circBack').addEventListener('click', () => { sfx.click(); if (pickForOnline) { pickForOnline = false; showOnline(); return; } showMenu(); });
+
+// ---- Editor de circuitos ----
+let draft = null;
+function openEditor(d) {
+  draft = d ? JSON.parse(JSON.stringify(d)) : newDraft();
+  showEditor();
+}
+function saveDraft() {
+  const l = myTracks();
+  const i = l.findIndex((x) => x.lid === draft.lid);
+  if (i >= 0) l[i] = draft; else l.unshift(draft);
+  saveMyTracks(l.slice(0, 40));
+}
+function showEditor() {
+  state = 'editor';
+  clearCars(); race = null;
+  setScreen('editor');
+  renderEditor();
+}
+function segButtons(box, items, cur, onPick) {
+  box.innerHTML = '';
+  for (const [id, label] of items) {
+    const b = document.createElement('button');
+    b.className = id === cur ? 'on' : '';
+    b.textContent = label;
+    b.addEventListener('click', () => { sfx.click(); onPick(id); });
+    box.appendChild(b);
+  }
+}
+function renderEditor() {
+  if (!draft) return;
+  const closed = closeDraft(draft);
+  const info = $('edInfo');
+  if (closed.pieces) {
+    const def = draftDef(draft, closed);
+    info.textContent = `${draft.pieces.length} piezas · ${lenTxt(def)} · cerrado ✓`;
+    info.className = 'subtitle good';
+  } else {
+    info.textContent = `${draft.pieces.length} piezas · ${closed.error}`;
+    info.className = 'subtitle bad';
+  }
+  $('edTest').disabled = $('edPublish').disabled = !closed.pieces;
+  $('edPublish').querySelector('.btn-main').textContent = draft.published ? 'Publicado ✓' : 'Publicar';
+  if (draft.published) $('edPublish').disabled = true;
+  segButtons($('edRadius'), RADII, draft.radius, (id) => { draft.radius = id; renderEditor(); });
+  segButtons($('edLanes'), [[2, '2'], [4, '4']], draft.lanes, (id) => { draft.lanes = id; renderEditor(); });
+  segButtons($('edScenery'), [['verde', 'Césped'], ['arena', 'Arena'], ['noche', 'Noche']], draft.scenery, (id) => { draft.scenery = id; renderEditor(); });
+  $('edLaps').textContent = draft.laps;
+  requestAnimationFrame(() => drawEditor($('edCanvas'), draft, closed));
+}
+// Paleta de piezas
+for (const it of PALETTE) {
+  const b = document.createElement('button');
+  b.innerHTML = '<span></span><small></small>';
+  b.firstChild.textContent = it.label; b.lastChild.textContent = it.sub;
+  b.addEventListener('click', () => {
+    if (!draft) return;
+    if (draft.pieces.length >= 70) { toast('Máximo de piezas alcanzado'); return; }
+    sfx.click();
+    if (draft.published) draft = { ...draft, lid: Math.random().toString(36).slice(2, 9), published: null };
+    draft.pieces.push(it.make(radiusOf(draft)));
+    renderEditor();
+  });
+  $('edPalette').appendChild(b);
+}
+$('edUndo').addEventListener('click', () => { if (draft && draft.pieces.length) { sfx.click(); draft.pieces.pop(); renderEditor(); } });
+$('edClear').addEventListener('click', (e) => {
+  const b = e.currentTarget;
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.querySelector('.btn-main').textContent = '¿Seguro? Pulsa otra vez'; setTimeout(() => { delete b.dataset.sure; b.querySelector('.btn-main').textContent = 'Empezar de nuevo'; }, 2500); return; }
+  delete b.dataset.sure; b.querySelector('.btn-main').textContent = 'Empezar de nuevo';
+  sfx.click(); draft.pieces = [['S', 0.35 / SCALE]]; draft.published = null; renderEditor();
+});
+$('edLapsM').addEventListener('click', () => { draft.laps = Math.max(1, draft.laps - 1); sfx.click(); renderEditor(); });
+$('edLapsP').addEventListener('click', () => { draft.laps = Math.min(20, draft.laps + 1); sfx.click(); renderEditor(); });
+$('edBack').addEventListener('click', () => { sfx.click(); if (draft && draft.pieces.length > 1) saveDraft(); circTab = 'mios'; showCircuits(); demoRace(); });
+$('edTest').addEventListener('click', () => {
+  const closed = closeDraft(draft);
+  if (!closed.pieces) return;
+  sfx.click(); saveDraft();
+  const def = draftDef(draft, closed);
+  const raw = { ...DEFAULT_SETUP, ...store.get('setup0', {}) };
+  const liv = LIVERIES.find((l) => l.id === store.get('liv0', 'rojo')) || LIVERIES[0];
+  startRace({ def, mode: 'practica', entries: [{ liv, setupRaw: raw }] });
+  race.editorTest = true;
+});
+$('edPublish').addEventListener('click', () => {
+  const closed = closeDraft(draft);
+  if (!closed.pieces) return;
+  sfx.click();
+  $('pubName').value = draft.name || '';
+  $('pubAuthor').value = settings.pilot || '';
+  $('pubInfo').textContent = `${lenTxt(draftDef(draft, closed))} · ${draft.lanes} carriles · ${draft.laps} vueltas. Cualquiera podrá jugarlo; no se puede borrar después.`;
+  $('pubMsg').textContent = '';
+  $('pubGo').disabled = false;
+  openModal('mPublish');
+});
+$('pubGo').addEventListener('click', async () => {
+  const closed = closeDraft(draft);
+  const name = $('pubName').value.trim(), author = $('pubAuthor').value.trim();
+  if (name.length < 3) { $('pubMsg').textContent = 'Pon un nombre de al menos 3 letras'; return; }
+  if (author.length < 2) { $('pubMsg').textContent = 'Pon tu nombre de piloto'; return; }
+  $('pubGo').disabled = true; $('pubMsg').textContent = 'Publicando…';
+  try {
+    const r = await apiPost('/api/tracks', { name, author, lanes: draft.lanes, laps: draft.laps, scenery: draft.scenery, pieces: closed.pieces });
+    draft.name = name; draft.published = r.id; settings.pilot = author; saveSettings(); saveDraft();
+    commCache = { top: null, new: null };
+    closeModal('mPublish'); sfx.best(); toast('🌍 ¡Circuito publicado!');
+    circTab = 'comunidad'; commSort = 'new'; showCircuits(); demoRace();
+  } catch (e) { $('pubMsg').textContent = e.message; $('pubGo').disabled = false; }
+});
+addEventListener('resize', () => { if (state === 'editor') renderEditor(); });
+$('playEditor').addEventListener('click', () => { initAudio(); sfx.click(); openEditor(null); });
+
+// ---- Online: salas con amigos ----
+let room = null;          // RoomClient
+let roomState = null;     // último estado de la sala que mandó el servidor
+let myId = null;
+let myEntry = null;       // coche y reglaje para online
+function onlineEntry() {
+  if (!myEntry) {
+    const raw = { ...DEFAULT_SETUP, ...store.get('setup0', {}) };
+    const liv = LIVERIES.find((l) => l.id === store.get('liv0', 'rojo')) || LIVERIES[0];
+    myEntry = { liv, setupRaw: raw };
+  }
+  return myEntry;
+}
+function roomDef(tr) {
+  if (!tr) return null;
+  if (tr.kind === 'oficial') return TRACKS.find((t) => t.id === tr.id) || null;
+  if (!tr.def) return null;
+  return { id: 'c_' + (tr.id || 'sala'), cid: /^[a-z0-9]{7}$/.test(tr.id) ? tr.id : null, name: tr.name, lanes: tr.lanes, laps: tr.laps, scenery: tr.def.scenery, pieces: tr.def.pieces };
+}
+function showOnline() {
+  state = 'online';
+  mode = 'online';
+  setScreen('online');
+  $('onName').value = settings.pilot || '';
+  renderLobby();
+}
+function onMsg(text) { $('onMsg').textContent = text || ''; }
+function connectRoom(code) {
+  const name = $('onName').value.trim() || settings.pilot || 'Piloto';
+  settings.pilot = name; saveSettings();
+  if (room) room.close();
+  roomState = null; myId = null;
+  onMsg('Conectando…');
+  room = new RoomClient(API, code, {
+    open: () => { const e = onlineEntry(); room.send({ t: 'join', name, liv: e.liv.id, cls: classOf(e.setupRaw) }); },
+    close: (why) => { room = null; roomState = null; if (state === 'online') { renderLobby(); onMsg(why); } else toast('📡 ' + why); },
+    message: onRoomMessage,
+  });
+  room.codeShown = code;
+}
+function onRoomMessage(m) {
+  if (m.t === 'welcome') { myId = m.id; onMsg(''); return; }
+  if (m.t === 'error') { if (!myId) { room && room.close(); room = null; renderLobby(); onMsg(m.msg); } else { $('onLobbyMsg').textContent = m.msg; toast(m.msg); } return; }
+  if (m.t === 'room') {
+    const was = roomState;
+    roomState = m;
+    if (m.phase === 'race' && (!was || was.phase !== 'race') && myId) startOnlineRace(m);
+    if (m.phase === 'lobby' && race && race.mode === 'online' && state !== 'results' && state !== 'online') {
+      // El anfitrión ha cerrado la carrera
+      if (state === 'race' || state === 'countdown' || state === 'pause') endRace();
+    }
+    if (state === 'online') renderLobby();
+    return;
+  }
+  if (!race || race.mode !== 'online') return;
+  const c = cars.find((x) => x.remote === m.id);
+  if (m.t === 'st' && c) {
+    c.net.push({ at: performance.now(), s: m.s, v: m.v, th: m.th, lap: m.lap, out: m.out });
+    if (c.net.length > 40) c.net.shift();
+  } else if (m.t === 'fin' && c) {
+    c.finished = true; c.finishTime = m.time; c.best = m.best || c.best;
+    c.lap = race.laps;
+    if (m.time < 9000) flashText(0, `🏁 ${c.name} termina`);
+    if (state === 'results') endRace();
+  } else if (m.t === 'lap' && c) {
+    c.laps.push(m.time); c.last = m.time; if (m.time < c.best) c.best = m.time;
+  } else if (m.t === 'left' && c) {
+    c.finished = true; c.finishTime = 9999; c.mesh.visible = false;
+  }
+}
+function renderLobby() {
+  const inRoom = !!(room && roomState && myId);
+  $('onJoin').hidden = inRoom;
+  $('onLobby').hidden = !inRoom;
+  $('onTitle').textContent = inRoom ? 'Sala online' : 'Online';
+  $('onSub').textContent = inRoom ? 'Hasta 4 pilotos · uno por carril' : 'Juega con amigos en tiempo real';
+  if (!inRoom) return;
+  const rs = roomState, me = rs.players.find((p) => p.id === myId);
+  const host = !!(me && me.host);
+  $('onRoom').textContent = room.codeShown;
+  const def = roomDef(rs.track);
+  const lanes = def ? def.lanes : 4;
+  const box = $('onPlayers');
+  box.innerHTML = '';
+  for (let l = 0; l < lanes; l++) {
+    const p = rs.players.find((x) => x.lane === l);
+    const row = document.createElement('div');
+    row.className = 'on-p' + (p ? '' : ' empty');
+    const dot = document.createElement('i');
+    const liv = p && LIVERIES.find((x) => x.id === p.liv);
+    dot.style.background = liv ? '#' + liv.color.toString(16).padStart(6, '0') : 'rgba(255,255,255,0.15)';
+    const nm = document.createElement('b'); nm.textContent = p ? p.name + (p.id === myId ? ' (tú)' : '') : 'Libre';
+    const sm = document.createElement('small'); sm.textContent = `Carril ${l + 1}${p ? ' · ' + CLASS_NAME[p.cls] : ''}`;
+    const st = document.createElement('span'); st.className = 'st' + (p && (p.ready || p.host) ? ' ok' : '');
+    st.textContent = !p ? '' : p.host ? '👑 Anfitrión' : p.ready ? '✓ Listo' : 'Esperando';
+    row.append(dot, nm, sm, st);
+    box.appendChild(row);
+  }
+  const extra = rs.players.filter((p) => p.lane >= lanes).length;
+  const mini = $('onTrackMini'); mini.innerHTML = '';
+  if (def) { try { mini.appendChild(miniTrack(def)); } catch { /* sin miniatura */ } }
+  $('onTrackName').textContent = def ? def.name : 'Sin circuito';
+  $('onTrackMeta').textContent = def ? `${lenTxt(def)} · ${def.lanes} carriles · ${rs.track.laps} ${rs.track.laps === 1 ? 'vuelta' : 'vueltas'}` : (host ? 'Elige un circuito para la carrera' : 'El anfitrión elegirá el circuito');
+  $('onPickTrack').hidden = !host;
+  $('onLapsRow').hidden = !host || !def;
+  if (def) $('onLaps').textContent = rs.track.laps;
+  const rb = $('onReady');
+  if (host) {
+    const others = rs.players.filter((p) => !p.host);
+    const allReady = others.every((p) => p.ready);
+    rb.querySelector('.btn-main').textContent = '🏁 ¡Empezar carrera!';
+    rb.disabled = !def || !allReady || extra > 0;
+    rb.className = 'btn primary';
+    $('onLobbyMsg').textContent = !def ? 'Elige un circuito.' : extra ? 'Hay más pilotos que carriles: elige un circuito de 4 carriles.' : !allReady ? 'Esperando a que todos estén listos…' : rs.players.length === 1 ? 'Estás solo: invita a tus amigos con el código o empieza igualmente.' : '¡Todos listos!';
+  } else {
+    rb.disabled = false;
+    rb.querySelector('.btn-main').textContent = me && me.ready ? '✓ Listo (quitar)' : 'Estoy listo';
+    rb.className = 'btn ' + (me && me.ready ? 'on-ready' : 'primary');
+    $('onLobbyMsg').textContent = 'El anfitrión empieza la carrera cuando todos estén listos.';
+  }
+}
+function startOnlineRace(rs) {
+  const def = roomDef(rs.track);
+  if (!def) return;
+  const me = rs.players.find((p) => p.id === myId);
+  if (!me) return;
+  closeModal('mResults'); closeModal('mPause');
+  selDef = def;
+  // El color que me ha dado la sala (si el mío lo tenía otro)
+  const liv = LIVERIES.find((l) => l.id === me.liv);
+  if (liv) onlineEntry().liv = liv;
+  startRace({ def, mode: 'online', entries: [onlineEntry()], online: { lane: me.lane, players: rs.players, me: myId, startAt: rs.startAt, laps: rs.track.laps } });
+}
+let sendT = 0;
+function onlineTick() {
+  // Mientras no hay salida, se ajusta el semáforo al reloj del servidor
+  if (!race.started && race.online && room) race.goT = race.simT + (race.online.startAt - room.serverNow()) / 1000;
+  const now = performance.now();
+  if (now - sendT < 50 || !room) return;
+  sendT = now;
+  const me = cars.find((c) => c.human);
+  if (!me) return;
+  room.send({ t: 'st', s: +me.st.s.toFixed(4), v: +me.st.v.toFixed(3), th: +me.st.th.toFixed(3), lap: me.lap, out: !!me.crash });
+}
+function updateRemote(c) {
+  const r = sampleRemote(c.net, performance.now() - NET_DELAY, T.L);
+  if (!r) return;
+  if (r.out && !c.crash) { crashCar(c); return; }
+  if (c.crash) return;
+  if (c.finished) { c.st.v = Math.max(0, c.st.v - 0.02); return; }
+  c.lap = r.lap; c.st.s = r.s; c.st.v = r.v; c.st.th = r.th;
+}
+function sendRoomTrack(def, laps) {
+  const kind = TRACKS.includes(def) ? 'oficial' : 'comunidad';
+  room.send({ t: 'track', track: { kind, id: kind === 'oficial' ? def.id : (def.cid || def.id), name: def.name, lanes: def.lanes, laps, def: kind === 'oficial' ? undefined : { pieces: def.pieces, scenery: def.scenery } } });
+}
+function onlinePickTrack(def) {
+  if (!room) { showOnline(); return; }
+  sendRoomTrack(def, def.laps);
+  showOnline();
+}
+for (const [id, d] of [['onLapsM', -1], ['onLapsP', 1]]) {
+  $(id).addEventListener('click', () => {
+    const def = roomState && roomDef(roomState.track);
+    if (!def || !room) return;
+    sfx.click();
+    sendRoomTrack(def, Math.max(1, Math.min(20, roomState.track.laps + d)));
+  });
+}
+function onlineCarChosen(entry) {
+  myEntry = entry;
+  room && room.send({ t: 'me', liv: entry.liv.id, cls: classOf(entry.setupRaw) });
+  showOnline();
+}
+$('playOnline').addEventListener('click', () => { initAudio(); sfx.click(); showOnline(); });
+$('onBack').addEventListener('click', () => {
+  sfx.click();
+  if (room && roomState) { room.close(); room = null; roomState = null; renderLobby(); return; }
+  showMenu();
+});
+$('onCreate').addEventListener('click', async () => {
+  sfx.click();
+  if (!$('onName').value.trim()) { onMsg('Pon tu nombre de piloto'); $('onName').focus(); return; }
+  onMsg('Creando sala…');
+  try { const r = await apiPost('/api/room/new'); connectRoom(r.code); } catch (e) { onMsg(e.message); }
+});
+$('onEnter').addEventListener('click', () => {
+  sfx.click();
+  const code = $('onCode').value.trim().toUpperCase();
+  if (!/^[A-Z]{4}$/.test(code)) { onMsg('El código tiene 4 letras'); return; }
+  if (!$('onName').value.trim()) { onMsg('Pon tu nombre de piloto'); $('onName').focus(); return; }
+  connectRoom(code);
+});
+$('onCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('onEnter').click(); });
+$('onPickTrack').addEventListener('click', () => { sfx.click(); pickForOnline = true; showCircuits(); });
+$('onCar').addEventListener('click', () => {
+  sfx.click();
+  selDef = roomDef(roomState && roomState.track) || TRACKS[0];
+  mode = 'online';
+  state = 'garage'; entries = []; editing = { liv: onlineEntry().liv, setupRaw: { ...onlineEntry().setupRaw } };
+  renderGarage(); setScreen('garage');
+});
+$('onReady').addEventListener('click', () => {
+  if (!room || !roomState) return;
+  sfx.click();
+  const me = roomState.players.find((p) => p.id === myId);
+  if (me && me.host) room.send({ t: 'start' });
+  else room.send({ t: 'ready', v: !(me && me.ready) });
+});
+$('onShare').addEventListener('click', async () => {
+  const code = room && room.codeShown;
+  if (!code) return;
+  const url = `https://turbo-slot.inautoit.workers.dev/?sala=${code}`;
+  const text = `¡Únete a mi carrera de Turbo Slot! Sala ${code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Turbo Slot', text, url });
+    else { await navigator.clipboard.writeText(`${text}: ${url}`); toast('📋 Enlace copiado'); }
+  } catch { /* cancelado */ }
+});
 
 // ---- Taller: decoración y reglaje ----
 let entries = [];
@@ -1825,7 +2267,7 @@ function carIcon(liv) {
 function renderGarage() {
   const player = entries.length;
   $('garTitle').textContent = mode === '2p' ? `Jugador ${player + 1}: taller` : 'Taller';
-  $('garTrack').textContent = `${TRACKS[trackSel].name} · ${mode === 'practica' ? 'Práctica' : mode === '2p' ? '2 jugadores' : 'Carrera'}`;
+  $('garTrack').textContent = `${selDef.name} · ${mode === 'practica' ? 'Práctica' : mode === '2p' ? '2 jugadores' : mode === 'online' ? 'Online' : 'Carrera'}`;
   $('garPreview').innerHTML = carIcon(editing.liv);
   $('garName').textContent = editing.liv.name;
   const taken = entries.map((e) => e.liv.id);
@@ -1873,13 +2315,15 @@ $('garGo').addEventListener('click', () => {
   store.set(`liv${player}`, editing.liv.id);
   entries.push({ liv: editing.liv, setupRaw: { ...editing.setupRaw } });
   if (mode === '2p' && entries.length < 2) beginEntry();
-  else startRace({ trackIdx: trackSel, mode, entries });
+  else if (mode === 'online') onlineCarChosen(entries[0]);
+  else startRace({ def: selDef, mode, entries });
 });
-$('garBack').addEventListener('click', () => { sfx.click(); if (entries.length) { entries.pop(); beginEntry(); } else showCircuits(); });
+$('garBack').addEventListener('click', () => { sfx.click(); if (mode === 'online') { showOnline(); return; } if (entries.length) { entries.pop(); beginEntry(); } else showCircuits(); });
 
 // ---- Carrera: pausa, cámara y resultados ----
 function pause() {
   if (state !== 'race' && state !== 'countdown') return;
+  if (race.mode === 'online') { $('quitBtn').querySelector('.btn-main').textContent = 'Abandonar carrera'; openModal('mPause'); return; }
   race.prevState = state;
   state = 'pause';
   for (const c of cars) updateEngine(c.engine, c.st, false);
@@ -1888,6 +2332,7 @@ function pause() {
   openModal('mPause');
 }
 function resume() {
+  if (race && race.mode === 'online') { closeModal('mPause'); return; }
   if (state !== 'pause') return;
   closeModal('mPause');
   state = race.prevState || 'race';
@@ -1901,12 +2346,30 @@ function toggleCam() {
 $('pauseBtn').addEventListener('click', pause);
 $('camBtn').addEventListener('click', () => { sfx.click(); toggleCam(); });
 $('resumeBtn').addEventListener('click', resume);
-$('restartBtn').addEventListener('click', () => { closeModal('mPause'); if (race.mode === 'practica') endPractice(); startRace({ trackIdx: race.trackIdx, mode: race.mode, entries: race.entries }); });
-$('quitBtn').addEventListener('click', () => { closeModal('mPause'); if (race.mode === 'practica') endPractice(); mode = race.mode; clearCars(); showCircuits(); demoRace(); });
-$('againBtn').addEventListener('click', () => { closeModal('mResults'); startRace({ trackIdx: race.trackIdx, mode: race.mode, entries: race.entries }); });
-$('nextBtn').addEventListener('click', () => { closeModal('mResults'); trackSel = race.trackIdx + 1; startRace({ trackIdx: trackSel, mode: race.mode, entries: race.entries }); });
-$('resMenuBtn').addEventListener('click', () => { closeModal('mResults'); mode = race.mode; showCircuits(); demoRace(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+$('restartBtn').addEventListener('click', () => { closeModal('mPause'); if (race.mode === 'practica') endPractice(); startRace({ def: race.def, mode: race.mode, entries: race.entries }); });
+$('quitBtn').addEventListener('click', () => {
+  closeModal('mPause');
+  if (race.mode === 'online') { room && room.send({ t: 'fin', time: 9999, best: Infinity }); afterRace(); return; }
+  if (race.mode === 'practica') endPractice(); mode = race.mode; clearCars(); afterRace();
+});
+$('againBtn').addEventListener('click', () => { closeModal('mResults'); startRace({ def: race.def, mode: race.mode, entries: race.entries }); });
+$('nextBtn').addEventListener('click', () => { closeModal('mResults'); selDef = TRACKS[race.trackIdx + 1]; startRace({ def: selDef, mode: race.mode, entries: race.entries }); });
+$('resMenuBtn').addEventListener('click', () => { closeModal('mResults'); mode = race.mode; afterRace(); });
+$('likeBtn').addEventListener('click', () => {
+  const cid = race && race.def.cid; if (!cid) return;
+  const liked = store.get('liked', []); if (liked.includes(cid)) return;
+  liked.push(cid); store.set('liked', liked.slice(-500));
+  apiPost(`/api/tracks/${cid}/like`).catch(() => {});
+  sfx.best(); $('likeBtn').disabled = true; $('likeBtn').querySelector('.btn-main').textContent = '♥ Te gusta';
+  commCache = { top: null, new: null };
+});
+// Al salir de una carrera: volver al editor si era una prueba, si no a la lista de circuitos
+function afterRace() {
+  if (race && race.editorTest) { showEditor(); return; }
+  if (race && race.mode === 'online') { clearCars(); race = null; showOnline(); demoRace(); return; }
+  showCircuits(); demoRace();
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden && !(race && race.mode === 'online')) pause(); });
 
 // ---- Ajustes y estadísticas ----
 function fillSettings() {
@@ -1960,6 +2423,11 @@ applyQuality();
 showMenu();
 loadCarModels();
 overviewCamera(camPos, camTarget);
+// Enlace de invitación: ?sala=ABCD abre la pantalla online con el código puesto
+{
+  const sala = (new URLSearchParams(location.search).get('sala') || '').toUpperCase();
+  if (/^[A-Z]{4}$/.test(sala)) { showOnline(); $('onCode').value = sala; onMsg(settings.pilot ? 'Pulsa «Entrar» para unirte' : 'Pon tu nombre y pulsa «Entrar»'); }
+}
 requestAnimationFrame(loop);
 Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, new Promise((r) => setTimeout(r, 1500))])
   .catch(() => {})
@@ -1971,7 +2439,7 @@ Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, n
 // Gancho para pruebas automáticas
 window.__slot = {
   get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; },
-  startRace, LIVERIES, DEFAULT_SETUP,
+  startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },
 };

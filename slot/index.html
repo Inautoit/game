@@ -58,7 +58,11 @@
         <button id="play1" class="btn secondary"><span class="btn-main">🏁 Carrera</span><span class="btn-sub">Contra la CPU</span></button>
         <button id="play2" class="btn ghost"><span class="btn-main">👥 2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
       </div>
-      <div class="footer">v2.0 · Compatible con mando de consola · Funciona sin conexión</div>
+      <div class="row2">
+        <button id="playOnline" class="btn secondary"><span class="btn-main">🌍 Online</span><span class="btn-sub">Salas con amigos</span></button>
+        <button id="playEditor" class="btn ghost"><span class="btn-main">✏️ Crear circuito</span><span class="btn-sub">Y compártelo</span></button>
+      </div>
+      <div class="footer">v3.0 · Editor de circuitos · Online con salas · Mando de consola</div>
     </div>
   </div>
 
@@ -67,8 +71,84 @@
     <div class="topbar">
       <button id="circBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
       <h2 id="circTitle" class="title">Elige circuito</h2>
+      <div class="spacer"></div>
+      <button id="circCreate" class="btn small ghost"><span class="btn-main">＋ Crear</span></button>
+    </div>
+    <div class="tabs" id="circTabs" role="tablist">
+      <button data-tab="oficial" role="tab">Oficiales</button>
+      <button data-tab="comunidad" role="tab">Comunidad</button>
+      <button data-tab="mios" role="tab">Mis circuitos</button>
+    </div>
+    <div class="tabs sub" id="commSort" hidden>
+      <button data-sort="top">Populares</button>
+      <button data-sort="new">Nuevos</button>
     </div>
     <div id="circList" class="circ-list"></div>
+  </div>
+
+  <!-- Editor de circuitos -->
+  <div id="editor" class="screen">
+    <div class="topbar">
+      <button id="edBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
+      <div><h2 class="title">Crear circuito</h2><div id="edInfo" class="subtitle"></div></div>
+      <div class="spacer"></div>
+      <button id="edTest" class="btn small secondary"><span class="btn-main">▶ Probar</span></button>
+      <button id="edPublish" class="btn small primary"><span class="btn-main">Publicar</span></button>
+    </div>
+    <div class="ed-body">
+      <canvas id="edCanvas" class="ed-canvas" aria-label="Vista del circuito"></canvas>
+      <div class="ed-tools">
+        <div id="edPalette" class="ed-palette"></div>
+        <div class="ed-row">
+          <span class="lbl">Curvas</span><div id="edRadius" class="seg"></div>
+        </div>
+        <div class="ed-row">
+          <button id="edUndo" class="btn small ghost"><span class="btn-main">↶ Deshacer</span></button>
+          <button id="edClear" class="btn small ghost"><span class="btn-main">Empezar de nuevo</span></button>
+        </div>
+        <div class="ed-row">
+          <span class="lbl">Carriles</span><div id="edLanes" class="seg"></div>
+          <span class="lbl">Vueltas</span><div class="stepper"><button id="edLapsM" aria-label="Menos vueltas">−</button><b id="edLaps">5</b><button id="edLapsP" aria-label="Más vueltas">+</button></div>
+        </div>
+        <div class="ed-row"><span class="lbl">Escenario</span><div id="edScenery" class="seg"></div></div>
+        <p class="muted small">Pon piezas desde la salida. La línea azul es cómo lo cerraría el juego: añade la curva que falta y alarga las rectas necesarias.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Online -->
+  <div id="online" class="screen">
+    <div class="topbar">
+      <button id="onBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
+      <div><h2 id="onTitle" class="title">Online</h2><div id="onSub" class="subtitle"></div></div>
+    </div>
+    <div class="on-body">
+      <div id="onJoin" class="on-card">
+        <label class="field"><span>Tu nombre de piloto</span><input id="onName" maxlength="16" autocomplete="nickname" placeholder="Piloto"></label>
+        <button id="onCreate" class="btn primary"><span class="btn-main">Crear sala</span><span class="btn-sub">Invita a tus amigos con el código</span></button>
+        <div class="on-or">o entra en una</div>
+        <div class="on-code">
+          <input id="onCode" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="CÓDIGO" aria-label="Código de sala">
+          <button id="onEnter" class="btn secondary"><span class="btn-main">Entrar</span></button>
+        </div>
+        <p id="onMsg" class="muted small center"></p>
+      </div>
+      <div id="onLobby" class="on-card" hidden>
+        <div class="on-roomcode"><span>Sala</span><b id="onRoom">----</b><button id="onShare" class="btn small ghost"><span class="btn-main">Invitar</span></button></div>
+        <div id="onPlayers" class="on-players"></div>
+        <div class="on-track">
+          <div id="onTrackMini"></div>
+          <div class="ci"><b id="onTrackName">Sin circuito</b><small id="onTrackMeta"></small></div>
+          <button id="onPickTrack" class="btn small ghost"><span class="btn-main">Cambiar</span></button>
+        </div>
+        <div class="ed-row on-laps" id="onLapsRow"><span class="lbl">Vueltas de la carrera</span><div class="stepper"><button id="onLapsM" aria-label="Menos vueltas">−</button><b id="onLaps">5</b><button id="onLapsP" aria-label="Más vueltas">+</button></div></div>
+        <div class="row2">
+          <button id="onCar" class="btn ghost"><span class="btn-main">🚗 Mi coche</span></button>
+          <button id="onReady" class="btn primary"><span class="btn-main">Estoy listo</span></button>
+        </div>
+        <p id="onLobbyMsg" class="muted small center"></p>
+      </div>
+    </div>
   </div>
 
   <!-- Garaje -->
@@ -136,11 +216,25 @@
       <div class="res-head"><span>Pos.</span><span></span><span>Piloto</span><span>Tiempo</span><span>Mejor v.</span></div>
       <div id="resTable" class="res-table"></div>
       <div id="resBest" class="muted center small"></div>
+      <button id="likeBtn" class="btn small ghost" hidden><span class="btn-main">♥ Me gusta este circuito</span></button>
       <button id="nextBtn" class="btn primary"><span class="btn-main">Siguiente circuito ›</span></button>
       <div class="row2">
         <button id="againBtn" class="btn secondary"><span class="btn-main">Revancha</span></button>
         <button id="resMenuBtn" class="btn ghost"><span class="btn-main">Circuitos</span></button>
       </div>
+    </div>
+  </div>
+
+  <!-- Publicar circuito -->
+  <div id="mPublish" class="modal center" role="dialog" aria-modal="true" aria-labelledby="hPublish">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hPublish">Publicar circuito</h3>
+      <label class="field"><span>Nombre del circuito</span><input id="pubName" maxlength="28" placeholder="Ej.: Curvas del Pinar"></label>
+      <label class="field"><span>Tu nombre de piloto</span><input id="pubAuthor" maxlength="20" autocomplete="nickname" placeholder="Ej.: Marta"></label>
+      <p id="pubInfo" class="muted small"></p>
+      <button id="pubGo" class="btn primary"><span class="btn-main">Publicar para todos</span></button>
+      <p id="pubMsg" class="small center"></p>
     </div>
   </div>
 
@@ -166,6 +260,8 @@
         <li><div class="step-ico">↩️</div><div><b>Frena antes, acelera al salir</b><br>Como en un coche real: entra suave en la curva y pisa cuando el coche ya apunta a la recta.</div></li>
         <li><div class="step-ico">🌀</div><div><b>Controla el derrape</b><br>La trasera desliza. Si se abre demasiado, levanta un poco el gatillo o el coche se sale.</div></li>
         <li><div class="step-ico">📈</div><div><b>Telemetría</b><br>La barra de <b>agarre</b> mide lo cerca que estás de salirte: verde, ámbar y rojo. Pasa del 100 % y te sales. Te dice si debes <b>frenar</b> (vas demasiado rápido para lo que viene) o si el coche <b>derrapa</b>. También verás la deriva en grados, la velocidad, la punta, la trampa de velocidad en meta, los tres sectores (morado = tu mejor) y la gráfica de la vuelta contra tu mejor vuelta.</div></li>
+        <li><div class="step-ico">✏️</div><div><b>Crea tus circuitos</b><br>Pon rectas y curvas desde la salida: el juego cierra el circuito por ti. Pruébalo y publícalo para que lo juegue todo el mundo, en la pestaña <b>Comunidad</b>.</div></li>
+        <li><div class="step-ico">🌍</div><div><b>Online con amigos</b><br>Crea una sala, comparte el código de 4 letras y corred a la vez, hasta 4 pilotos (uno por carril). El anfitrión elige el circuito y las vueltas.</div></li>
         <li><div class="step-ico">🔧</div><div><b>Ajusta el coche</b><br>Imán, desarrollo, neumáticos, freno y curva del gatillo. Sin imán es la clase más difícil.</div></li>
         <li><div class="step-ico">⏱</div><div><b>Compite contra el reloj</b><br>Tiempos al milésimo y un fantasma de tu mejor vuelta en Práctica.</div></li>
       </ol>

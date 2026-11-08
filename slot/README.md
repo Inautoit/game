@@ -117,3 +117,20 @@ relacionado con ella.
 - En la pista: marcas de goma de las ruedas traseras al deslizar y un halo bajo el coche que pasa de verde a rojo.
 - Circuitos largos: Montaña (16,6 m, con puente), Autódromo (21,5 m), Internacional (20,7 m) y
   Resistencia (36,3 m). En ellos la cámara de TV sigue al coche.
+
+## Editor, comunidad y online (v3)
+
+- **Todos los circuitos abiertos** desde el principio, en todos los modos.
+- **Editor** (`src/editor.js`): se ponen rectas de 35 / 70 cm y curvas de 45° / 90° (cerrada, media o abierta).
+  `autoClose` (en `src/tracks.js`) añade la curva que falta y mete dos rectas para llegar a la salida, y
+  `validateTrack` comprueba que el circuito no se cruce, mida de 3 a 60 m y tenga piezas válidas. El servidor usa
+  esa misma función antes de guardar.
+- **Comunidad**: API en el Worker (`server/worker_template.js`) con D1 (`server/schema.sql`):
+  `GET /api/tracks?sort=top|new`, `POST /api/tracks`, `POST /api/tracks/<id>/play|like|lap`.
+  Hay un límite de 15 circuitos al día por IP; la IP se guarda solo como hash. Se filtran los nombres ofensivos.
+- **Online** (`src/online.js` + Durable Object `Room`): `POST /api/room/new` da un código de 4 letras y
+  `/api/room/<código>` es el WebSocket de la sala. Cada móvil simula su coche (la física es determinista) y manda su
+  estado 20 veces por segundo; los demás coches se pintan interpolados con 120 ms de retraso. El reloj se sincroniza
+  con el servidor para que la salida sea a la vez, y la sala recoge los tiempos de llegada.
+  El enlace `?sala=ABCD` abre la sala directamente.
+- Publicar: `SKIP_KV=1 bash deploy.sh` publica sin volver a subir los modelos y las texturas.
