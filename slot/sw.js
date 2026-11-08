@@ -1,6 +1,6 @@
 // Service worker: permite jugar sin conexión (red primero, caché de respaldo).
-const CACHE = 'turbo-slot-v1';
-const FILES = ['./', 'index.html', 'styles.css', 'src/main.js', 'src/tracks.js', 'vendor/three.module.min.js',
+const CACHE = 'turbo-slot-v2';
+const FILES = ['./', 'index.html', 'styles.css', 'src/main.js', 'src/tracks.js', 'src/physics.js', 'src/ai.js', 'vendor/three.module.min.js',
   'manifest.webmanifest', 'fonts/fredoka.woff2', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Turbo Slot 🏎️</title>
-  <meta name="description" content="Carreras de coches de slot en 3D. Controla el gatillo, no te salgas en las curvas. Contra la CPU o 2 jugadores en el mismo iPad.">
+  <meta name="description" content="Simulador de slot 1:32 con física real: motor eléctrico, imán, derrapes y reglajes. Contrarreloj con fantasma, carreras contra la CPU y 2 jugadores.">
   <meta name="theme-color" content="#121826">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Turbo Slot 🏎️ Carreras de slot en tu móvil">
@@ -51,11 +51,14 @@
       <button class="icon-btn" data-open="mStats" aria-label="Estadísticas"><svg><use href="#i-stats"/></svg></button>
       <button class="icon-btn" data-open="mSettings" aria-label="Ajustes"><svg><use href="#i-gear"/></svg></button>
     </div>
-    <div class="brand"><div class="wordmark big">TURBO<br><span>SLOT</span></div><p class="tag">Acelera. Frena. <b>¡Que no se salga!</b></p></div>
+    <div class="brand"><div class="wordmark big">TURBO<br><span>SLOT</span></div><p class="tag">Simulador de slot 1:32 · <b>física real</b></p></div>
     <div class="menu-actions">
-      <button id="play1" class="btn primary"><span class="btn-main">🏁 Carrera</span><span class="btn-sub">Contra la CPU</span></button>
-      <button id="play2" class="btn secondary"><span class="btn-main">👥 2 Jugadores</span><span class="btn-sub">En el mismo móvil o iPad</span></button>
-      <div class="footer">v1.0 · Funciona sin conexión</div>
+      <button id="playPrac" class="btn primary"><span class="btn-main">⏱ Práctica</span><span class="btn-sub">Contrarreloj con tu fantasma</span></button>
+      <div class="row2">
+        <button id="play1" class="btn secondary"><span class="btn-main">🏁 Carrera</span><span class="btn-sub">Contra la CPU</span></button>
+        <button id="play2" class="btn ghost"><span class="btn-main">👥 2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
+      </div>
+      <div class="footer">v2.0 · Compatible con mando de consola · Funciona sin conexión</div>
     </div>
   </div>
 
@@ -74,13 +77,29 @@
       <button id="garBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
       <div><h2 id="garTitle" class="title">Elige tu coche</h2><div id="garTrack" class="subtitle"></div></div>
     </div>
-    <div id="carList" class="car-list"></div>
+    <div class="garage-body">
+      <div class="gar-car">
+        <div id="garPreview" class="gar-preview"></div>
+        <div class="gar-name"><b id="garName"></b><span id="garClass" class="cls iman">Con imán</span></div>
+        <div id="livList" class="liv-list"></div>
+      </div>
+      <div class="gar-setup">
+        <div class="setrow"><span class="lbl">Imán</span><div id="opt-magnet" class="seg"></div></div>
+        <div class="setrow"><span class="lbl">Desarrollo</span><div id="opt-gear" class="seg"></div></div>
+        <div class="setrow"><span class="lbl">Neumáticos</span><div id="opt-tire" class="seg"></div></div>
+        <div class="setrow"><span class="lbl">Freno del mando <b id="optBrakeV"></b></span><input id="optBrake" type="range" min="0" max="100" step="5"></div>
+        <div class="setrow"><span class="lbl">Curva del gatillo <b id="optCurveV"></b></span><input id="optCurve" type="range" min="10" max="24" step="1"></div>
+        <p id="garHint" class="muted small"></p>
+      </div>
+    </div>
+    <button id="garGo" class="btn primary go"><span class="btn-main">Salir a pista ›</span></button>
   </div>
 
   <!-- HUD de carrera -->
   <div id="hud" class="screen">
     <div class="hud-top">
       <div id="hudRows" class="hud-rows"></div>
+      <div id="lapList" class="lap-list" hidden></div>
       <div class="hud-btns">
         <button id="camBtn" class="icon-btn" aria-label="Cambiar cámara"><svg><use href="#i-cam"/></svg></button>
         <button id="pauseBtn" class="icon-btn" aria-label="Pausa"><svg><use href="#i-pause"/></svg></button>
@@ -123,14 +142,15 @@
   <div id="mHelp" class="modal" role="dialog" aria-modal="true" aria-labelledby="hHelp">
     <div class="sheet">
       <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
-      <h3 id="hHelp">Cómo se juega</h3>
+      <h3 id="hHelp">Cómo se pilota</h3>
       <ol class="steps">
-        <li><div class="step-ico">👍</div><div><b>Tu pulgar es el gatillo</b><br>Desliza hacia arriba en el mando para acelerar. Suelta para frenar.</div></li>
-        <li><div class="step-ico">↩️</div><div><b>Frena antes de las curvas</b><br>Si entras muy rápido, el coche derrapa… ¡y se sale de la pista!</div></li>
-        <li><div class="step-ico">⚠️</div><div><b>Atento al aviso</b><br>Si el marcador se pone rojo y chirrían las ruedas, estás al límite.</div></li>
-        <li><div class="step-ico">🏆</div><div><b>Gana para desbloquear</b><br>Cada victoria abre un circuito nuevo. ¡6 en total!</div></li>
+        <li><div class="step-ico">👍</div><div><b>El gatillo es analógico</b><br>Cuanto más subes el pulgar, más voltaje recibe el motor. Al soltar, el mando frena el motor.</div></li>
+        <li><div class="step-ico">↩️</div><div><b>Frena antes, acelera al salir</b><br>Como en un coche real: entra suave en la curva y pisa cuando el coche ya apunta a la recta.</div></li>
+        <li><div class="step-ico">🌀</div><div><b>Controla el derrape</b><br>La trasera desliza. Si se abre demasiado, levanta un poco el gatillo o el coche se sale.</div></li>
+        <li><div class="step-ico">🔧</div><div><b>Ajusta el coche</b><br>Imán, desarrollo, neumáticos, freno y curva del gatillo. Sin imán es la clase más difícil.</div></li>
+        <li><div class="step-ico">⏱</div><div><b>Compite contra el reloj</b><br>Tiempos al milésimo y un fantasma de tu mejor vuelta en Práctica.</div></li>
       </ol>
-      <p class="muted small">En 2 jugadores, cada uno usa su mando: izquierda y derecha. En el ordenador: <b>↑</b> o <b>espacio</b> (jugador 1) y <b>W</b> (jugador 2). <b>C</b> cambia la cámara.</p>
+      <p class="muted small">🎮 Con mando de consola, usa el gatillo derecho (RT/R2). En el ordenador: <b>↑</b> o <b>espacio</b> (jugador 1) y <b>W</b> (jugador 2). <b>C</b> cambia la cámara (TV, persecución, a bordo).</p>
       <button class="btn primary" data-close><span class="btn-main">¡A correr!</span></button>
     </div>
   </div>
@@ -143,10 +163,11 @@
       <div class="kpis">
         <div><b id="sRaces">0</b><span>Carreras</span></div>
         <div><b id="sWins">0</b><span>Victorias</span></div>
-        <div><b id="sCrashes">0</b><span>Salidas de pista</span></div>
+        <div><b id="sLaps">0</b><span>Vueltas</span></div>
+        <div><b id="sCrashes">0</b><span>Salidas</span></div>
       </div>
-      <h4>Circuitos</h4>
-      <div class="trow head"><span>Circuito</span><b>Mejor</b><em>Vuelta rápida</em></div>
+      <h4>Récords de vuelta</h4>
+      <div class="trow head"><span>Circuito</span><b>Pos.</b><em>Con imán</em><em>Sin imán</em></div>
       <div id="sTracks"></div>
     </div>
   </div>
@@ -160,8 +181,10 @@
       <label class="toggle"><span>Vibración</span><input type="checkbox" id="optVibe"><i></i></label>
       <label class="toggle"><span>Mando a la izquierda<small>Para zurdos (1 jugador)</small></span><input type="checkbox" id="optLefty"><i></i></label>
       <button id="resetBtn" class="btn ghost danger"><span class="btn-main">Borrar mi progreso</span></button>
+      <div id="resetConfirm" class="confirm" hidden><span>¿Borrar récords, fantasmas y circuitos desbloqueados?</span>
+        <div class="row2"><button id="resetYes" class="btn secondary"><span class="btn-main">Sí, borrar</span></button><button id="resetNo" class="btn ghost"><span class="btn-main">Cancelar</span></button></div></div>
       <p class="muted small">Turbo Slot no usa cuentas, anuncios ni rastreadores. Tu progreso se guarda solo en este dispositivo.</p>
-      <p class="muted small center">Turbo Slot v1.0 · three.js (MIT) · Fredoka (OFL)</p>
+      <p class="muted small center">Turbo Slot v2.0 · three.js (MIT) · Fredoka (OFL)</p>
     </div>
   </div>
 
