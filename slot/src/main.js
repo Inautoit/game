@@ -678,7 +678,7 @@ const blobTex = (() => {
   return new THREE.CanvasTexture(c);
 })();
 // ---------------------------------------------------------------------------
-// Modelo 3D realista del coche (Car Concept, Khronos / Eric Chadwick, CC-BY 4.0)
+// Modelo 3D realista del coche («Generic Sport Coupé Car», Márcio Meireles, CC-BY 4.0)
 // ---------------------------------------------------------------------------
 const CAR_LEN = 0.98;       // longitud del coche en unidades (≈ 12,5 cm; ≈ 6 cm de ancho)
 const NOSE_AHEAD = 0.16;    // la guía va 2 cm por detrás del morro

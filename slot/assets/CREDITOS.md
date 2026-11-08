@@ -19,7 +19,6 @@ Tipografía Fredoka, licencia SIL OFL.
 
 | Archivo | Recurso | Autor | Fuente | Licencia |
 |---|---|---|---|---|
-| `models/car_hi.glb`, `models/car_lo.glb` | Car Concept (optimizado: sin logotipos ni pedales/motor, malla simplificada, texturas WebP) | Eric Chadwick, a partir del modelo de dominio público de "Unity Fan" | Khronos glTF Sample Assets | **CC-BY 4.0** (hay que citar al autor) |
+| `models/car_hi.glb`, `models/car_lo.glb` | "Generic Sport Coupé Car" (coche inventado, sin marca real). Modificado: piezas internas y multimedia quitadas, ruedas separadas, pintura para las decoraciones, texturas WebP | Márcio Meireles (mmcworks), adaptado por timo-hoen (sls-racing) | https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882 | **CC-BY 4.0** (hay que citar al autor) |
 
-Atribución que debe aparecer en el juego: *"Car Concept" de Eric Chadwick (Khronos glTF
-Sample Assets), CC-BY 4.0, basado en un modelo CC0 de Unity Fan. Modificado.*
+Atribución que debe aparecer en el juego: *"Generic Sport Coupé Car" de Márcio Meireles (https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882), CC-BY 4.0 (http://creativecommons.org/licenses/by/4.0/), modificado.*
