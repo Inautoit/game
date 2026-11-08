@@ -3,6 +3,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { TRACKS, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
+import { makeTelemetry, telStep, telLap, dangerColor, drawTrace, SECTORS } from './telemetry.js';
 import { RGBELoader } from '../vendor/jsm/loaders/RGBELoader.js';
 import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js';
 import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
@@ -28,7 +29,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('slot.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('slot.' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
 };
-const settings = Object.assign({ sound: true, vibe: true, lefty: false, cam: 'tv' }, store.get('settings', {}));
+const settings = Object.assign({ sound: true, vibe: true, lefty: false, cam: 'tv', tele: true }, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
 const vibrate = (p) => { if (settings.vibe && navigator.vibrate) navigator.vibrate(p); };
 const classOf = (setupRaw) => (setupRaw.magnet === 'sin' ? 'pro' : 'iman');
@@ -278,6 +279,8 @@ function at(s, d = 0) {
   return { x: lerp(a.x, b.x, f) + nx * d, z: lerp(a.z, b.z, f) + nz * d, y: lerp(a.y, b.y, f), h, k: a.k, slope: (b.y - a.y) / DS, i };
 }
 
+// Las texturas de la pista solo dependen del número de carriles: se generan una vez
+const trackTexCache = new Map();
 function buildTrack(def) {
   disposeGroup(trackGroup);
   const S = sample(def);
@@ -292,6 +295,8 @@ function buildTrack(def) {
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (const p of P) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z); }
   T.bbox = { minX: minX - half, maxX: maxX + half, minZ: minZ - half, maxZ: maxZ + half };
+  // En los circuitos largos la cámara de TV sigue al coche en lugar de enseñar toda la mesa
+  T.big = Math.max(maxX - minX, maxZ - minZ) > 30;
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
   T.center = { x: cx, z: cz };
   trackGroup.position.set(-cx, 0, -cz);
@@ -302,7 +307,7 @@ function buildTrack(def) {
   const PIECE = 0.35 / SCALE;
   const W = 1024, Ht = 2048;
   const U = (d, w) => ((half - d) / (2 * half)) * w;
-  const tex = canvasTex(W, Ht, (g, w, h) => {
+  const tex = trackTexCache.get(lanes) || canvasTex(W, Ht, (g, w, h) => {
     g.fillStyle = '#36383e'; g.fillRect(0, 0, w, h);
     // Grano del plástico moldeado
     const img = g.getImageData(0, 0, w, h), px = img.data;
@@ -330,8 +335,9 @@ function buildTrack(def) {
     g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(0, 3, w, 2);
   });
   tex.repeat.set(1, 1);
+  trackTexCache.set(lanes, tex);
   // Relieve del grano (mapa de normales generado)
-  const nor = canvasTex(256, 256, (g, w, h) => {
+  const nor = trackTexCache.get('nor') || canvasTex(256, 256, (g, w, h) => {
     const img = g.createImageData(w, h), px = img.data;
     const hgt = new Float32Array(w * h).map(() => Math.random());
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -344,6 +350,7 @@ function buildTrack(def) {
   });
   nor.colorSpace = THREE.NoColorSpace;
   nor.repeat.set(6, 6);
+  trackTexCache.set('nor', nor);
   const pos = [], uv = [], idx = [];
   for (let i = 0; i <= n; i++) {
     const p = P[i % n];
@@ -722,7 +729,7 @@ function loadCarModels() {
       const old = c.mesh;
       c.mesh = makeCarMesh(c.liv);
       c.mesh.position.copy(old.position); c.mesh.rotation.copy(old.rotation);
-      if (c.human) c.mesh.userData.ring.material.opacity = 0.7;
+      if (c.human) { c.mesh.userData.ring.material.opacity = 0.7; c.mesh.userData.halo = makeHalo(); c.mesh.add(c.mesh.userData.halo); }
       carsGroup.remove(old); carsGroup.add(c.mesh);
     }
     if (ghost) { const old = ghost.mesh; ghost.mesh = makeCarMesh(old.userData.liv, true); carsGroup.remove(old); carsGroup.add(ghost.mesh); }
@@ -891,6 +898,68 @@ function updateSparks(dt) {
 }
 
 // ---------------------------------------------------------------------------
+// Derrape: marcas de goma de las ruedas traseras y halo de aviso bajo el coche
+// ---------------------------------------------------------------------------
+const SKID_MAX = 3000;
+const skidMat = new THREE.MeshBasicMaterial({ color: 0x050506, transparent: true, opacity: 0.32, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+const skids = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), skidMat, SKID_MAX);
+skids.count = 0; skids.frustumCulled = false;
+skids.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+carsGroup.add(skids);
+let skidIdx = 0;
+const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _pos = new THREE.Vector3(), _scl = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function clearSkids() { skids.count = 0; skidIdx = 0; skids.instanceMatrix.needsUpdate = true; }
+function addSkid(x0, z0, x1, z1, y, w) {
+  const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz);
+  if (len < 0.004 || len > 1.2) return;
+  _q.setFromAxisAngle(_up, Math.atan2(dx, dz));
+  _pos.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+  _scl.set(w, 1, len + 0.01);
+  _m4.compose(_pos, _q, _scl);
+  skids.setMatrixAt(skidIdx, _m4);
+  skidIdx = (skidIdx + 1) % SKID_MAX;
+  skids.count = Math.min(SKID_MAX, skids.count + 1);
+  skids.instanceMatrix.needsUpdate = true;
+}
+const REAR = 0.7, HALF_TRACK = 0.19;   // posición de las ruedas traseras respecto a la guía (unidades)
+function updateSkids(c, p) {
+  const st = c.st;
+  const sliding = st.v > 0.5 && (st.Fr > 0.93 || Math.abs(st.th) > 0.1 || st.wheelspin > 0.08);
+  const psi = p.h + st.th;
+  const fx = Math.cos(psi), fz = Math.sin(psi), nx = -fz, nz = fx;
+  const rx = p.x - fx * REAR, rz = p.z - fz * REAR;
+  const wl = [rx + nx * HALF_TRACK, rz + nz * HALF_TRACK, rx - nx * HALF_TRACK, rz - nz * HALF_TRACK];
+  if (sliding && c.skidPrev && p.y < 0.05) {
+    const w = 0.035 + Math.min(0.03, Math.abs(st.th) * 0.08);
+    addSkid(c.skidPrev[0], c.skidPrev[1], wl[0], wl[1], p.y + 0.0052, w);
+    addSkid(c.skidPrev[2], c.skidPrev[3], wl[2], wl[3], p.y + 0.0052, w);
+  }
+  c.skidPrev = sliding ? wl : null;
+}
+// Halo bajo el coche del jugador: verde → ámbar → rojo según lo cerca que está de salirse
+const haloTex = canvasTex(128, 64, (g, w, h) => {
+  const gr = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+  gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+}, false);
+function makeHalo() {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.9), new THREE.MeshBasicMaterial({ map: haloTex, color: 0xff3b30, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  m.rotation.x = -Math.PI / 2; m.position.set(-0.4, 0.009, 0);
+  m.renderOrder = 2;
+  return m;
+}
+const _haloCol = new THREE.Color();
+function updateHalo(c) {
+  const h = c.mesh.userData.halo;
+  if (!h) return;
+  const x = c.tel ? c.tel.dangerS : 0;
+  const a = c.crash ? 0 : clamp((x - 0.86) / 0.17, 0, 1);
+  h.material.opacity = a * (settings.tele ? 0.9 : 0.6);
+  h.visible = a > 0.01;
+  if (h.visible) h.material.color.copy(_haloCol.set(dangerColor(x)));
+}
+
+// ---------------------------------------------------------------------------
 // Cámara: TV (vista de mesa), persecución y a bordo
 // ---------------------------------------------------------------------------
 const CAMS = ['tv', 'persecucion', 'bordo'];
@@ -979,9 +1048,10 @@ let physTrack = null;
 
 function clearCars() {
   for (const c of cars) stopEngine(c.engine);
-  for (const ch of [...carsGroup.children]) if (ch !== sparkPts) { carsGroup.remove(ch); disposeGroup(ch); }
+  for (const ch of [...carsGroup.children]) if (ch !== sparkPts && ch !== skids) { carsGroup.remove(ch); disposeGroup(ch); }
   cars = [];
   ghost = null;
+  clearSkids();
 }
 
 // Pose: la guía va en el carril; el coche gira θ respecto a la tangente
@@ -1005,7 +1075,12 @@ function makeCar({ liv, lane, human, player, name, setupRaw, skill }) {
     engine: makeEngine(human), prof: null, rec: [], recT: 0,
   };
   if (!human) c.prof = buildProfile(physTrack, c.d, setup, 0.95);
-  if (human) mesh.userData.ring.material.opacity = 0.7;
+  if (human) {
+    mesh.userData.ring.material.opacity = 0.7;
+    c.tel = makeTelemetry(physTrack, c.d, setup);
+    mesh.userData.halo = makeHalo();
+    mesh.add(mesh.userData.halo);
+  }
   cars.push(c);
   placeCar(mesh, c.st.s, c.d, 0);
   return c;
@@ -1112,6 +1187,7 @@ function physStep(c) {
     const over = (c.st.s * SCALE) / Math.max(0.05, c.st.v);
     crossLine(c, race.simT - over - race.goT);
   }
+  if (c.tel) telStep(c.tel, c.st, c.st.s, race.simT - race.goT, race.started && c.lap > 0 && !c.finished);
   // Grabación para el fantasma (60 por segundo)
   if (c.human && race.mode === 'practica' && c.lap > 0) {
     c.recT += DT;
@@ -1120,13 +1196,14 @@ function physStep(c) {
 }
 
 function crossLine(c, now) {
-  if (c.lap === 0) { c.lap = 1; c.lapStart = now; c.rec = []; c.recT = 0; return; }
+  if (c.lap === 0) { c.lap = 1; c.lapStart = now; c.rec = []; c.recT = 0; if (c.tel) telLap(c.tel, c.st, now, NaN, false); return; }
   const lt = now - c.lapStart;
   c.laps.push(lt);
   c.last = lt;
   const prevBest = c.best;
   if (lt < c.best) c.best = lt;
   c.lapStart = now;
+  if (c.tel) telLap(c.tel, c.st, now, lt, lt === c.best);
   if (c.human) {
     const key = `${race.def.id}|${race.cls}`;
     const recs = store.get('best', {});
@@ -1194,12 +1271,14 @@ function stepRace(dt) {
       if (c.blink > 0) { c.blink -= dt; c.mesh.visible = Math.floor(c.blink * 12) % 2 === 0; } else c.mesh.visible = true;
       const wh = c.mesh.userData.wheels;
       if (wh) { const a = (c.st.v / 0.0105) * dt; for (const w of wh) w.rotateX(a); }
+      updateSkids(c, p);
       // Chispas: al frenar fuerte o a alta velocidad
       const rate = (c.st.amps < -0.6 ? 70 : 0) + (c.st.v > 3 ? (c.st.v - 3) * 8 : 0);
       let k = rate * dt;
       while (k > 0) { if (Math.random() < k) emitSpark(p.x, p.y + 0.02, p.z, Math.cos(p.h), Math.sin(p.h)); k -= 1; }
     }
     updateEngine(c.engine, c.st, !c.crash);
+    if (c.tel) { c.tel.dangerS += (c.tel.danger - c.tel.dangerS) * Math.min(1, dt * 14); updateHalo(c); }
   }
   // Fantasma
   if (ghost && race.started) {
@@ -1381,6 +1460,7 @@ function loop(now) {
   if (state === 'countdown' || state === 'race' || state === 'results') {
     stepRace(dt);
     updateHud();
+    updateTele();
   } else if (state === 'menu' || state === 'circuits' || state === 'garage') {
     if (race && race.demo) {
       race.acc += dt;
@@ -1416,6 +1496,16 @@ function loop(now) {
     }
     camPos.lerp(camGoalPos, Math.min(1, dt * (camMode === 'bordo' ? 14 : 6)));
     camTarget.lerp(camGoalTarget, Math.min(1, dt * (camMode === 'bordo' ? 16 : 8)));
+  } else if (me && T.big && state !== 'results') {
+    // Cámara de TV de circuito: alta, siguiendo al coche con algo de anticipación
+    const p = at(me.st.s + (me.crash ? 0 : Math.max(0, me.st.v) * 0.12 / SCALE), me.d);
+    const ox = -T.center.x, oz = -T.center.z;
+    const portrait = camera.aspect < 1;
+    const D = portrait ? 19 : 15.5, el = (58 * Math.PI) / 180;
+    camGoalTarget.set(p.x + ox, p.y, p.z + oz);
+    camGoalPos.set(p.x + ox, p.y + Math.sin(el) * D, p.z + oz + Math.cos(el) * D);
+    camPos.lerp(camGoalPos, Math.min(1, dt * 2.2));
+    camTarget.lerp(camGoalTarget, Math.min(1, dt * 2.6));
   } else {
     overviewCamera(camGoalPos, camGoalTarget);
     camPos.lerp(camGoalPos, Math.min(1, dt * 3));
@@ -1476,7 +1566,7 @@ function updateHud(force) {
   ui.hudRows.innerHTML = '';
   for (const c of humans) {
     const card = document.createElement('div');
-    card.className = 'tcard' + (c.st.Fr > 0.95 && c.st.v > 1 && !c.crash ? ' warn' : '');
+    card.className = 'tcard' + ((c.tel ? c.tel.dangerS > 1.0 : c.st.Fr > 0.95) && c.st.v > 1 && !c.crash ? ' warn' : '');
     card.style.setProperty('--car', '#' + c.liv.color.toString(16).padStart(6, '0'));
     const cur = c.lap > 0 && !c.finished ? nowT - c.lapStart : null;
     const ref = race.mode === 'practica' ? recBest : c.best;
@@ -1487,6 +1577,12 @@ function updateHud(force) {
     card.innerHTML = `${pos}<div class="tmain"><span class="tlap"></span><span class="tcur"></span>
       <span class="trow"><em>Última</em><i class="tlast"></i><em>Mejor</em><i class="tbest"></i></span></div>
       <div class="tside"><b class="tkmh"></b><small>km/h escala</small><span class="tdelta"></span></div>`;
+    if (c.tel && !(settings.tele && race.humans === 1)) {
+      const gb = document.createElement('span'); gb.className = 'tgrip';
+      const x = c.tel.dangerS, gi = document.createElement('i');
+      gi.style.width = `${clamp((x - 0.6) / 0.5, 0, 1) * 100}%`; gi.style.background = dangerColor(x);
+      gb.appendChild(gi); card.querySelector('.tmain').appendChild(gb);
+    }
     card.querySelector('.tlap').textContent = `${c.name} · ${lapTxt}`;
     card.querySelector('.tcur').textContent = cur != null ? fmt(cur) : '0,000';
     card.querySelector('.tlast').textContent = fmt(c.last);
@@ -1512,6 +1608,45 @@ function updateHud(force) {
     });
   } else $('lapList').hidden = true;
 }
+
+// Panel de telemetría del piloto (1 jugador)
+const tl = { el: $('tele'), c: $('tlC'), v: $('tlV'), k: $('tlK'), d: $('tlD'), bar: $('tlBar'), g: $('tlG'), max: $('tlMax'), trap: $('tlTrap'), peak: $('tlPeak'), trace: $('tlTrace'), sec: [0, 1, 2].map((i) => $('tlS' + i)), tick: 0 };
+const ms = (v) => (Number.isFinite(v) && v > 0 ? v.toFixed(2).replace('.', ',') : '–');
+function updateTele() {
+  const show = !!race && race.humans === 1 && settings.tele && state !== 'results';
+  tl.el.hidden = !show;
+  if (!show) return;
+  const c = cars.find((x) => x.human);
+  if (!c || !c.tel) return;
+  const T2 = c.tel, st = c.st;
+  tl.el.classList.toggle('lefty', !!settings.lefty);
+  const x = c.crash ? 0 : T2.dangerS;
+  tl.v.textContent = (c.crash ? 0 : Math.max(0, st.v)).toFixed(2).replace('.', ',');
+  tl.k.textContent = Math.round(Math.max(0, c.crash ? 0 : st.v) * 3.6 * 32);
+  tl.d.textContent = `${Math.round(Math.abs(c.crash ? 0 : st.th) * 57.3)}°`;
+  tl.bar.style.width = `${clamp((x - 0.6) / 0.5, 0, 1) * 100}%`;
+  tl.bar.style.background = dangerColor(x);
+  tl.g.textContent = x > 1.5 ? 'MAX' : `${Math.round(x * 100)}%`;
+  tl.g.style.color = dangerColor(x);
+  tl.el.classList.toggle('alarm', x >= 1.0);
+  const cause = x < 0.9 ? 'Agarre' : T2.cause === 'drift' ? (x >= 0.98 ? '¡Trompo!' : 'Derrapa') : (x >= 0.98 ? '¡Frena!' : 'Al límite');
+  if (tl.c.textContent !== cause) tl.c.textContent = cause;
+  tl.c.style.color = x < 0.9 ? '' : dangerColor(x);
+  if (++tl.tick % 6) return;
+  tl.max.textContent = ms(c.lap > 0 ? Math.max(T2.vmax, 0) : NaN);
+  tl.trap.textContent = ms(T2.trap);
+  tl.peak.textContent = T2.last ? `${Math.round(T2.last.peak * 100)}%` : '–';
+  for (let k = 0; k < SECTORS; k++) {
+    const live = c.lap > 0 && k === T2.secIdx;
+    const done = c.lap > 0 && k < T2.secIdx;
+    const t = done ? T2.sec[k] : T2.secLast[k];
+    const stt = done ? (T2.sec[k] < T2.secBest[k] ? 'best' : T2.sec[k] < T2.secLast[k] ? 'better' : 'worse') : live ? '' : (T2.lastStatus || [])[k] || '';
+    tl.sec[k].className = 'sec ' + stt + (live ? ' run' : '');
+    tl.sec[k].textContent = `S${k + 1} ${Number.isFinite(t) ? t.toFixed(3).replace('.', ',') : '–'}`;
+  }
+  drawTrace(tl.trace, T2, (((st.s % T.L) + T.L) % T.L) / T.L, buildVtop(c));
+}
+function buildVtop(c) { return c.vtop || (c.vtop = Math.max(...c.tel.lim) * 1.02); }
 
 // ---- Menú ----
 let mode = '1p';
@@ -1709,11 +1844,13 @@ function fillSettings() {
   $('optSound').checked = settings.sound;
   $('optVibe').checked = settings.vibe;
   $('optLefty').checked = settings.lefty;
+  $('optTele').checked = settings.tele;
   $('resetConfirm').hidden = true;
 }
 $('optSound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); initAudio(); setMuted(); sfx.click(); });
 $('optVibe').addEventListener('change', (e) => { settings.vibe = e.target.checked; saveSettings(); vibrate(30); });
 $('optLefty').addEventListener('change', (e) => { settings.lefty = e.target.checked; saveSettings(); });
+$('optTele').addEventListener('change', (e) => { settings.tele = e.target.checked; saveSettings(); });
 $('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; });
 $('resetNo').addEventListener('click', () => { $('resetConfirm').hidden = true; });
 $('resetYes').addEventListener('click', () => {

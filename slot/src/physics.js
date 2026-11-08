@@ -47,7 +47,7 @@ export function resolveSetup(s) {
 }
 
 export function newCarState(s0) {
-  return { s: s0, v: 0, th: 0, w: 0, out: false, lam: 0, slip: 0, wheelspin: 0, amps: 0, rpm: 0, Fr: 0 };
+  return { s: s0, v: 0, th: 0, w: 0, out: false, lam: 0, risk: 0, slip: 0, wheelspin: 0, amps: 0, rpm: 0, Fr: 0 };
 }
 
 // Curvatura del carril (1/m) y pendiente en la posición s (unidades)
@@ -129,6 +129,8 @@ export function step(c, track, d, thr, setup) {
 
   // ¿Se sale de la ranura?
   const lamMax = Nt * 1.9;
+  // Riesgo de salida (0 = tranquilo, 1 = fuera): lo que tira la guía y lo que gira la trasera
+  c.risk = Math.max(Math.abs(lam) / lamMax, Math.abs(c.th) / 1.25);
   if (Math.abs(lam) > lamMax || Math.abs(c.th) > 1.25) c.out = true;
   return c;
 }

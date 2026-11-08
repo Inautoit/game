@@ -29,6 +29,23 @@ export const TRACKS = [
     id: 'gp', name: 'Gran Premio', lanes: 4, laps: 4, scenery: 'noche',
     pieces: [['S', null], ['C', 90, 3], ['S', 1], ['C', 45, 2.8], ['C', -90, 3], ['C', 45, 2.8], ['S', 1], ['C', 90, 3], ['S', 1], ['C', 45, 2.8], ['C', -90, 3], ['C', 45, 2.8], ['S', 3], ['C', 90, 3], ['S', null], ['C', 90, 3]],
   },
+  // --- Circuitos largos de club (de 16 a 36 metros de cuerda) ---
+  {
+    id: 'montana', name: 'Montaña', lanes: 2, laps: 5, scenery: 'verde', long: true,
+    pieces: [['S', 6, 0], ['C', -90, 4, 0], ['S', null, 0], ['S', 8, 0], ['C', 90, 4], ['S', 6], ['C', 45, 3], ['C', -45, 3], ['S', 4], ['C', 90, 3.5], ['S', 6], ['C', 90, 4, 0.95], ['S', null, 0.95], ['C', -90, 4, 0.6], ['S', 6, 0.3], ['C', -90, 3.5, 0], ['S', 4, 0], ['C', -45, 3], ['C', 45, 3]],
+  },
+  {
+    id: 'autodromo', name: 'Autódromo', lanes: 4, laps: 5, scenery: 'arena', long: true,
+    pieces: [['S', null], ['C', 90, 5], ['S', 10], ['C', -45, 4], ['C', 90, 4], ['C', -45, 4], ['S', 8], ['C', 90, 3.5], ['S', 12], ['C', 90, 2.6], ['S', 10], ['C', -180, 2.4], ['S', 10], ['C', 90, 2.6], ['S', 8], ['C', 90, 4], ['S', null], ['C', 90, 4]],
+  },
+  {
+    id: 'internacional', name: 'Internacional', lanes: 4, laps: 4, scenery: 'noche', long: true,
+    pieces: [['S', null], ['C', 90, 5], ['S', 10], ['C', -30, 4], ['C', 60, 4], ['C', -30, 4], ['S', 10], ['C', 90, 3.5], ['S', 8], ['C', -90, 3], ['S', 6], ['C', 90, 3], ['S', 20], ['C', 135, 3], ['S', 8], ['C', -45, 4], ['S', null], ['C', 90, 4]],
+  },
+  {
+    id: 'resistencia', name: 'Resistencia', lanes: 4, laps: 3, scenery: 'verde', long: true,
+    pieces: [['S', null], ['C', 90, 5.5], ['S', 18], ['C', -30, 4.5], ['C', 60, 4.5], ['C', -30, 4.5], ['S', 14], ['C', 90, 3.5], ['S', 10], ['C', 90, 2.8], ['S', 12], ['C', -180, 2.6], ['S', 12], ['C', 90, 2.8], ['S', 8], ['C', -90, 3], ['S', 10], ['C', 90, 3], ['S', 30], ['C', 135, 3], ['S', 14], ['C', -45, 4.5], ['S', null], ['C', 90, 4.5]],
+  },
 ];
 
 export const LANE_W = 0.62; // separación entre carriles

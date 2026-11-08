@@ -301,6 +301,38 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .lrow { display: flex; gap: 12px; justify-content: space-between; font-size: 13px; color: var(--ink-2); }
 .lrow b { color: var(--ink); }
 .lrow.best b { color: var(--green); }
+/* Telemetría */
+.tele {
+  position: absolute; bottom: calc(env(safe-area-inset-bottom) + 14px); left: calc(env(safe-area-inset-left) + 12px);
+  width: min(340px, calc(100vw - 150px)); padding: 10px 12px; border-radius: 16px; background: var(--panel);
+  display: grid; gap: 6px; font-variant-numeric: tabular-nums;
+}
+.tele.lefty { left: auto; right: calc(env(safe-area-inset-right) + 12px); }
+.tele[hidden] { display: none; }
+.tl-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tl-row > div { display: flex; flex-direction: column; line-height: 1; }
+.tl-row small { font-size: 10px; color: var(--ink-2); margin-top: 2px; }
+.tl-speed b { font-size: 28px; }
+.tl-kmh b, .tl-drift b { font-size: 18px; }
+.tl-kmh, .tl-drift { align-items: flex-end; }
+.tl-grip { display: flex; align-items: center; gap: 8px; }
+.tl-cause { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; min-width: 66px; color: var(--ink-2); }
+.tl-grip span { font-size: 15px; font-weight: 700; min-width: 46px; text-align: right; }
+.tl-bar { position: relative; flex: 1; height: 12px; border-radius: 6px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.tl-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 6px; background: #34c759; }
+.tl-bar em { position: absolute; top: -2px; bottom: -2px; left: 80%; width: 2px; background: #fff; }
+.tele.alarm .tl-bar { box-shadow: 0 0 0 2px #ff3b30, 0 0 14px rgba(255, 59, 48, 0.8); }
+.tl-sec .sec { flex: 1; text-align: center; font-size: 12px; font-weight: 700; padding: 3px 0; border-radius: 8px; background: rgba(255, 255, 255, 0.08); }
+.sec.best { background: #8e44ef; color: #fff; }
+.sec.better { background: #1f9d48; color: #fff; }
+.sec.worse { background: #d9a400; color: #141414; }
+.sec.run { outline: 1px solid rgba(255, 255, 255, 0.5); }
+.tl-small { font-size: 11px; color: var(--ink-2); }
+.tl-small b { color: var(--ink); }
+.tl-trace { width: 100%; height: 54px; display: block; border-radius: 8px; background: rgba(0, 0, 0, 0.25); }
+.tgrip { display: block; height: 4px; margin-top: 5px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.tgrip i { display: block; height: 100%; width: 0; }
+@media (max-height: 560px) and (orientation: landscape) { .tl-trace { height: 40px; } .tl-small { display: none; } }
 @media (max-width: 520px) { .hud-rows .tcard { flex: 1; } .tside small { display: none; } }
 
 @media (max-height: 560px) and (orientation: landscape) {

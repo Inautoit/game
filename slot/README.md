@@ -104,3 +104,16 @@ CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... ./deploy.sh
 
 «Scalextric» es una marca registrada de su propietario; Turbo Slot no está
 relacionado con ella.
+
+## Telemetría y circuitos largos
+
+- **Agarre usado** (0–100 % y más): la mayor de dos medidas. La primera es la velocidad frente a la velocidad
+  límite del carril, calculada por simulación con tu reglaje e incluyendo la frenada para lo que viene. La segunda
+  es la deriva de la trasera y su tendencia a 0,12 s. Por encima del 103 % la salida es casi segura; el aviso
+  llega una mediana de 0,25–0,35 s antes de salirse.
+- Panel en `src/telemetry.js`: velocidad (m/s y km/h a escala), deriva en grados, sectores con colores
+  (morado = mejor, verde = mejora, ámbar = peor), punta de la vuelta, trampa de velocidad en meta, pico de agarre
+  y gráfica de velocidad de la vuelta actual contra la mejor. Se puede ocultar en Ajustes.
+- En la pista: marcas de goma de las ruedas traseras al deslizar y un halo bajo el coche que pasa de verde a rojo.
+- Circuitos largos: Montaña (16,6 m, con puente), Autódromo (21,5 m), Internacional (20,7 m) y
+  Resistencia (36,3 m). En ellos la cámara de TV sigue al coche.

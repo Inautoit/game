@@ -105,6 +105,23 @@
         <button id="pauseBtn" class="icon-btn" aria-label="Pausa"><svg><use href="#i-pause"/></svg></button>
       </div>
     </div>
+    <div id="tele" class="tele" hidden>
+      <div class="tl-row">
+        <div class="tl-speed"><b id="tlV">0,00</b><small>m/s</small></div>
+        <div class="tl-kmh"><b id="tlK">0</b><small>km/h escala</small></div>
+        <div class="tl-drift"><b id="tlD">0°</b><small>deriva</small></div>
+      </div>
+      <div class="tl-grip" aria-label="Agarre usado">
+        <b id="tlC" class="tl-cause">Agarre</b>
+        <div class="tl-bar"><i id="tlBar"></i><em></em></div>
+        <span id="tlG">0%</span>
+      </div>
+      <div class="tl-row tl-sec">
+        <span class="sec" id="tlS0">S1 –</span><span class="sec" id="tlS1">S2 –</span><span class="sec" id="tlS2">S3 –</span>
+      </div>
+      <div class="tl-row tl-small"><span>Punta <b id="tlMax">–</b></span><span>Trampa <b id="tlTrap">–</b></span><span>Pico <b id="tlPeak">–</b></span></div>
+      <canvas id="tlTrace" class="tl-trace"></canvas>
+    </div>
     <div id="pads"></div>
   </div>
   <div id="count" class="count"></div>
@@ -147,6 +164,7 @@
         <li><div class="step-ico">👍</div><div><b>El gatillo es analógico</b><br>Cuanto más subes el pulgar, más voltaje recibe el motor. Al soltar, el mando frena el motor.</div></li>
         <li><div class="step-ico">↩️</div><div><b>Frena antes, acelera al salir</b><br>Como en un coche real: entra suave en la curva y pisa cuando el coche ya apunta a la recta.</div></li>
         <li><div class="step-ico">🌀</div><div><b>Controla el derrape</b><br>La trasera desliza. Si se abre demasiado, levanta un poco el gatillo o el coche se sale.</div></li>
+        <li><div class="step-ico">📈</div><div><b>Telemetría</b><br>La barra de <b>agarre</b> mide lo cerca que estás de salirte: verde, ámbar y rojo. Pasa del 100 % y te sales. Te dice si debes <b>frenar</b> (vas demasiado rápido para lo que viene) o si el coche <b>derrapa</b>. También verás la deriva en grados, la velocidad, la punta, la trampa de velocidad en meta, los tres sectores (morado = tu mejor) y la gráfica de la vuelta contra tu mejor vuelta.</div></li>
         <li><div class="step-ico">🔧</div><div><b>Ajusta el coche</b><br>Imán, desarrollo, neumáticos, freno y curva del gatillo. Sin imán es la clase más difícil.</div></li>
         <li><div class="step-ico">⏱</div><div><b>Compite contra el reloj</b><br>Tiempos al milésimo y un fantasma de tu mejor vuelta en Práctica.</div></li>
       </ol>
@@ -179,6 +197,7 @@
       <h3 id="hSettings">Ajustes</h3>
       <label class="toggle"><span>Sonido</span><input type="checkbox" id="optSound"><i></i></label>
       <label class="toggle"><span>Vibración</span><input type="checkbox" id="optVibe"><i></i></label>
+      <label class="toggle"><span>Telemetría<small>Velocidad, agarre, deriva y sectores</small></span><input type="checkbox" id="optTele"><i></i></label>
       <label class="toggle"><span>Mando a la izquierda<small>Para zurdos (1 jugador)</small></span><input type="checkbox" id="optLefty"><i></i></label>
       <button id="resetBtn" class="btn ghost danger"><span class="btn-main">Borrar mi progreso</span></button>
       <div id="resetConfirm" class="confirm" hidden><span>¿Borrar récords, fantasmas y circuitos desbloqueados?</span>

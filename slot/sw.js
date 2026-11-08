@@ -1,6 +1,6 @@
 // Service worker: permite jugar sin conexión (red primero, caché de respaldo).
-const CACHE = 'turbo-slot-v4';
-const FILES = ['./', 'index.html', 'styles.css', 'src/main.js', 'src/tracks.js', 'src/physics.js', 'src/ai.js',
+const CACHE = 'turbo-slot-v5';
+const FILES = ['./', 'index.html', 'styles.css', 'src/main.js', 'src/tracks.js', 'src/physics.js', 'src/ai.js', 'src/telemetry.js',
   'vendor/jsm/loaders/RGBELoader.js', 'vendor/jsm/postprocessing/EffectComposer.js', 'vendor/jsm/postprocessing/Pass.js', 'vendor/jsm/postprocessing/MaskPass.js',
   'vendor/jsm/postprocessing/RenderPass.js', 'vendor/jsm/postprocessing/ShaderPass.js', 'vendor/jsm/postprocessing/UnrealBloomPass.js', 'vendor/jsm/postprocessing/OutputPass.js',
   'vendor/jsm/shaders/CopyShader.js', 'vendor/jsm/shaders/OutputShader.js', 'vendor/jsm/shaders/LuminosityHighPassShader.js',
