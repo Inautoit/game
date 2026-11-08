@@ -1309,7 +1309,7 @@ Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, n
 // Gancho para pruebas automáticas
 window.__isla = {
   get state() { return state; }, get B() { return B; }, get level() { return level; }, get timer() { return timer; },
-  get gemsTaken() { return gemsTaken; }, get cur() { return cur; },
+  get gemsTaken() { return gemsTaken; }, get cur() { return cur; }, get gems() { return gems; },
   startLevel, startDaily, startInfinite, startTest, startCommunity, showCommunity, showEditor,
   setTilt: (x, z) => { touch = { dx: (-z / MAX_TILT) * STICK_R, dy: (x / MAX_TILT) * STICK_R }; }, release: () => { touch = null; },
 };
