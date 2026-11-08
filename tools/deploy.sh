@@ -11,7 +11,7 @@ cp -r index.html styles.css src vendor icons fonts manifest.webmanifest sw.js og
 python3 -I tools/build_worker.py "$TMP/dist" "$TMP/worker.js" tools/worker_template.js
 cp src/levels.js "$TMP/levels.js"
 API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$NAME"
-META="{\"main_module\":\"worker.js\",\"compatibility_date\":\"2024-11-01\",\"bindings\":[{\"type\":\"d1\",\"name\":\"DB\",\"id\":\"$D1_ID\"}]}"
+META="{\"main_module\":\"worker.js\",\"compatibility_date\":\"2024-11-01\",\"compatibility_flags\":[\"nodejs_compat\"],\"bindings\":[{\"type\":\"d1\",\"name\":\"DB\",\"id\":\"$D1_ID\"}]}"
 curl -fsS -X PUT "$API" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   -F "metadata=$META;type=application/json" \
   -F "worker.js=@$TMP/worker.js;type=application/javascript+module" \

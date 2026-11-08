@@ -16,7 +16,11 @@ for root, _, names in os.walk(src):
         ext = os.path.splitext(n)[1]
         if ext not in types:
             continue
-        files[rel] = [types[ext], base64.b64encode(open(p, 'rb').read()).decode()]
+        data = open(p, 'rb').read()
+        if types[ext].startswith(('text/', 'application/manifest', 'image/svg')):
+            files[rel] = [types[ext], data.decode('utf-8'), 0]   # texto: se sirve tal cual
+        else:
+            files[rel] = [types[ext], base64.b64encode(data).decode(), 1]  # binario
 files['/'] = files['/index.html']
 js = open(template).read().replace('__FILES__', json.dumps(files))
 open(out, 'w').write(js)

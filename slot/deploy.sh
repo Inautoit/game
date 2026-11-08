@@ -10,7 +10,7 @@ cp -r index.html styles.css src vendor icons fonts manifest.webmanifest sw.js og
 python3 -I ../tools/build_worker.py "$TMP/dist" "$TMP/worker.js" ../tools/worker_static_template.js
 API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$NAME"
 curl -fsS -X PUT "$API" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  -F 'metadata={"main_module":"worker.js","compatibility_date":"2024-11-01"};type=application/json' \
+  -F 'metadata={"main_module":"worker.js","compatibility_date":"2024-11-01","compatibility_flags":["nodejs_compat"]};type=application/json' \
   -F "worker.js=@$TMP/worker.js;type=application/javascript+module" > /dev/null
 curl -fsS -X POST "$API/subdomain" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   -H "Content-Type: application/json" -d '{"enabled":true,"previews_enabled":false}' > /dev/null
