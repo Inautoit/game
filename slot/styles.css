@@ -322,6 +322,9 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .tl-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 6px; background: #34c759; }
 .tl-bar em { position: absolute; top: -2px; bottom: -2px; left: 80%; width: 2px; background: #fff; }
 .tele.alarm .tl-bar { box-shadow: 0 0 0 2px #ff3b30, 0 0 14px rgba(255, 59, 48, 0.8); }
+.tl-next { font-size: 13px; font-weight: 700; min-height: 16px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-next.near { color: #ffcc00; }
+.tl-next.in { color: #ff6b5b; }
 .tl-sec .sec { flex: 1; text-align: center; font-size: 12px; font-weight: 700; padding: 3px 0; border-radius: 8px; background: rgba(255, 255, 255, 0.08); }
 .sec.best { background: #8e44ef; color: #fff; }
 .sec.better { background: #1f9d48; color: #fff; }

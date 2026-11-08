@@ -29,7 +29,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('slot.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('slot.' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
 };
-const settings = Object.assign({ sound: true, vibe: true, lefty: false, cam: 'tv', tele: true }, store.get('settings', {}));
+const settings = Object.assign({ sound: true, vibe: true, lefty: false, cam: 'tv', tele: true, brakes: true }, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
 const vibrate = (p) => { if (settings.vibe && navigator.vibrate) navigator.vibrate(p); };
 const classOf = (setupRaw) => (setupRaw.magnet === 'sin' ? 'pro' : 'iman');
@@ -936,6 +936,67 @@ function updateSkids(c, p) {
   }
   c.skidPrev = sliding ? wl : null;
 }
+// Puntos de frenada en el carril del jugador: banda amarilla→roja desde donde hay que frenar
+// (yendo a tope) hasta la entrada de la curva, y un cartel en el inicio de la frenada.
+const brakeBoardTex = canvasTex(128, 64, (g, w, h) => {
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#e53935';
+  for (let k = 0; k < 3; k++) { const x = 18 + k * 34; g.beginPath(); g.moveTo(x, 10); g.lineTo(x + 22, h / 2); g.lineTo(x, h - 10); g.lineTo(x + 10, h - 10); g.lineTo(x + 32, h / 2); g.lineTo(x + 10, 10); g.closePath(); g.fill(); }
+}, false);
+function buildBrakeMarks(c) {
+  const grp = new THREE.Group();
+  grp.visible = settings.brakes;
+  const P = T.pts, n = P.length, d = c.d;
+  const pos = [], col = [], idx = [];
+  let v0 = 0;
+  const cA = new THREE.Color(0xffd000), cB = new THREE.Color(0xff2a1a), cc = new THREE.Color();
+  const boardGeo = new THREE.PlaneGeometry(0.5, 0.25);
+  const boardMat = new THREE.MeshBasicMaterial({ map: brakeBoardTex, side: THREE.DoubleSide });
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x8a9099, metalness: 0.5, roughness: 0.4 });
+  for (const z of c.tel.zones) {
+    if (z.vmax - z.vmin < 0.9) continue;
+    const len = (z.end - z.start + n) % n;
+    for (const side of [-1, 1]) {
+      const o = d + side * 0.24;
+      for (let k = 0; k <= len; k++) {
+        const p = P[(z.start + k) % n];
+        const nx = -Math.sin(p.h), nz = Math.cos(p.h);
+        const w = 0.035;
+        pos.push(p.x + nx * (o - w), p.y + 0.0065, p.z + nz * (o - w), p.x + nx * (o + w), p.y + 0.0065, p.z + nz * (o + w));
+        cc.copy(cA).lerp(cB, k / Math.max(1, len));
+        col.push(cc.r, cc.g, cc.b, cc.r, cc.g, cc.b);
+        if (k < len) { const a = v0 + k * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      }
+      v0 += (len + 1) * 2;
+    }
+    // Cartel de frenada en el borde más cercano a tu carril
+    const p = P[z.start], sgn = d >= 0 ? 1 : -1;
+    if (p.y < 0.05) {
+      const nx = -Math.sin(p.h), nz = Math.cos(p.h), off = (T.half + 0.18) * sgn;
+      const board = new THREE.Mesh(boardGeo, boardMat);
+      board.position.set(p.x + nx * off, 0.3, p.z + nz * off);
+      board.rotation.y = -p.h - Math.PI / 2;
+      grp.add(board);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.2, 0.03), postMat);
+      post.position.set(p.x + nx * off, 0.09, p.z + nz * off);
+      post.castShadow = true;
+      grp.add(post);
+    }
+  }
+  if (pos.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    m.renderOrder = 1;
+    grp.add(m);
+  }
+  carsGroup.add(grp);
+  brakeGroups.push(grp);
+}
+const brakeGroups = [];
+
 // Halo bajo el coche del jugador: verde → ámbar → rojo según lo cerca que está de salirse
 const haloTex = canvasTex(128, 64, (g, w, h) => {
   const gr = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
@@ -962,10 +1023,11 @@ function updateHalo(c) {
 // ---------------------------------------------------------------------------
 // Cámara: TV (vista de mesa), persecución y a bordo
 // ---------------------------------------------------------------------------
-const CAMS = ['tv', 'persecucion', 'bordo'];
-const CAM_NAME = { tv: 'Cámara TV', persecucion: 'Persecución', bordo: 'A bordo' };
+const CAMS = ['tv', 'heli', 'persecucion', 'bordo'];
+const CAM_NAME = { tv: 'Cámara TV', heli: 'Helicóptero', persecucion: 'Persecución', bordo: 'A bordo' };
 let camMode = settings.cam || 'tv';
 const camPos = new THREE.Vector3(), camTarget = new THREE.Vector3();
+let camLook = 0, heliH = null;
 const camGoalPos = new THREE.Vector3(), camGoalTarget = new THREE.Vector3();
 let orbit = 0;
 const TiltShift = {
@@ -1015,8 +1077,9 @@ function renderFrame(dt) {
   const close = camMode !== 'tv' && state !== 'menu';
   for (const p of [tiltH, tiltV]) {
     p.uniforms.focus.value = focusY;
-    p.uniforms.band.value = close ? 0.22 : 0.1;
-    p.uniforms.amount.value = (quality === 0 ? 3.2 : 2.2) * (close ? 0.75 : 1);
+    const heli = camMode === 'heli' && state !== 'menu';
+    p.uniforms.band.value = heli ? 0.4 : close ? 0.22 : 0.1;
+    p.uniforms.amount.value = (quality === 0 ? 3.2 : 2.2) * (heli ? 0.4 : close ? 0.75 : 1);
   }
   bloom.enabled = quality === 0;
   composer.render(dt);
@@ -1052,6 +1115,7 @@ function clearCars() {
   cars = [];
   ghost = null;
   clearSkids();
+  brakeGroups.length = 0;
 }
 
 // Pose: la guía va en el carril; el coche gira θ respecto a la tangente
@@ -1103,6 +1167,7 @@ function startRace({ trackIdx, mode, entries }) {
     const lane = humans === 2 ? i : (lanes === 2 ? 1 : Math.min(lanes - 1, 1));
     makeCar({ liv: e.liv, lane, human: true, player: i, name: humans === 2 ? `Jugador ${i + 1}` : 'Tú', setupRaw: e.setupRaw });
   });
+  for (const c of cars) if (c.human) buildBrakeMarks(c);
   if (mode !== 'practica') {
     const free = [...Array(lanes).keys()].filter((l) => !cars.some((c) => c.lane === l));
     const base = 0.86 + trackIdx * 0.018;
@@ -1128,6 +1193,7 @@ function startRace({ trackIdx, mode, entries }) {
     cls: classOf(entries[0].setupRaw),
   };
   state = 'countdown';
+  heliH = null; camLook = 0;
   setupSliders();
   setScreen('hud');
   T.lights.forEach((m) => { m.material.emissive.setHex(0x000000); m.material.color.setHex(0x331111); });
@@ -1487,25 +1553,46 @@ function loop(now) {
     const psi = p.h + (me.crash ? 0 : me.st.th * 0.5);
     const fx = Math.cos(psi), fz = Math.sin(psi);
     const ox = -T.center.x, oz = -T.center.z;
-    if (camMode === 'persecucion') {
+    if (camMode === 'heli') {
+      // Helicóptero: alto y detrás, girando despacio para que la pista que viene quede hacia arriba
+      const ahead = at(me.st.s + 3.5, me.d);
+      let dh = ahead.h - (heliH ?? ahead.h);
+      dh -= Math.round(dh / (2 * Math.PI)) * 2 * Math.PI;
+      heliH = (heliH ?? ahead.h) + dh * Math.min(1, dt * 2.5);
+      const hx = Math.cos(heliH), hz = Math.sin(heliH);
+      const portrait = camera.aspect < 1;
+      const back = portrait ? 6 : 5.5, up = portrait ? 8 : 7, fwd = portrait ? 2 : 1.75;
+      camGoalPos.set(p.x - hx * back + ox, p.y + up, p.z - hz * back + oz);
+      camGoalTarget.set(p.x + hx * fwd + ox, p.y, p.z + hz * fwd + oz);
+      const kf = 1 - Math.exp(-dt * 10);
+      camPos.lerp(camGoalPos, kf);
+      camTarget.lerp(camGoalTarget, kf);
+    } else if (camMode === 'persecucion') {
       camGoalPos.set(p.x - fx * 3.3 + ox, p.y + 2.1, p.z - fz * 3.3 + oz);
       camGoalTarget.set(p.x + fx * 1.6 + ox, p.y - 0.3, p.z + fz * 1.6 + oz);
     } else {
       camGoalPos.set(p.x - fx * 1.25 + ox, p.y + 0.55, p.z - fz * 1.25 + oz);
       camGoalTarget.set(p.x + fx * 2.2 + ox, p.y + 0.12, p.z + fz * 2.2 + oz);
     }
-    camPos.lerp(camGoalPos, Math.min(1, dt * (camMode === 'bordo' ? 14 : 6)));
-    camTarget.lerp(camGoalTarget, Math.min(1, dt * (camMode === 'bordo' ? 16 : 8)));
+    if (camMode !== 'heli') {
+      camPos.lerp(camGoalPos, Math.min(1, dt * (camMode === 'bordo' ? 14 : 6)));
+      camTarget.lerp(camGoalTarget, Math.min(1, dt * (camMode === 'bordo' ? 16 : 8)));
+    }
   } else if (me && T.big && state !== 'results') {
     // Cámara de TV de circuito: alta, siguiendo al coche con algo de anticipación
-    const p = at(me.st.s + (me.crash ? 0 : Math.max(0, me.st.v) * 0.12 / SCALE), me.d);
+    // Mirar por delante del coche (más cuanto más rápido) para ver la curva que viene
+    const laGoal = me.crash ? 0 : clamp(Math.max(0, me.st.v) * 0.3 / SCALE, 1.5, camera.aspect < 1 ? 9 : 7.5);
+    camLook += (laGoal - camLook) * Math.min(1, dt * 1.5);
+    const p = at(me.st.s + camLook, me.d);
     const ox = -T.center.x, oz = -T.center.z;
     const portrait = camera.aspect < 1;
     const D = portrait ? 25 : 21, el = (58 * Math.PI) / 180;
     camGoalTarget.set(p.x + ox, p.y, p.z + oz);
     camGoalPos.set(p.x + ox, p.y + Math.sin(el) * D, p.z + oz + Math.cos(el) * D);
-    camPos.lerp(camGoalPos, Math.min(1, dt * 2.2));
-    camTarget.lerp(camGoalTarget, Math.min(1, dt * 2.6));
+    // Seguimiento firme: el punto mirado ya avanza suave por la pista, así que casi no hay retraso
+    const kf = 1 - Math.exp(-dt * 12);
+    camPos.lerp(camGoalPos, kf);
+    camTarget.lerp(camGoalTarget, kf);
   } else {
     overviewCamera(camGoalPos, camGoalTarget);
     camPos.lerp(camGoalPos, Math.min(1, dt * 3));
@@ -1515,7 +1602,7 @@ function loop(now) {
   viewOff += (wantOffset - viewOff) * Math.min(1, dt * 4);
   if (Math.abs(viewOff) > 0.001) camera.setViewOffset(innerWidth, innerHeight, 0, innerHeight * viewOff, innerWidth, innerHeight);
   else camera.clearViewOffset();
-  camera.fov = camMode === 'bordo' && racing ? 52 : 34;
+  camera.fov = racing && camMode === 'bordo' ? 52 : racing && camMode === 'heli' ? 50 : 34;
   camera.updateProjectionMatrix();
   camera.position.copy(camPos);
   if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
@@ -1610,7 +1697,7 @@ function updateHud(force) {
 }
 
 // Panel de telemetría del piloto (1 jugador)
-const tl = { el: $('tele'), c: $('tlC'), v: $('tlV'), k: $('tlK'), d: $('tlD'), bar: $('tlBar'), g: $('tlG'), max: $('tlMax'), trap: $('tlTrap'), peak: $('tlPeak'), trace: $('tlTrace'), sec: [0, 1, 2].map((i) => $('tlS' + i)), tick: 0 };
+const tl = { el: $('tele'), c: $('tlC'), nb: $('tlNext'), v: $('tlV'), k: $('tlK'), d: $('tlD'), bar: $('tlBar'), g: $('tlG'), max: $('tlMax'), trap: $('tlTrap'), peak: $('tlPeak'), trace: $('tlTrace'), sec: [0, 1, 2].map((i) => $('tlS' + i)), tick: 0 };
 const ms = (v) => (Number.isFinite(v) && v > 0 ? v.toFixed(2).replace('.', ',') : '–');
 function updateTele() {
   const show = !!race && race.humans === 1 && settings.tele && state !== 'results';
@@ -1632,6 +1719,14 @@ function updateTele() {
   const cause = x < 0.9 ? 'Agarre' : T2.cause === 'drift' ? (x >= 0.98 ? '¡Trompo!' : 'Derrapa') : (x >= 0.98 ? '¡Frena!' : 'Al límite');
   if (tl.c.textContent !== cause) tl.c.textContent = cause;
   tl.c.style.color = x < 0.9 ? '' : dangerColor(x);
+  const nx = T2.next;
+  if (nx && c.lap > 0 || nx && race.started) {
+    const vin = nx.vmin.toFixed(1).replace('.', ',');
+    const txt = nx.inZone ? `Frenando · entra a ${vin} m/s` : `Frenada en ${nx.dist < 1 ? Math.round(nx.dist * 100) + ' cm' : nx.dist.toFixed(1).replace('.', ',') + ' m'} · entra a ${vin} m/s`;
+    if (tl.nb.textContent !== txt) tl.nb.textContent = txt;
+    const near = nx.inZone || nx.dist < Math.max(0.2, st.v * 0.12);
+    tl.nb.className = 'tl-next' + (nx.inZone ? ' in' : near ? ' near' : '');
+  } else tl.nb.textContent = '';
   if (++tl.tick % 6) return;
   tl.max.textContent = ms(c.lap > 0 ? Math.max(T2.vmax, 0) : NaN);
   tl.trap.textContent = ms(T2.trap);
@@ -1845,12 +1940,14 @@ function fillSettings() {
   $('optVibe').checked = settings.vibe;
   $('optLefty').checked = settings.lefty;
   $('optTele').checked = settings.tele;
+  $('optBrakes').checked = settings.brakes;
   $('resetConfirm').hidden = true;
 }
 $('optSound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); initAudio(); setMuted(); sfx.click(); });
 $('optVibe').addEventListener('change', (e) => { settings.vibe = e.target.checked; saveSettings(); vibrate(30); });
 $('optLefty').addEventListener('change', (e) => { settings.lefty = e.target.checked; saveSettings(); });
 $('optTele').addEventListener('change', (e) => { settings.tele = e.target.checked; saveSettings(); });
+$('optBrakes').addEventListener('change', (e) => { settings.brakes = e.target.checked; saveSettings(); for (const g of brakeGroups) g.visible = settings.brakes; });
 $('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; });
 $('resetNo').addEventListener('click', () => { $('resetConfirm').hidden = true; });
 $('resetYes').addEventListener('click', () => {

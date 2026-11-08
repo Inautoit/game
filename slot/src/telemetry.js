@@ -14,7 +14,7 @@ export function makeTelemetry(track, d, setup) {
   const lenM = track.L * SCALE;
   const bins = Math.max(20, Math.round(lenM / BIN_M));
   return {
-    lim, n, lenM, bins,
+    lim, n, lenM, bins, zones: brakeZones(lim), next: null,
     danger: 0,          // v / velocidad límite (≥ 1,03 suele ser salida)
     dangerS: 0,         // suavizado para la pantalla
     peak: 0,            // máximo de la vuelta
@@ -26,6 +26,28 @@ export function makeTelemetry(track, d, setup) {
     sec: [], secBest: Array(SECTORS).fill(Infinity), secLast: Array(SECTORS).fill(NaN),
     secStart: 0, secIdx: 0, lapT0: 0,
   };
+}
+
+// Zonas de frenada: tramos donde la velocidad límite baja antes de una curva.
+// start = dónde hay que empezar a frenar yendo a tope; end = entrada de la curva; vmin = velocidad de paso.
+export function brakeZones(lim) {
+  const n = lim.length;
+  let i0 = 0;
+  for (let i = 0; i < n; i++) if (lim[(i + 1) % n] >= lim[i] - 1e-4) { i0 = (i + 1) % n; break; }
+  const zones = [];
+  let run = null;
+  for (let k = 0; k <= n; k++) {
+    const i = (i0 + k) % n, j = (i + 1) % n;
+    const dec = lim[j] < lim[i] - 1e-4;
+    if (dec && !run) run = { start: i };
+    if (!dec && run) {
+      run.end = i;
+      run.vmax = lim[run.start]; run.vmin = lim[i];
+      if (run.vmax - run.vmin > 0.35) zones.push(run);
+      run = null;
+    }
+  }
+  return zones.sort((a, b) => a.start - b.start);
 }
 
 // Llamar en cada paso de física (480 por segundo)
@@ -43,6 +65,16 @@ export function telStep(tel, st, s, simT, onLap) {
   const dDrift = st.v > 0.3 ? driftDanger(thAbs) : 0;
   tel.danger = Math.max(dSpeed, dDrift);
   tel.cause = dDrift > dSpeed ? 'drift' : 'speed';
+  // Próxima frenada (distancia en metros hasta su inicio, o dentro de ella)
+  let best = null, bd = Infinity;
+  for (const z of tel.zones) {
+    const len = (z.end - z.start + tel.n) % tel.n;
+    const into = (i - z.start + tel.n) % tel.n;
+    if (into <= len) { best = z; bd = 0; break; }
+    const ahead = (z.start - i + tel.n) % tel.n;
+    if (ahead < bd) { bd = ahead; best = z; }
+  }
+  tel.next = best ? { dist: bd * 0.04 * SCALE, vmin: best.vmin, inZone: bd === 0 } : null;
   if (!onLap) return;
   tel.peak = Math.max(tel.peak, tel.danger);
   tel.vmax = Math.max(tel.vmax, st.v);
