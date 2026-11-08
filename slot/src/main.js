@@ -936,8 +936,8 @@ function updateSkids(c, p) {
   }
   c.skidPrev = sliding ? wl : null;
 }
-// Puntos de frenada en el carril del jugador: banda amarilla→roja desde donde hay que frenar
-// (yendo a tope) hasta la entrada de la curva, y un cartel en el inicio de la frenada.
+// Carteles de frenada junto a tu carril: marcan dónde empieza la frenada (yendo a tope)
+// antes de cada curva fuerte, como los carteles de un circuito.
 const brakeBoardTex = canvasTex(128, 64, (g, w, h) => {
   g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
   g.fillStyle = '#e53935';
@@ -946,29 +946,12 @@ const brakeBoardTex = canvasTex(128, 64, (g, w, h) => {
 function buildBrakeMarks(c) {
   const grp = new THREE.Group();
   grp.visible = settings.brakes;
-  const P = T.pts, n = P.length, d = c.d;
-  const pos = [], col = [], idx = [];
-  let v0 = 0;
-  const cA = new THREE.Color(0xffd000), cB = new THREE.Color(0xff2a1a), cc = new THREE.Color();
+  const P = T.pts, d = c.d;
   const boardGeo = new THREE.PlaneGeometry(0.5, 0.25);
   const boardMat = new THREE.MeshBasicMaterial({ map: brakeBoardTex, side: THREE.DoubleSide });
   const postMat = new THREE.MeshStandardMaterial({ color: 0x8a9099, metalness: 0.5, roughness: 0.4 });
   for (const z of c.tel.zones) {
     if (z.vmax - z.vmin < 0.9) continue;
-    const len = (z.end - z.start + n) % n;
-    for (const side of [-1, 1]) {
-      const o = d + side * 0.24;
-      for (let k = 0; k <= len; k++) {
-        const p = P[(z.start + k) % n];
-        const nx = -Math.sin(p.h), nz = Math.cos(p.h);
-        const w = 0.035;
-        pos.push(p.x + nx * (o - w), p.y + 0.0065, p.z + nz * (o - w), p.x + nx * (o + w), p.y + 0.0065, p.z + nz * (o + w));
-        cc.copy(cA).lerp(cB, k / Math.max(1, len));
-        col.push(cc.r, cc.g, cc.b, cc.r, cc.g, cc.b);
-        if (k < len) { const a = v0 + k * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-      }
-      v0 += (len + 1) * 2;
-    }
     // Cartel de frenada en el borde más cercano a tu carril
     const p = P[z.start], sgn = d >= 0 ? 1 : -1;
     if (p.y < 0.05) {
@@ -982,15 +965,6 @@ function buildBrakeMarks(c) {
       post.castShadow = true;
       grp.add(post);
     }
-  }
-  if (pos.length) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    g.setIndex(idx);
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
-    m.renderOrder = 1;
-    grp.add(m);
   }
   carsGroup.add(grp);
   brakeGroups.push(grp);
