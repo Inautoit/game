@@ -1029,7 +1029,7 @@ function overviewCamera(out, target) {
   const el = (57 * Math.PI) / 180;
   const vf = (camera.fov * Math.PI) / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
   const needV = scrD * Math.sin(el) + 1.2;
-  let dist = Math.max((scrW / 2) / Math.tan(hf / 2), (needV / 2) / Math.tan(vf / 2)) * (portrait ? 1.05 : 1.18) + 1;
+  let dist = Math.max((scrW / 2) / Math.tan(hf / 2), (needV / 2) / Math.tan(vf / 2)) * (portrait ? 1.12 : 1.28) + 1;
   if (state === 'menu') dist *= 1.15;
   else if (portrait) dist *= 1.07;
   const a = az + orbit;
@@ -1501,7 +1501,7 @@ function loop(now) {
     const p = at(me.st.s + (me.crash ? 0 : Math.max(0, me.st.v) * 0.12 / SCALE), me.d);
     const ox = -T.center.x, oz = -T.center.z;
     const portrait = camera.aspect < 1;
-    const D = portrait ? 19 : 15.5, el = (58 * Math.PI) / 180;
+    const D = portrait ? 25 : 21, el = (58 * Math.PI) / 180;
     camGoalTarget.set(p.x + ox, p.y, p.z + oz);
     camGoalPos.set(p.x + ox, p.y + Math.sin(el) * D, p.z + oz + Math.cos(el) * D);
     camPos.lerp(camGoalPos, Math.min(1, dt * 2.2));

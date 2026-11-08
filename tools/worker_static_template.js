@@ -27,7 +27,7 @@ export default {
       headers: {
         'content-type': f[0],
         'x-content-type-options': 'nosniff',
-        'cache-control': url.pathname === '/sw.js' || f[0].startsWith('text/html') ? 'no-cache' : 'public, max-age=86400',
+        'cache-control': (f[2] === 0 || url.pathname === '/sw.js') ? 'no-cache' : 'public, max-age=86400',
       },
     });
   },
