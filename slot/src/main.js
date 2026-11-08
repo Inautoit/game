@@ -3,6 +3,12 @@ import * as THREE from '../vendor/three.module.min.js';
 import { TRACKS, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
+import { RGBELoader } from '../vendor/jsm/loaders/RGBELoader.js';
+import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js';
+import { ShaderPass } from '../vendor/jsm/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from '../vendor/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from '../vendor/jsm/postprocessing/OutputPass.js';
 
 // ---------------------------------------------------------------------------
 // Utilidades y guardado
@@ -182,11 +188,60 @@ world.add(trackGroup);
 const carsGroup = new THREE.Group();
 world.add(carsGroup);
 
+// Escenarios: iluminación HDRI real (Poly Haven, CC0) y materiales de la mesa (ambientCG, CC0)
 const SCENERY = {
-  verde: { table: '#3d7d4c', table2: '#356c42', bg: ['#2a3550', '#121826'], light: 1 },
-  arena: { table: '#c9a26b', table2: '#b88f58', bg: ['#4a3a30', '#1b1411'], light: 1 },
-  noche: { table: '#26375a', table2: '#1f2e4c', bg: ['#141b2e', '#06080f'], light: 0.75 },
+  verde: { table: '#3d7d4c', table2: '#356c42', bg: ['#2a3550', '#121826'], light: 1, hdri: 'artist_workshop', mat: 'grass004', tint: 0xffffff },
+  arena: { table: '#c9a26b', table2: '#b88f58', bg: ['#4a3a30', '#1b1411'], light: 1, hdri: 'artist_workshop', mat: 'ground037', tint: 0xf0e2c8 },
+  noche: { table: '#26375a', table2: '#1f2e4c', bg: ['#141b2e', '#06080f'], light: 0.75, hdri: 'neon_photostudio', mat: 'fabric086', tint: 0x33457a },
 };
+const texLoader = new THREE.TextureLoader();
+const texCache = new Map();
+function loadTex(name, srgb) {
+  if (texCache.has(name)) return texCache.get(name);
+  const t = texLoader.load(`assets/tex/${name}.jpg`);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.userData.keep = true;
+  texCache.set(name, t);
+  return t;
+}
+const hdrCache = new Map();
+let currentHdri = null;
+function setEnvironment(name) {
+  if (currentHdri === name) return;
+  currentHdri = name;
+  const apply = (env) => {
+    if (currentHdri !== name) return;
+    scene.environment = env.pmrem;
+    scene.background = env.tex;
+    scene.backgroundBlurriness = 0.32;
+    scene.backgroundIntensity = 0.55;
+    scene.environmentIntensity = 0.85;
+  };
+  if (hdrCache.has(name)) { apply(hdrCache.get(name)); return; }
+  const done = (tex) => {
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pm = new THREE.PMREMGenerator(renderer);
+    const env = { tex, pmrem: pm.fromEquirectangular(tex).texture };
+    pm.dispose();
+    hdrCache.set(name, env);
+    apply(env);
+  };
+  // Si el servidor no sirve .hdr (por ejemplo, dentro de Claude), se usa la copia en texto base64
+  const fallback = () => fetch(`assets/hdri/${name}_512.hdr.txt`).then((r) => (r.ok ? r.text() : Promise.reject())).then((b64) => {
+    const bin = Uint8Array.from(atob(b64.trim()), (c) => c.charCodeAt(0));
+    const d = new RGBELoader().parse(bin.buffer);
+    const tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type);
+    tex.colorSpace = THREE.LinearSRGBColorSpace;
+    tex.minFilter = tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.flipY = true;
+    tex.needsUpdate = true;
+    done(tex);
+  }).catch(() => { /* sin HDRI: se queda el entorno sintético */ });
+  new RGBELoader().load(`assets/hdri/${name}_512.hdr`, done, undefined, fallback);
+}
 
 function canvasTex(w, h, draw, repeat = true) {
   const c = document.createElement('canvas');
@@ -204,7 +259,7 @@ let T = null; // circuito actual: { def, pts, L, half, lanes, offsets, bbox }
 function disposeGroup(g) {
   g.traverse((o) => {
     if (o.geometry) o.geometry.dispose();
-    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); });
+    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { if (m.map && !m.map.userData.keep) m.map.dispose(); m.dispose(); });
   });
   g.clear();
 }
@@ -422,20 +477,19 @@ function buildTrack(def) {
 
   // Mesa
   const tw = T.bbox.maxX - T.bbox.minX + 3.4, td = T.bbox.maxZ - T.bbox.minZ + 3.4;
-  const felt = canvasTex(256, 256, (g, w, h) => {
-    g.fillStyle = sc.table; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 4000; i++) { g.fillStyle = Math.random() < 0.5 ? sc.table2 : 'rgba(255,255,255,0.05)'; g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5); }
-  });
-  felt.repeat.set(tw / 4, td / 4);
-  const table = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.3, td), [
-    new THREE.MeshStandardMaterial({ color: 0x8a5a36, roughness: 0.6 }), new THREE.MeshStandardMaterial({ color: 0x8a5a36, roughness: 0.6 }),
-    new THREE.MeshStandardMaterial({ map: felt, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0x5e3b22 }),
-    new THREE.MeshStandardMaterial({ color: 0x8a5a36, roughness: 0.6 }), new THREE.MeshStandardMaterial({ color: 0x8a5a36, roughness: 0.6 }),
-  ]);
+  // Tapete de la mesa (hierba, tierra o tela) con relieve real, y madera en el marco
+  const topCol = loadTex(sc.mat + '_color', true), topNor = loadTex(sc.mat + '_normal', false);
+  const woodCol = loadTex('wood095_color', true), woodNor = loadTex('wood095_normal', false);
+  const rep = Math.max(tw, td) / 3.2;
+  const topMat = new THREE.MeshStandardMaterial({ map: topCol, normalMap: topNor, color: sc.tint, roughness: 0.95 });
+  topCol.repeat.set(rep, rep * td / tw); topNor.repeat.copy(topCol.repeat);
+  woodCol.repeat.set(4, 1); woodNor.repeat.set(4, 1);
+  const sideMat = new THREE.MeshStandardMaterial({ map: woodCol, normalMap: woodNor, color: 0xc08a5e, roughness: 0.55 });
+  const table = new THREE.Mesh(new THREE.BoxGeometry(tw, 0.3, td), [sideMat, sideMat, topMat, new THREE.MeshStandardMaterial({ color: 0x5e3b22 }), sideMat, sideMat]);
   table.position.set(cx, -0.17, cz);
   table.receiveShadow = true;
   trackGroup.add(table);
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0x9b6a41, roughness: 0.5 });
+  const rimMat = new THREE.MeshStandardMaterial({ map: woodCol, normalMap: woodNor, color: 0xb07a4e, roughness: 0.45 });
   for (const [w2, d2, x2, z2] of [[tw + 0.3, 0.15, 0, td / 2 + 0.075], [tw + 0.3, 0.15, 0, -td / 2 - 0.075], [0.15, td, tw / 2 + 0.075, 0], [0.15, td, -tw / 2 - 0.075, 0]]) {
     const r = new THREE.Mesh(new THREE.BoxGeometry(w2, 0.38, d2), rimMat);
     r.position.set(cx + x2, -0.13, cz + z2);
@@ -508,8 +562,9 @@ function buildTrack(def) {
   sun.position.set(-ext * 0.6, ext * 1.4, ext * 0.8);
   Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 1, far: ext * 5 });
   sun.shadow.camera.updateProjectionMatrix();
-  sun.intensity = 2.3 * sc.light;
-  hemi.intensity = 1.5 * sc.light;
+  sun.intensity = 2.1 * sc.light;
+  hemi.intensity = 0.55 * sc.light;
+  setEnvironment(sc.hdri);
   document.documentElement.style.setProperty('--bg1', sc.bg[0]);
   document.documentElement.style.setProperty('--bg2', sc.bg[1]);
   fitCamera();
@@ -543,6 +598,14 @@ function numberTex(num, accent, base) {
   return t;
 }
 
+const blobTex = (() => {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64, 32, 4, 64, 32, 60);
+  gr.addColorStop(0, 'rgba(0,0,0,0.75)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.save(); g.scale(1, 0.5); g.fillStyle = gr; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill(); g.restore();
+  return new THREE.CanvasTexture(c);
+})();
 function makeCarMesh(liv, ghost = false) {
   const root = new THREE.Group();
   const g = new THREE.Group();
@@ -601,6 +664,11 @@ function makeCarMesh(liv, ghost = false) {
   g.position.x = -GUIDE_BACK; // el origen del grupo es la guía
   root.add(g);
   if (!ghost) {
+    const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.25, 0.62), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0.75 }));
+    blob.rotation.x = -Math.PI / 2; blob.position.set(-GUIDE_BACK, 0.007, 0);
+    root.add(blob);
+  }
+  if (!ghost) {
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: liv.color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.position.set(-GUIDE_BACK * 0.9, 0.012, 0);
     root.add(ring);
@@ -651,11 +719,58 @@ let camMode = settings.cam || 'tv';
 const camPos = new THREE.Vector3(), camTarget = new THREE.Vector3();
 const camGoalPos = new THREE.Vector3(), camGoalTarget = new THREE.Vector3();
 let orbit = 0;
+const TiltShift = {
+  uniforms: { tDiffuse: { value: null }, dir: { value: new THREE.Vector2(1, 0) }, focus: { value: 0.5 }, band: { value: 0.12 }, amount: { value: 3.0 }, res: { value: new THREE.Vector2(1, 1) } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 dir; uniform float focus; uniform float band; uniform float amount; uniform vec2 res; varying vec2 vUv;
+    void main() {
+      float d = abs(vUv.y - focus);
+      float r = clamp((d - band) / (0.55 - band), 0.0, 1.0) * amount;
+      vec4 sum = vec4(0.0); float ws = 0.0;
+      for (int i = -4; i <= 4; i++) { float w = exp(-float(i * i) / 9.0); sum += texture2D(tDiffuse, vUv + dir * float(i) * r / res) * w; ws += w; }
+      gl_FragColor = sum / ws;
+    }`,
+};
+let composer = null, tiltH = null, tiltV = null, bloom = null;
+function setupComposer() {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  tiltH = new ShaderPass(TiltShift); tiltV = new ShaderPass(TiltShift);
+  tiltV.uniforms.dir.value.set(0, 1);
+  composer.addPass(tiltH); composer.addPass(tiltV);
+  bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.24, 0.45, 0.93);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+}
 function fitCamera() {
   const W = window.innerWidth, H = window.innerHeight;
   renderer.setSize(W, H, false);
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
+  if (composer) {
+    composer.setPixelRatio(renderer.getPixelRatio());
+    composer.setSize(W, H);
+    const pr = renderer.getPixelRatio();
+    tiltH.uniforms.res.value.set(W * pr, H * pr); tiltV.uniforms.res.value.set(W * pr, H * pr);
+  }
+}
+const focusV = new THREE.Vector3();
+let focusY = 0.5;
+function renderFrame(dt) {
+  if (!composer || quality >= 2) { renderer.render(scene, camera); return; }
+  // Enfoca tu coche (o el centro de la mesa en los menús)
+  const me = cars.find((c) => c.human) || cars[0];
+  let fy = 0.5;
+  if (me) { me.mesh.getWorldPosition(focusV); focusV.y += 0.15; focusV.project(camera); fy = clamp(focusV.y * 0.5 + 0.5, 0.03, 0.97); }
+  focusY += (fy - focusY) * Math.min(1, dt * 4);
+  const close = camMode !== 'tv' && state !== 'menu';
+  for (const p of [tiltH, tiltV]) {
+    p.uniforms.focus.value = focusY;
+    p.uniforms.band.value = close ? 0.22 : 0.1;
+    p.uniforms.amount.value = (quality === 0 ? 3.2 : 2.2) * (close ? 0.75 : 1);
+  }
+  bloom.enabled = quality === 0;
+  composer.render(dt);
 }
 function overviewCamera(out, target) {
   const bw = T.bbox.maxX - T.bbox.minX + 1.6, bd = T.bbox.maxZ - T.bbox.minZ + 1.6;
@@ -1133,7 +1248,7 @@ function loop(now) {
   camera.position.copy(camPos);
   if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
   camera.lookAt(camTarget);
-  renderer.render(scene, camera);
+  renderFrame(dt);
 }
 
 // ---------------------------------------------------------------------------
@@ -1450,6 +1565,7 @@ window.addEventListener('gamepadconnected', () => toast('🎮 Mando conectado: u
 // ---------------------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------------------
+setupComposer();
 applyQuality();
 showMenu();
 overviewCamera(camPos, camTarget);

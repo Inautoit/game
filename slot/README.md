@@ -63,6 +63,19 @@ Los récords se guardan por clase: **con imán** y **sin imán**.
 Cámaras: TV (vista de mesa), persecución y a bordo. La calidad gráfica se ajusta sola
 si el dispositivo no mantiene la fluidez.
 
+## Gráficos
+
+- **Iluminación HDRI real** (Poly Haven): un taller para los circuitos de día y un
+  estudio de neón para los de noche. Ilumina la escena, se refleja en la pintura y se
+  ve, desenfocada, como fondo.
+- **Materiales reales** (ambientCG): tapete de hierba, tierra o tela con relieve y
+  marco de madera.
+- **Efecto de miniatura** (*tilt-shift*): enfoca tu coche y desenfoca delante y detrás,
+  como una foto macro de una maqueta. Más brillo en luces y chispas.
+- Raíles de cobre metálicos, sombras de contacto bajo los coches y pintura con barniz.
+
+Todos los recursos son CC0: ver `assets/CREDITOS.md`.
+
 ## Crear circuitos
 
 Los circuitos están en `src/tracks.js` como listas de piezas:

@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 NAME="${WORKER_NAME:-turbo-slot}"
 TMP="$(mktemp -d)"
 mkdir -p "$TMP/dist"
-cp -r index.html styles.css src vendor icons fonts manifest.webmanifest sw.js og-image.png "$TMP/dist/"
+cp -r index.html styles.css src vendor icons fonts assets manifest.webmanifest sw.js og-image.png "$TMP/dist/"
 python3 -I ../tools/build_worker.py "$TMP/dist" "$TMP/worker.js" ../tools/worker_static_template.js
 API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$NAME"
 curl -fsS -X PUT "$API" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \

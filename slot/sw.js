@@ -1,6 +1,10 @@
 // Service worker: permite jugar sin conexión (red primero, caché de respaldo).
-const CACHE = 'turbo-slot-v2';
-const FILES = ['./', 'index.html', 'styles.css', 'src/main.js', 'src/tracks.js', 'src/physics.js', 'src/ai.js', 'vendor/three.module.min.js',
+const CACHE = 'turbo-slot-v3';
+const FILES = ['./', 'index.html', 'styles.css', 'src/main.js', 'src/tracks.js', 'src/physics.js', 'src/ai.js',
+  'vendor/jsm/loaders/RGBELoader.js', 'vendor/jsm/postprocessing/EffectComposer.js', 'vendor/jsm/postprocessing/Pass.js', 'vendor/jsm/postprocessing/MaskPass.js',
+  'vendor/jsm/postprocessing/RenderPass.js', 'vendor/jsm/postprocessing/ShaderPass.js', 'vendor/jsm/postprocessing/UnrealBloomPass.js', 'vendor/jsm/postprocessing/OutputPass.js',
+  'vendor/jsm/shaders/CopyShader.js', 'vendor/jsm/shaders/OutputShader.js', 'vendor/jsm/shaders/LuminosityHighPassShader.js',
+  'assets/hdri/artist_workshop_512.hdr', 'assets/hdri/neon_photostudio_512.hdr', 'vendor/three.module.min.js',
   'manifest.webmanifest', 'fonts/fredoka.woff2', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
