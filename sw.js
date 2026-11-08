@@ -1,9 +1,9 @@
 // Service worker: permite jugar sin conexión.
 // Red primero (siempre la última versión) y caché como respaldo.
-const CACHE = 'corte-perfecto-v1';
+const CACHE = 'corte-perfecto-v2';
 const FILES = [
   './', 'index.html', 'styles.css', 'src/game.js', 'manifest.webmanifest',
-  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
+  'fonts/fredoka.woff2', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {

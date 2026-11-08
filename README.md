@@ -102,6 +102,7 @@ styles.css            Estilos (adaptados a notch y zonas seguras)
 src/game.js           Todo el juego: figuras, corte, puntuación, sonido, controles
 manifest.webmanifest  Datos de la app instalable
 sw.js                 Service worker (modo sin conexión)
+fonts/                Tipografía Fredoka (licencia OFL)
 _headers              Cabeceras para Cloudflare Pages
 tools/                Script de publicación como Worker de Cloudflare
 icons/                Iconos de la app

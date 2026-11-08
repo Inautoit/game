@@ -344,7 +344,8 @@ function worldPts(sh, xf) {
 // Sonido
 // ---------------------------------------------------------------------------
 let actx = null;
-let muted = store.get('muted', false);
+const settings = Object.assign({ sound: true, vibe: true, guide: true }, store.get('settings', {}));
+let muted = !settings.sound;
 function initAudio() {
   if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) actx = new AC(); }
   if (actx && actx.state === 'suspended') actx.resume();
@@ -384,7 +385,8 @@ const sfx = {
   tick() { tone(1400, 1400, 0.04, 'square', 0.04); },
   fail() { tone(420, 90, 0.45, 'sawtooth', 0.08); },
 };
-function vibrate(p) { if (navigator.vibrate) navigator.vibrate(p); }
+function vibrate(p) { if (settings.vibe && navigator.vibrate) navigator.vibrate(p); }
+const juice = { slow: 0, flash: 0, shake: 0 };
 
 // ---------------------------------------------------------------------------
 // Estado de la partida
@@ -413,8 +415,9 @@ function startRound(mode) {
   for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [types[i], types[j]] = [types[j], types[i]]; }
   G = { mode, day, types, idx: -1, score: 0, combo: 0, results: [], shape: null, phase: '', phaseT: 0, ticked: 0 };
   state = 'play';
-  showOverlay(null);
-  ui.hud.classList.remove('hidden');
+  fx.pieces = []; fx.parts = []; fx.popups = [];
+  buildDots();
+  setScreen('hud');
   nextShape();
 }
 
@@ -491,6 +494,7 @@ function doCut(a, b) {
   sfx[gr.snd]();
   vibrate(gr.emoji === '🎯' ? [20, 40, 20, 40, 60] : 25);
   popup(gr.text, gr.color, gr.emoji === '🎯' ? 1.3 : 1);
+  if (gr.emoji === '🎯') { juice.slow = 0.35; juice.flash = 1; juice.shake = 0.2; }
   if (G.combo > 1) popup(`COMBO x${G.combo}`, '#e2401f', 0.7, 0.55);
   G.phase = 'cut';
   G.phaseT = 0;
@@ -578,6 +582,18 @@ function tracePath(pts) {
   ctx.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
   ctx.closePath();
+}
+
+// Compatibilidad con iOS 15 (sin roundRect en canvas)
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+  };
 }
 
 // Pasa a las coordenadas "originales" de la figura (las de gen/inner/outer)
@@ -671,7 +687,7 @@ function drawPieceLabel(p) {
   const x = p.c[0] + p.ox, y = p.c[1] + p.oy;
   ctx.save();
   ctx.globalAlpha = a;
-  ctx.font = `900 ${p.fontSize}px ui-rounded, system-ui, sans-serif`;
+  ctx.font = `700 ${p.fontSize}px Fredoka, ui-rounded, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineWidth = p.fontSize * 0.28;
@@ -744,6 +760,7 @@ function drawBlade() {
   const d = [(x - x0) / L, (y - y0) / L];
   ctx.save();
   // Guía punteada
+  if (settings.guide) {
   ctx.setLineDash([8, 10]);
   ctx.strokeStyle = 'rgba(58,31,26,0.25)';
   ctx.lineWidth = 2;
@@ -752,6 +769,7 @@ function drawBlade() {
   ctx.lineTo(x0 + d[0] * 3000, y0 + d[1] * 3000);
   ctx.stroke();
   ctx.setLineDash([]);
+  }
   // Hoja
   ctx.lineCap = 'round';
   ctx.strokeStyle = 'rgba(255,255,255,0.55)';
@@ -771,7 +789,7 @@ function drawPopups() {
     const y = view.cy - view.size * 1.4 - fs * 0.2 - p.t * 30 + p.dy * view.size;
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.font = `900 ${fs}px ui-rounded, system-ui, sans-serif`;
+    ctx.font = `700 ${fs}px Fredoka, ui-rounded, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
@@ -786,7 +804,7 @@ function drawPopups() {
 
 function drawHint() {
   ctx.save();
-  ctx.font = `800 ${Math.max(15, view.size * 0.13)}px ui-rounded, system-ui, sans-serif`;
+  ctx.font = `600 ${Math.max(15, view.size * 0.13)}px Fredoka, ui-rounded, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(58,31,26,0.7)';
   const y = view.cy + view.size * 1.4 + Math.max(8, view.size * 0.07) * 2.2 + Math.max(36, view.size * 0.3);
@@ -804,6 +822,11 @@ function drawHint() {
 function render() {
   computeView();
   drawBackground();
+  ctx.save();
+  if (juice.shake > 0 && !reducedMotion) {
+    const m = juice.shake * 30;
+    ctx.translate(VR(-m, m), VR(-m, m));
+  }
   drawBoard();
 
   if (state === 'menu' && demo) {
@@ -811,7 +834,7 @@ function render() {
     drawShape(demo, { x: view.cx, y: view.cy, a: Math.sin(demo.t * 0.8) * 0.3, s: view.size * (1 + Math.sin(demo.t * 2) * 0.03) });
   }
 
-  if (state === 'play' && G && G.shape && G.phase !== 'cut') {
+  if ((state === 'play' || state === 'pause') && G && G.shape && G.phase !== 'cut') {
     const sh = G.shape;
     drawShape(sh, xfOf(sh), sh.alpha);
     if (G.phase === 'aim' || G.phase === 'enter') drawTimer(sh);
@@ -828,53 +851,127 @@ function render() {
   if (state === 'play' && G && G.phase === 'aim') drawBlade();
   for (const p of fx.pieces) drawPieceLabel(p);
   drawPopups();
+  ctx.restore();
+  if (juice.flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${juice.flash * 0.45})`;
+    ctx.fillRect(0, 0, W, H);
+  }
 }
+const reducedMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------------------------------------------------------------------------
 // Interfaz
 // ---------------------------------------------------------------------------
 const ui = {
-  hud: $('hud'), score: $('score'), round: $('round'), combo: $('combo'), comboN: $('comboN'),
-  menu: $('menu'), results: $('results'), toast: $('toast'),
-  streak: $('streak'), dailyN: $('dailyN'), dailyDone: $('dailyDone'), best: $('best'), sound: $('soundBtn'),
-  resTitle: $('resTitle'), resMode: $('resMode'), resRecord: $('resRecord'), resScore: $('resScore'),
-  resPrec: $('resPrec'), resGrid: $('resGrid'), resBest: $('resBest'),
+  hud: $('hud'), score: $('score'), dots: $('dots'), combo: $('combo'), comboN: $('comboN'),
+  menu: $('menu'), results: $('results'), toast: $('toast'), splash: $('splash'),
+  streak: $('streak'), streakTxt: $('streakTxt'), dailyN: $('dailyN'), dailySub: $('dailySub'), best: $('best'),
+  stars: $('stars'), resTitle: $('resTitle'), resMode: $('resMode'), resRecord: $('resRecord'), resScore: $('resScore'),
+  resPrec: $('resPrec'), resGrid: $('resGrid'), resBest: $('resBest'), nextDaily: $('nextDaily'),
 };
+const SCREENS = { menu: ui.menu, hud: ui.hud, results: ui.results };
+const GRADE_IDX = { '🎯': 0, '🟩': 1, '🟨': 2, '🟧': 3, '🟥': 4, '⬛': 5 };
+const GRADE_COLORS = ['#ffb020', '#22b98a', '#f2c230', '#ff8a3d', '#ea4a35', '#4a3a36'];
+const GRADE_NAMES = ['Perfecto', 'Genial', 'Bien', 'Regular', 'Fallo', 'Tiempo'];
 
-function showOverlay(el) {
-  for (const o of [ui.menu, ui.results]) o.classList.toggle('hidden', o !== el);
+function setScreen(name) {
+  for (const [k, el] of Object.entries(SCREENS)) el.classList.toggle('open', k === name);
 }
 
+// ---- Modales ----
+function openModal(id) {
+  if (id === 'mStats') fillStats();
+  if (id === 'mSettings') fillSettings();
+  $(id).classList.add('open');
+}
+function closeModal(m) { m.classList.remove('open'); }
+document.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => openModal(b.dataset.open)));
+document.querySelectorAll('.modal').forEach((m) => {
+  m.addEventListener('click', (e) => { if (e.target === m && m.id !== 'mPause') closeModal(m); });
+  m.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => closeModal(m)));
+});
+
+// ---- HUD ----
+function buildDots() {
+  ui.dots.innerHTML = '';
+  for (let i = 0; i < ROUND; i++) ui.dots.appendChild(document.createElement('i'));
+}
 function updateHud() {
   if (!G) return;
   ui.score.textContent = G.score;
-  ui.round.textContent = `${Math.min(G.idx + 1, ROUND)}/${ROUND}`;
-  ui.combo.classList.toggle('hidden', G.combo < 2);
+  const kids = ui.dots.children;
+  for (let i = 0; i < kids.length; i++) {
+    const r = G.results[i];
+    kids[i].className = r ? 'g' + GRADE_IDX[r.emoji] : i === G.idx ? 'now' : '';
+  }
+  ui.combo.classList.toggle('on', G.combo >= 2);
   ui.comboN.textContent = G.combo;
 }
 
+// ---- Estadísticas ----
+function getStats() {
+  return Object.assign({ games: 0, cuts: 0, perfects: 0, bestPrec: 0, maxStreak: 0, dist: [0, 0, 0, 0, 0, 0] }, store.get('stats', {}));
+}
+function currentStreak() {
+  const st = store.get('streak', { last: 0, count: 0 });
+  const day = dayIndex();
+  return st.last === day || st.last === day - 1 ? st.count : 0;
+}
+function fillStats() {
+  const s = getStats();
+  $('sGames').textContent = s.games;
+  $('sPerfect').textContent = s.perfects;
+  $('sBestPrec').textContent = s.games ? fmt(s.bestPrec) + '%' : '–';
+  $('sStreak').textContent = currentStreak();
+  $('sMaxStreak').textContent = s.maxStreak;
+  const max = Math.max(1, ...s.dist);
+  const box = $('sDist');
+  box.innerHTML = '';
+  s.dist.forEach((n, i) => {
+    const row = document.createElement('div');
+    row.className = 'bar';
+    row.innerHTML = `<span title="${GRADE_NAMES[i]}">${Object.keys(GRADE_IDX)[i]}</span><div class="fill" style="width:${Math.max(8, (n / max) * 100)}%;background:${GRADE_COLORS[i]}">${n}</div>`;
+    box.appendChild(row);
+  });
+}
+
+// ---- Ajustes ----
+function saveSettings() { store.set('settings', settings); muted = !settings.sound; }
+function fillSettings() {
+  $('optSound').checked = settings.sound;
+  $('optVibe').checked = settings.vibe;
+  $('optGuide').checked = settings.guide;
+}
+$('optSound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); initAudio(); sfx.ok(); });
+$('optVibe').addEventListener('change', (e) => { settings.vibe = e.target.checked; saveSettings(); vibrate(30); });
+$('optGuide').addEventListener('change', (e) => { settings.guide = e.target.checked; saveSettings(); });
+$('resetBtn').addEventListener('click', () => {
+  if (!confirm('¿Borrar récords, racha y estadísticas? No se puede deshacer.')) return;
+  for (const k of ['best', 'daily', 'streak', 'stats', 'played']) { try { localStorage.removeItem('corte.' + k); } catch { /* nada */ } }
+  refreshMenu();
+  toast('Datos borrados');
+});
+
+// ---- Menú ----
 function refreshMenu() {
   const day = dayIndex();
   ui.dailyN.textContent = '#' + day;
   const daily = store.get('daily', null);
-  if (daily && daily.day === day) {
-    ui.dailyDone.textContent = `✅ Hoy: ${daily.score} pts · ${daily.grid}`;
-    ui.dailyDone.classList.remove('hidden');
-  } else ui.dailyDone.classList.add('hidden');
-  const st = store.get('streak', { last: 0, count: 0 });
-  const alive = st.last === day || st.last === day - 1;
-  ui.streak.textContent = alive && st.count > 0 ? `🔥 Racha: ${st.count} ${st.count === 1 ? 'día' : 'días'}` : '';
+  ui.dailySub.textContent = daily && daily.day === day ? `✓ Completado · ${daily.score} pts` : '10 figuras · ~30 s';
+  const n = currentStreak();
+  ui.streakTxt.textContent = n > 0 ? `Racha de ${n} ${n === 1 ? 'día' : 'días'}` : 'Empieza tu racha hoy';
+  ui.streak.classList.toggle('off', n === 0);
   ui.best.textContent = store.get('best', 0);
-  ui.sound.textContent = muted ? '🔇' : '🔊';
 }
 
 function toMenu() {
   state = 'menu';
   G = null;
-  ui.hud.classList.add('hidden');
+  drag = null;
   newDemo();
   refreshMenu();
-  showOverlay(ui.menu);
+  setScreen('menu');
+  stopCountdown();
 }
 
 function newDemo() {
@@ -885,17 +982,46 @@ function newDemo() {
   demo.offx = demo.offy = 0;
 }
 
+// ---- Pausa ----
+function pauseGame() {
+  if (state !== 'play') return;
+  state = 'pause';
+  drag = null;
+  openModal('mPause');
+}
+function resumeGame() {
+  if (state !== 'pause') return;
+  closeModal($('mPause'));
+  state = 'play';
+  last = performance.now();
+}
+$('pauseBtn').addEventListener('click', pauseGame);
+$('resumeBtn').addEventListener('click', resumeGame);
+$('restartBtn').addEventListener('click', () => { closeModal($('mPause')); startRound(G ? G.mode : 'free'); });
+$('quitBtn').addEventListener('click', () => { closeModal($('mPause')); toMenu(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+
+// ---- Resultados ----
 let lastShare = '';
+let shareInfo = null;
+
 function endRound() {
   state = 'results';
   store.set('played', true);
-  ui.hud.classList.add('hidden');
   const res = G.results;
   const avgDiff = res.reduce((s, r) => s + r.diff, 0) / res.length;
   const prec = Math.max(0, 100 - avgDiff * 2);
   const grid = res.map((r) => r.emoji).join('');
   const cuts = res.filter((r) => !r.timeout);
   const bestCut = cuts.length ? cuts.reduce((a, b) => (a.diff < b.diff ? a : b)) : null;
+
+  // Estadísticas globales
+  const s = getStats();
+  s.games++;
+  s.cuts += cuts.length;
+  s.perfects += res.filter((r) => r.emoji === '🎯').length;
+  s.bestPrec = Math.max(s.bestPrec, prec);
+  for (const r of res) s.dist[GRADE_IDX[r.emoji]]++;
 
   let isRecord = false;
   let modeText;
@@ -907,50 +1033,143 @@ function endRound() {
       const st = store.get('streak', { last: 0, count: 0 });
       const count = st.last === day - 1 ? st.count + 1 : st.last === day ? st.count : 1;
       store.set('streak', { last: day, count });
-      modeText = `Reto diario #${day} · 🔥 Racha: ${count}`;
+      s.maxStreak = Math.max(s.maxStreak, count);
+      modeText = `Reto diario #${day} · 🔥 ${count} ${count === 1 ? 'día' : 'días'}`;
     } else {
-      modeText = `Reto diario #${day} (repetición, no cuenta)`;
+      modeText = `Reto diario #${day} · repetición (no cuenta)`;
     }
   } else {
     const best = store.get('best', 0);
     if (G.score > best) { store.set('best', G.score); isRecord = best > 0; }
     modeText = 'Partida libre';
   }
+  store.set('stats', s);
 
-  ui.resTitle.textContent = prec >= 97 ? '¡Maestro del corte!' : prec >= 92 ? '¡Muy fino!' : prec >= 85 ? '¡Nada mal!' : 'Sigue practicando';
+  const stars = prec >= 97 ? 3 : prec >= 90 ? 2 : prec >= 75 ? 1 : 0;
+  ui.resTitle.textContent = ['Sigue practicando', '¡Nada mal!', '¡Muy fino!', '¡Maestro del corte!'][stars];
   ui.resMode.textContent = modeText;
-  ui.resRecord.classList.toggle('hidden', !isRecord);
-  ui.resScore.textContent = G.score;
+  ui.resRecord.hidden = !isRecord;
   ui.resPrec.textContent = fmt(prec) + ' %';
   ui.resGrid.textContent = grid;
   ui.resBest.textContent = bestCut ? `Mejor corte: ${fmt(bestCut.pA)}% / ${fmt(bestCut.pB)}%` : '';
 
   const title = G.mode === 'daily' ? `✂️ Corte Perfecto #${G.day}` : '✂️ Corte Perfecto';
   lastShare = `${title}\n${grid}\nPrecisión: ${fmt(prec)} % · ${G.score} pts\n¿Lo superas? ${location.origin}${location.pathname}`;
-  showOverlay(ui.results);
+  shareInfo = { mode: G.mode, day: G.day, prec, score: G.score, res: res.map((r) => GRADE_IDX[r.emoji]) };
+
+  setScreen('results');
+  animateStars(stars);
+  countUp(ui.resScore, G.score, 900);
+  startCountdown();
 }
 
-function toast(msg) {
-  ui.toast.textContent = msg;
-  ui.toast.classList.remove('hidden');
-  clearTimeout(toast.t);
-  toast.t = setTimeout(() => ui.toast.classList.add('hidden'), 2000);
+function animateStars(n) {
+  [...ui.stars.children].forEach((el, i) => {
+    el.classList.remove('show', 'on');
+    void el.getBoundingClientRect();
+    setTimeout(() => {
+      el.classList.add('show');
+      if (i < n) { el.classList.add('on'); tone(660 + i * 220, 660 + i * 220, 0.15, 'triangle', 0.08); }
+    }, 300 + i * 220);
+  });
+}
+
+function countUp(el, to, ms) {
+  const t0 = performance.now();
+  const stepFn = (now) => {
+    const k = Math.min(1, (now - t0) / ms);
+    el.textContent = Math.round(to * (1 - (1 - k) ** 3));
+    if (k < 1) requestAnimationFrame(stepFn);
+  };
+  requestAnimationFrame(stepFn);
+}
+
+let countdownId = 0;
+function startCountdown() {
+  stopCountdown();
+  const tick = () => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const s = Math.max(0, Math.floor((next - now) / 1000));
+    const p = (n) => String(n).padStart(2, '0');
+    ui.nextDaily.innerHTML = `Próximo reto en <b>${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}</b>`;
+  };
+  tick();
+  countdownId = setInterval(tick, 1000);
+}
+function stopCountdown() { clearInterval(countdownId); }
+
+// ---- Compartir (imagen + texto) ----
+async function makeShareCard(info) {
+  try { await document.fonts.load('700 100px Fredoka'); } catch { /* sin fuente: usa la del sistema */ }
+  const c = document.createElement('canvas');
+  c.width = 1080; c.height = 1350;
+  const x = c.getContext('2d');
+  const F = (w, s) => `${w} ${s}px Fredoka, ui-rounded, system-ui, sans-serif`;
+  const g = x.createLinearGradient(0, 0, 0, 1350);
+  g.addColorStop(0, '#fff3e6'); g.addColorStop(1, '#ffd2c2');
+  x.fillStyle = g; x.fillRect(0, 0, 1080, 1350);
+  x.fillStyle = 'rgba(255,255,255,0.4)';
+  for (let yy = 0; yy < 1400; yy += 90) for (let xx = (yy / 90) % 2 ? 45 : 0; xx < 1120; xx += 90) { x.beginPath(); x.arc(xx, yy, 10, 0, TAU); x.fill(); }
+  x.textAlign = 'center';
+  x.textBaseline = 'alphabetic';
+  x.fillStyle = '#ff6b57'; x.font = F(700, 130); x.fillText('CORTE', 540, 220);
+  x.fillStyle = '#ff4f8b'; x.fillText('PERFECTO', 540, 345);
+  x.fillStyle = '#7a5a50'; x.font = F(500, 50);
+  x.fillText(info.mode === 'daily' ? `Reto diario #${info.day}` : 'Partida libre', 540, 440);
+  // Tarjeta blanca
+  x.fillStyle = '#fff';
+  x.shadowColor = 'rgba(150,60,30,0.2)'; x.shadowBlur = 40; x.shadowOffsetY = 12;
+  x.beginPath(); x.roundRect(80, 500, 920, 620, 56); x.fill();
+  x.shadowColor = 'transparent';
+  x.fillStyle = '#7a5a50'; x.font = F(600, 38); x.fillText('PRECISIÓN', 540, 590);
+  x.fillStyle = '#3b211b'; x.font = F(700, 190); x.fillText(fmt(info.prec) + '%', 540, 770);
+  const tile = 72, gap = 12, total = info.res.length * tile + (info.res.length - 1) * gap;
+  info.res.forEach((gi, i) => {
+    const tx = 540 - total / 2 + i * (tile + gap), ty = 830;
+    x.fillStyle = GRADE_COLORS[gi];
+    x.beginPath(); x.roundRect(tx, ty, tile, tile, 18); x.fill();
+    if (gi === 0) {
+      x.strokeStyle = '#fff'; x.lineWidth = 7;
+      x.beginPath(); x.arc(tx + tile / 2, ty + tile / 2, 22, 0, TAU); x.stroke();
+      x.fillStyle = '#fff'; x.beginPath(); x.arc(tx + tile / 2, ty + tile / 2, 8, 0, TAU); x.fill();
+    }
+  });
+  x.fillStyle = '#ff4f8b'; x.font = F(700, 64); x.fillText(`${info.score} puntos`, 540, 1040);
+  x.fillStyle = '#3b211b'; x.font = F(600, 54); x.fillText('¿Lo superas? ✂️', 540, 1215);
+  x.fillStyle = '#7a5a50'; x.font = F(500, 38); x.fillText(location.host || 'corte-perfecto', 540, 1280);
+  return new Promise((r) => c.toBlob(r, 'image/png'));
 }
 
 async function share() {
   try {
-    if (navigator.share) { await navigator.share({ text: lastShare }); return; }
+    if (navigator.share && shareInfo) {
+      const blob = await makeShareCard(shareInfo);
+      const file = blob && new File([blob], 'corte-perfecto.png', { type: 'image/png' });
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], text: lastShare });
+        return;
+      }
+      await navigator.share({ text: lastShare });
+      return;
+    }
   } catch (e) { if (e && e.name === 'AbortError') return; }
-  try { await navigator.clipboard.writeText(lastShare); toast('¡Copiado! Pégalo donde quieras 📋'); }
-  catch { toast('No se pudo copiar'); }
+  try { await navigator.clipboard.writeText(lastShare); toast('¡Copiado! Pégalo donde quieras'); }
+  catch { toast('No se pudo compartir'); }
+}
+
+function toast(msg) {
+  ui.toast.textContent = msg;
+  ui.toast.classList.add('on');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => ui.toast.classList.remove('on'), 2200);
 }
 
 $('dailyBtn').addEventListener('click', () => startRound('daily'));
 $('freeBtn').addEventListener('click', () => startRound('free'));
-$('againBtn').addEventListener('click', () => startRound('free'));
+$('againBtn').addEventListener('click', () => { stopCountdown(); startRound('free'); });
 $('menuBtn').addEventListener('click', toMenu);
 $('shareBtn').addEventListener('click', share);
-ui.sound.addEventListener('click', () => { muted = !muted; store.set('muted', muted); initAudio(); refreshMenu(); });
 
 // ---------------------------------------------------------------------------
 // Entrada (dedo, lápiz o ratón)
@@ -978,8 +1197,16 @@ canvas.addEventListener('pointercancel', () => { drag = null; });
 document.addEventListener('gesturestart', (e) => e.preventDefault()); // sin zoom en iOS
 
 window.addEventListener('keydown', (e) => {
-  if ((state === 'menu' || state === 'results') && e.key === 'Enter') startRound(state === 'menu' ? 'daily' : 'free');
-  if (state === 'results' && e.key === 'Escape') toMenu();
+  if (e.key === 'Escape') {
+    const open = document.querySelector('.modal.open');
+    if (state === 'play') pauseGame();
+    else if (state === 'pause') resumeGame();
+    else if (open) closeModal(open);
+    else if (state === 'results') toMenu();
+  } else if (e.key === 'Enter' && !document.querySelector('.modal.open')) {
+    if (state === 'menu') startRound('daily');
+    else if (state === 'results') startRound('free');
+  }
 });
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 200));
@@ -989,9 +1216,16 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 // ---------------------------------------------------------------------------
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  let dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  update(dt);
+  if (state !== 'pause') {
+    // Cámara lenta tras un corte perfecto
+    if (juice.slow > 0) { juice.slow -= dt; dt *= 0.3; }
+    update(dt);
+  }
+  juice.flash = Math.max(0, juice.flash - (now - (frame.prev || now)) / 1000 * 3);
+  juice.shake = Math.max(0, juice.shake - (now - (frame.prev || now)) / 1000);
+  frame.prev = now;
   render();
   requestAnimationFrame(frame);
 }
@@ -999,11 +1233,22 @@ function frame(now) {
 resize();
 newDemo();
 refreshMenu();
-showOverlay(ui.menu);
 requestAnimationFrame(frame);
+
+// Pantalla de carga: espera a la fuente (máx. 1,5 s)
+Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, new Promise((r) => setTimeout(r, 1500))])
+  .catch(() => {})
+  .then(() => setTimeout(() => {
+    ui.splash.classList.add('done');
+    setScreen('menu');
+    if (!store.get('played', false) && !store.get('seenHelp', false)) {
+      store.set('seenHelp', true);
+      setTimeout(() => openModal('mHelp'), 450);
+    }
+  }, 350));
 
 // Gancho para pruebas automáticas
 window.__corte = {
   get state() { return state; }, get game() { return G; },
-  startRound, doCut, xfOf, worldPts, centroid, view,
+  startRound, doCut, xfOf, worldPts, centroid, view, makeShareCard,
 };

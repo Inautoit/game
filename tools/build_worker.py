@@ -1,7 +1,7 @@
 import base64, json, os, sys
 src, out = sys.argv[1], sys.argv[2]
 types = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8',
-         '.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png'}
+         '.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'}
 files = {}
 for root, _, names in os.walk(src):
     for n in names:

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Corte Perfecto ✂️</title>
   <meta name="description" content="¿Eres capaz de cortar en dos mitades exactas? Un reto nuevo cada día. Partidas de 30 segundos.">
-  <meta name="theme-color" content="#ff8a65">
+  <meta name="theme-color" content="#fff1e6">
 
   <!-- Al compartir el enlace (WhatsApp, redes...) -->
   <meta property="og:type" content="website">
@@ -23,54 +23,157 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preload" href="fonts/fredoka.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <canvas id="game"></canvas>
+  <!-- Iconos -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.3-2.7 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.6" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-stats" viewBox="0 0 24 24"><rect x="3.5" y="12" width="4" height="8.5" rx="1.5" fill="currentColor"/><rect x="10" y="4" width="4" height="16.5" rx="1.5" fill="currentColor"/><rect x="16.5" y="8.5" width="4" height="12" rx="1.5" fill="currentColor"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M5.5 18.5l1.9-1.9M16.6 7.4l1.9-1.9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="6.6" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.5" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.5" fill="currentColor"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 12v6.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.8l2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 2.5c1 3.2 5.5 5.6 5.5 10.7a5.5 5.5 0 0 1-11 0c0-2.4 1.2-4 2.4-5.2.2 1.7 1 2.8 2.1 3.2-.6-3 .1-6.1 1-8.7Z" fill="currentColor"/></symbol>
+  </svg>
+
+  <canvas id="game" aria-label="Zona de juego"></canvas>
+
+  <!-- Pantalla de carga -->
+  <div id="splash">
+    <img src="icons/icon.svg" alt="" width="96" height="96">
+    <div class="wordmark">Corte <span>Perfecto</span></div>
+    <div class="loader"><i></i></div>
+  </div>
 
   <!-- HUD -->
-  <div id="hud" class="hidden">
-    <div class="pill"><span class="label">PUNTOS</span><b id="score">0</b></div>
-    <div class="pill"><b id="round">1/10</b></div>
-    <div id="combo" class="pill combo hidden">🔥 x<b id="comboN">2</b></div>
+  <div id="hud" class="screen">
+    <div class="hud-score"><span class="cap">Puntos</span><b id="score">0</b></div>
+    <div id="dots" class="dots" aria-label="Progreso"></div>
+    <button id="pauseBtn" class="icon-btn" aria-label="Pausa"><svg><use href="#i-pause"/></svg></button>
+    <div id="combo" class="combo"><svg><use href="#i-flame"/></svg> Combo x<b id="comboN">2</b></div>
   </div>
 
   <!-- Menú -->
-  <div id="menu" class="overlay">
-    <div class="card">
-      <div class="logo">✂️</div>
-      <h1>CORTE<br><span>PERFECTO</span></h1>
-      <p class="tagline">Corta cada cosa en <b>dos mitades exactas</b>.<br>Desliza el dedo para cortar.</p>
-      <div class="streak" id="streak"></div>
-      <button id="dailyBtn" class="btn">RETO DIARIO <span id="dailyN"></span></button>
-      <div id="dailyDone" class="note hidden"></div>
-      <button id="freeBtn" class="btn alt">PARTIDA LIBRE</button>
-      <div class="row">
-        <span class="note">Récord libre: <b id="best">0</b></span>
-        <button id="soundBtn" class="chip">🔊</button>
+  <div id="menu" class="screen">
+    <div class="topbar">
+      <button class="icon-btn" data-open="mHelp" aria-label="Cómo jugar"><svg><use href="#i-help"/></svg></button>
+      <div class="spacer"></div>
+      <button class="icon-btn" data-open="mStats" aria-label="Estadísticas"><svg><use href="#i-stats"/></svg></button>
+      <button class="icon-btn" data-open="mSettings" aria-label="Ajustes"><svg><use href="#i-gear"/></svg></button>
+    </div>
+    <div class="menu-body">
+      <div class="brand">
+        <div class="wordmark big">Corte<br><span>Perfecto</span></div>
+        <p class="tagline">Córtalo en dos mitades exactas.</p>
+      </div>
+      <div class="menu-actions">
+        <div id="streak" class="streak-chip"><svg><use href="#i-flame"/></svg><span id="streakTxt">0 días</span></div>
+        <button id="dailyBtn" class="btn primary">
+          <span class="btn-main">Reto diario <span id="dailyN"></span></span>
+          <span id="dailySub" class="btn-sub">10 figuras · ~30 s</span>
+        </button>
+        <button id="freeBtn" class="btn secondary">
+          <span class="btn-main">Partida libre</span>
+          <span class="btn-sub">Récord: <b id="best">0</b></span>
+        </button>
       </div>
     </div>
+    <div class="footer">v1.1 · Juega sin conexión · <button class="link" data-open="mSettings">Privacidad</button></div>
   </div>
 
   <!-- Resultados -->
-  <div id="results" class="overlay hidden">
-    <div class="card">
+  <div id="results" class="screen">
+    <div class="results-card">
+      <div id="stars" class="stars">
+        <svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg><svg><use href="#i-star"/></svg>
+      </div>
       <h2 id="resTitle">¡Muy fino!</h2>
-      <div id="resMode" class="note"></div>
-      <div id="resRecord" class="record hidden">✨ ¡NUEVO RÉCORD! ✨</div>
-      <div class="stats">
-        <div><span class="label">PUNTOS</span><b id="resScore">0</b></div>
-        <div><span class="label">PRECISIÓN</span><b id="resPrec">0 %</b></div>
+      <div id="resMode" class="muted"></div>
+      <div id="resRecord" class="badge" hidden>Nuevo récord</div>
+      <div class="stats2">
+        <div><span class="cap">Puntos</span><b id="resScore">0</b></div>
+        <div><span class="cap">Precisión</span><b id="resPrec">0 %</b></div>
       </div>
       <div id="resGrid" class="grid"></div>
-      <div id="resBest" class="note"></div>
-      <button id="shareBtn" class="btn">COMPARTIR 📤</button>
-      <button id="againBtn" class="btn alt">OTRA PARTIDA</button>
-      <button id="menuBtn" class="btn ghost">MENÚ</button>
+      <div id="resBest" class="muted small"></div>
+      <div id="nextDaily" class="next"></div>
+      <button id="shareBtn" class="btn primary"><span class="btn-main"><svg class="ico"><use href="#i-share"/></svg> Compartir resultado</span></button>
+      <div class="row2">
+        <button id="againBtn" class="btn secondary"><span class="btn-main">Otra partida</span></button>
+        <button id="menuBtn" class="btn ghost"><span class="btn-main">Menú</span></button>
+      </div>
     </div>
   </div>
 
-  <div id="toast" class="toast hidden"></div>
+  <!-- Hojas modales -->
+  <div id="mHelp" class="modal" role="dialog" aria-modal="true" aria-labelledby="hHelp">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hHelp">Cómo jugar</h3>
+      <ol class="steps">
+        <li><div class="step-ico">👆</div><div><b>Desliza en línea recta</b><br>a través de la figura. Al soltar, se corta.</div></li>
+        <li><div class="step-ico">⚖️</div><div><b>Busca el 50 / 50</b><br>Se mide el área real de cada trozo.</div></li>
+        <li><div class="step-ico">⏱️</div><div><b>Sé rápido</b><br>Cada figura tiene su tiempo. Luego giran y se mueven.</div></li>
+      </ol>
+      <div class="legend">
+        <div><span>🎯</span>Perfecto<small>&lt; 0,25 %</small></div>
+        <div><span>🟩</span>Genial<small>&lt; 2,5 %</small></div>
+        <div><span>🟨</span>Bien<small>&lt; 5 %</small></div>
+        <div><span>🟧</span>Regular<small>&lt; 10 %</small></div>
+        <div><span>🟥</span>Fallo<small>≥ 10 %</small></div>
+      </div>
+      <p class="muted small">Un <b>reto diario</b> nuevo cada día, igual para todo el mundo. Encadena perfectos para hacer combos.</p>
+      <button class="btn primary" data-close><span class="btn-main">¡Entendido!</span></button>
+    </div>
+  </div>
+
+  <div id="mStats" class="modal" role="dialog" aria-modal="true" aria-labelledby="hStats">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hStats">Estadísticas</h3>
+      <div class="kpis">
+        <div><b id="sGames">0</b><span>Partidas</span></div>
+        <div><b id="sPerfect">0</b><span>Perfectos</span></div>
+        <div><b id="sBestPrec">–</b><span>Mejor precisión</span></div>
+        <div><b id="sStreak">0</b><span>Racha</span></div>
+        <div><b id="sMaxStreak">0</b><span>Mejor racha</span></div>
+      </div>
+      <h4>Tus cortes</h4>
+      <div id="sDist" class="dist"></div>
+    </div>
+  </div>
+
+  <div id="mSettings" class="modal" role="dialog" aria-modal="true" aria-labelledby="hSettings">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hSettings">Ajustes</h3>
+      <label class="toggle"><span>Sonido</span><input type="checkbox" id="optSound"><i></i></label>
+      <label class="toggle"><span>Vibración</span><input type="checkbox" id="optVibe"><i></i></label>
+      <label class="toggle"><span>Guía de corte</span><input type="checkbox" id="optGuide"><i></i></label>
+      <button id="resetBtn" class="btn ghost danger"><span class="btn-main">Borrar mis datos</span></button>
+      <div class="privacy">
+        <h4>Privacidad</h4>
+        <p>Corte Perfecto no usa cuentas, anuncios ni rastreadores. Tus récords y estadísticas se guardan solo en este dispositivo.</p>
+      </div>
+      <p class="muted small center">Corte Perfecto v1.1 · Fuente Fredoka (OFL)</p>
+    </div>
+  </div>
+
+  <div id="mPause" class="modal" role="dialog" aria-modal="true" aria-labelledby="hPause">
+    <div class="sheet">
+      <h3 id="hPause">Pausa</h3>
+      <button id="resumeBtn" class="btn primary"><span class="btn-main">Continuar</span></button>
+      <div class="row2">
+        <button id="restartBtn" class="btn secondary"><span class="btn-main">Reiniciar</span></button>
+        <button id="quitBtn" class="btn ghost"><span class="btn-main">Salir</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
 
   <script src="src/game.js"></script>
   <script>
