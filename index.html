@@ -1,53 +1,76 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0b1020" />
-  <title>Open Drive 3D</title>
-  <link rel="stylesheet" href="./styles.css" />
-
-  <!-- Three.js vendored en el repo (sin CDN): funciona offline y directo en el navegador -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "./vendor/three.module.js",
-      "three/addons/": "./vendor/addons/"
-    }
-  }
-  </script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Rayo Runner</title>
+  <meta name="description" content="Runner infinito de estilo neón para móvil y iPad.">
+  <meta name="theme-color" content="#0b0221">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Rayo Runner">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <canvas id="game"></canvas>
 
   <!-- HUD -->
-  <div id="hud">
-    <div class="speedo">
-      <span id="speed">0</span><small>km/h</small>
-    </div>
-    <div class="hint" id="hint">
-      <strong>PC:</strong> W/S acelerar · A/D girar · Espacio freno de mano
+  <div id="hud" class="hidden">
+    <div class="pill"><span class="label">PUNTOS</span><span id="score">0</span></div>
+    <div class="pill coins"><span class="coin-dot"></span><span id="coins">0</span></div>
+    <div id="shield" class="pill shield hidden">🛡️ <span id="shieldTime">0</span></div>
+    <button id="pauseBtn" class="icon-btn" aria-label="Pausa">❚❚</button>
+  </div>
+
+  <!-- Menú principal -->
+  <div id="menu" class="overlay">
+    <div class="card">
+      <h1 class="title">RAYO<br><span>RUNNER</span></h1>
+      <p class="best">Récord: <b id="best">0</b> · Monedas totales: <b id="bank">0</b></p>
+      <ul class="howto">
+        <li><span class="k">← →</span> Desliza para cambiar de carril</li>
+        <li><span class="k">↑</span> Desliza o toca para saltar</li>
+        <li><span class="k">↓</span> Desliza abajo para agacharte</li>
+      </ul>
+      <button id="playBtn" class="btn">JUGAR</button>
+      <button id="soundBtn" class="btn ghost small">🔊 Sonido: Sí</button>
     </div>
   </div>
 
-  <!-- Controles táctiles (solo visibles en móvil) -->
-  <div id="touch-controls">
-    <div class="pad pad-left">
-      <button class="tbtn" data-key="left">◀</button>
-      <button class="tbtn" data-key="right">▶</button>
-    </div>
-    <div class="pad pad-right">
-      <button class="tbtn gas" data-key="up">▲</button>
-      <button class="tbtn brake" data-key="down">▼</button>
+  <!-- Pausa -->
+  <div id="pause" class="overlay hidden">
+    <div class="card">
+      <h2>PAUSA</h2>
+      <button id="resumeBtn" class="btn">CONTINUAR</button>
+      <button id="quitBtn" class="btn ghost">SALIR AL MENÚ</button>
     </div>
   </div>
 
-  <!-- Pantalla de carga -->
-  <div id="loading">
-    <div class="spinner"></div>
-    <p>Cargando mundo…</p>
+  <!-- Game over -->
+  <div id="over" class="overlay hidden">
+    <div class="card">
+      <h2>¡CHOCASTE!</h2>
+      <div id="record" class="record hidden">✨ ¡NUEVO RÉCORD! ✨</div>
+      <div class="stats">
+        <div><span class="label">PUNTOS</span><b id="finalScore">0</b></div>
+        <div><span class="label">MONEDAS</span><b id="finalCoins">0</b></div>
+        <div><span class="label">RÉCORD</span><b id="finalBest">0</b></div>
+      </div>
+      <button id="againBtn" class="btn">OTRA VEZ</button>
+      <button id="menuBtn" class="btn ghost">MENÚ</button>
+    </div>
   </div>
 
-  <script type="module" src="./src/main.js"></script>
+
+  <script src="src/game.js"></script>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+  </script>
 </body>
 </html>

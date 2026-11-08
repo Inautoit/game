@@ -1,61 +1,64 @@
-# Open Drive 3D 🏎️
+# Rayo Runner ⚡
 
-Juego de coches **3D de mundo abierto** para navegador (PC y móvil).
-Conduce libremente por una ciudad con carreteras, edificios y árboles,
-con cámara en tercera persona.
+Runner infinito con estilo neón retro, pensado para **iPhone, iPad y Android**
+(también funciona en PC). Corre por una autopista al atardecer, esquiva
+obstáculos, recoge monedas y bate tu récord.
 
-Hecho con [Three.js](https://threejs.org/). Sin instalación ni build: se
-abre directamente en el navegador.
+Es un juego web (HTML5 + Canvas, sin librerías ni compilación) e **instalable
+como app (PWA)**: funciona a pantalla completa y sin conexión.
 
 ## Cómo jugar
 
-### PC (teclado)
-| Tecla | Acción |
-|-------|--------|
-| `W` / `↑` | Acelerar |
-| `S` / `↓` | Frenar / marcha atrás |
-| `A` / `←` | Girar a la izquierda |
-| `D` / `→` | Girar a la derecha |
-| `Espacio` | Freno de mano |
+| Gesto (móvil / iPad) | Teclado | Acción |
+|----------------------|---------|--------|
+| Deslizar ← / → | `←` `→` / `A` `D` | Cambiar de carril |
+| Deslizar ↑ o tocar | `↑` / `W` / `Espacio` | Saltar |
+| Deslizar ↓ | `↓` / `S` | Agacharse (en el aire: caída rápida) |
+| Botón ❚❚ | `Esc` / `P` | Pausa |
 
-### Móvil (táctil)
-Botones en pantalla: flechas de dirección (izquierda) y acelerar/frenar
-(derecha). Aparecen automáticamente en dispositivos táctiles.
+### Obstáculos
+- **Muro morado (✕)**: solo se puede esquivar cambiando de carril.
+- **Valla naranja (baja)**: sáltala o cambia de carril.
+- **Barra roja (alta)**: agáchate por debajo o cambia de carril.
 
-## Ejecutar en local
+### Objetos
+- **Monedas**: +10 puntos cada una; se acumulan en tu hucha total.
+- **Escudo (S)**: aguanta un choque durante 10 segundos.
 
-Necesitas servir los archivos por HTTP (los módulos ES no funcionan con
-`file://`). Con Python:
+La velocidad aumenta poco a poco. Los puntos son la distancia recorrida más las monedas.
+
+## Probarlo en local
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Luego abre <http://localhost:8000> en el navegador.
+Abre <http://localhost:8000>. Para probarlo en el móvil, conéctalo a la misma
+wifi y abre `http://IP-DE-TU-ORDENADOR:8000`.
+
+## Instalarlo en iPhone / iPad
+
+1. Publica la carpeta en cualquier hosting con HTTPS (GitHub Pages, Netlify, Vercel…).
+2. Ábrelo en **Safari** → botón **Compartir** → **Añadir a pantalla de inicio**.
+3. Se abrirá a pantalla completa como una app, también sin conexión.
+
+En Android (Chrome): menú ⋮ → **Instalar aplicación**.
 
 ## Estructura
 
 ```
-index.html      Página y HUD
-styles.css      Estilos e interfaz táctil
-src/
-  main.js       Escena, luces, cámara, bucle del juego
-  car.js        Coche + físicas de conducción
-  world.js      Mundo procedural (carreteras, edificios, árboles)
-  input.js      Entrada de teclado y táctil
-assets/         Modelos 3D (.glb) — ver assets/README.md
+index.html            Página, HUD y menús
+styles.css            Estilos (adaptados a notch / zonas seguras)
+src/game.js           Todo el juego: lógica, dibujo, sonido y controles
+manifest.webmanifest  Datos de la app instalable
+sw.js                 Service worker (modo sin conexión)
+icons/                Iconos de la app
 ```
 
-## Añadir tu coche 3D
+## Ideas para seguir
 
-Exporta tu modelo como `assets/car.glb` y el juego lo usará
-automáticamente. Detalles en [`assets/README.md`](assets/README.md).
-
-## Próximas mejoras posibles
-
-- Coche importado con materiales reales
-- Tráfico y peatones
-- Minimapa
-- Sonido de motor
-- Objetos coleccionables / misiones
-- Día/noche y farolas
+- Tienda para gastar monedas en personajes o colores
+- Más power-ups (imán de monedas, multiplicador)
+- Misiones diarias y logros
+- Música de fondo
+- Publicarlo en App Store / Google Play con Capacitor
