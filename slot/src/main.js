@@ -4,6 +4,7 @@ import { TRACKS, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
 import { RGBELoader } from '../vendor/jsm/loaders/RGBELoader.js';
+import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js';
 import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from '../vendor/jsm/postprocessing/ShaderPass.js';
@@ -297,26 +298,57 @@ function buildTrack(def) {
   carsGroup.position.set(-cx, 0, -cz);
 
   // Textura de la pista: asfalto de plástico, ranuras, raíles de cobre y bordes
-  const W = 512;
-  const tex = canvasTex(W, 128, (g, w, h) => {
-    g.fillStyle = '#3c3f47'; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 1600; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.035})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
-    const U = (d) => ((half - d) / (2 * half)) * w;
-    g.fillStyle = '#f2f2f2';
-    g.fillRect(U(half - 0.05), 0, w * 0.012, h); g.fillRect(U(-half + 0.05) - w * 0.012, 0, w * 0.012, h);
+  // Textura de la pista (alta resolución): una pieza recta estándar de 35 cm por repetición
+  const PIECE = 0.35 / SCALE;
+  const W = 1024, Ht = 2048;
+  const U = (d, w) => ((half - d) / (2 * half)) * w;
+  const tex = canvasTex(W, Ht, (g, w, h) => {
+    g.fillStyle = '#36383e'; g.fillRect(0, 0, w, h);
+    // Grano del plástico moldeado
+    const img = g.getImageData(0, 0, w, h), px = img.data;
+    for (let i = 0; i < px.length; i += 4) { const n = (Math.random() - 0.5) * 10; px[i] += n; px[i + 1] += n; px[i + 2] += n + 1; }
+    g.putImageData(img, 0, 0);
+    // Goma acumulada en la trazada de cada carril
     for (const d of offsets) {
-      const u = U(d);
-      g.fillStyle = '#c98a4b'; g.fillRect(u - w * 0.028, 0, w * 0.012, h); g.fillRect(u + w * 0.016, 0, w * 0.012, h);
-      g.fillStyle = '#0d0e12'; g.fillRect(u - w * 0.009, 0, w * 0.018, h);
+      const u = U(d, w);
+      const gr = g.createLinearGradient(u - w * 0.16, 0, u + w * 0.16, 0);
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.3, 'rgba(10,10,12,0.28)'); gr.addColorStop(0.42, 'rgba(10,10,12,0.12)');
+      gr.addColorStop(0.58, 'rgba(10,10,12,0.12)'); gr.addColorStop(0.7, 'rgba(10,10,12,0.28)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(u - w * 0.16, 0, w * 0.32, h);
     }
-    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 0, w, 2); // junta entre piezas
+    // Líneas blancas de borde
+    g.fillStyle = '#e9e9e4';
+    g.fillRect(U(half - 0.05, w), 0, w * 0.01, h); g.fillRect(U(-half + 0.05, w) - w * 0.01, 0, w * 0.01, h);
+    // Ranura (con fondo más oscuro y bordes en sombra)
+    for (const d of offsets) {
+      const u = U(d, w);
+      g.fillStyle = '#060607'; g.fillRect(u - w * 0.008, 0, w * 0.016, h);
+      g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(u - w * 0.011, 0, w * 0.003, h); g.fillRect(u + w * 0.008, 0, w * 0.003, h);
+    }
+    // Junta entre piezas y marcas de moldeo
+    g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, 0, w, 3);
+    g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(0, 3, w, 2);
   });
   tex.repeat.set(1, 1);
+  // Relieve del grano (mapa de normales generado)
+  const nor = canvasTex(256, 256, (g, w, h) => {
+    const img = g.createImageData(w, h), px = img.data;
+    const hgt = new Float32Array(w * h).map(() => Math.random());
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const dx = hgt[y * w + ((x + 1) % w)] - hgt[y * w + ((x - 1 + w) % w)];
+      const dy = hgt[((y + 1) % h) * w + x] - hgt[((y - 1 + h) % h) * w + x];
+      px[i * 4] = 128 + dx * 40; px[i * 4 + 1] = 128 + dy * 40; px[i * 4 + 2] = 255; px[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+  });
+  nor.colorSpace = THREE.NoColorSpace;
+  nor.repeat.set(6, 6);
   const pos = [], uv = [], idx = [];
   for (let i = 0; i <= n; i++) {
     const p = P[i % n];
     const nx = -Math.sin(p.h), nz = Math.cos(p.h);
-    const v = (i * DS) / 1.0;
+    const v = (i * DS) / PIECE;
     pos.push(p.x + nx * half, p.y + 0.002, p.z + nz * half, p.x - nx * half, p.y + 0.002, p.z - nz * half);
     uv.push(0, v, 1, v);
     if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
@@ -326,12 +358,12 @@ function buildTrack(def) {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  const road = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.62, side: THREE.DoubleSide }));
+  const road = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, normalMap: nor, normalScale: new THREE.Vector2(0.35, 0.35), roughness: 0.68, side: THREE.DoubleSide }));
   road.receiveShadow = true;
   trackGroup.add(road);
 
   // Raíles de cobre (trencillas) a cada lado de cada ranura: metal de verdad que refleja
-  const copperMat = new THREE.MeshStandardMaterial({ color: 0xd99560, metalness: 1, roughness: 0.32 });
+  const copperMat = new THREE.MeshStandardMaterial({ color: 0xc4c8cf, metalness: 1, roughness: 0.28 });
   const rp = [], ri = [];
   let rv = 0;
   for (const d of offsets) {
@@ -497,6 +529,42 @@ function buildTrack(def) {
     trackGroup.add(r);
   }
 
+  // Vallas de protección: plástico blanco con postes, por fuera de las curvas
+  {
+    const wp = [], wi = [];
+    let wv = 0;
+    const fenceMat = new THREE.MeshStandardMaterial({ color: 0xeef0f2, roughness: 0.45, side: THREE.DoubleSide });
+    const postGeo = new THREE.BoxGeometry(0.035, 0.26, 0.035);
+    const posts = [];
+    for (const sgn of [1, -1]) {
+      let run = false;
+      for (let i = 0; i <= n; i++) {
+        const p = P[i % n];
+        const outer = Math.abs(p.k) > 0.01 && Math.sign(p.k) === -sgn && p.y < 0.05;
+        if (outer) {
+          const nx = -Math.sin(p.h), nz = Math.cos(p.h), off = (half + 0.42) * sgn;
+          wp.push(p.x + nx * off, 0.02, p.z + nz * off, p.x + nx * off, 0.24, p.z + nz * off);
+          if (run) wi.push(wv - 2, wv - 1, wv, wv - 1, wv + 1, wv);
+          wv += 2;
+          if (i % Math.round(0.6 / DS) === 0) posts.push([p.x + nx * (off + 0.025 * sgn), p.z + nz * (off + 0.025 * sgn)]);
+        }
+        run = outer;
+      }
+    }
+    if (wp.length) {
+      const fg = new THREE.BufferGeometry();
+      fg.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3));
+      fg.setIndex(wi); fg.computeVertexNormals();
+      const fence = new THREE.Mesh(fg, fenceMat); fence.castShadow = true; fence.receiveShadow = true;
+      trackGroup.add(fence);
+      const pm = new THREE.InstancedMesh(postGeo, new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.6, roughness: 0.35 }), posts.length);
+      const m4 = new THREE.Matrix4();
+      posts.forEach(([x, z], i) => { m4.makeTranslation(x, 0.13, z); pm.setMatrixAt(i, m4); });
+      pm.castShadow = true;
+      trackGroup.add(pm);
+    }
+  }
+
   // Decorado: neumáticos en las curvas, árboles y grada
   const tireGeo = new THREE.TorusGeometry(0.12, 0.05, 8, 16).rotateX(Math.PI / 2);
   const tireMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1f, roughness: 0.9 });
@@ -510,7 +578,7 @@ function buildTrack(def) {
     if (Math.abs(p.k) < 0.01 || p.y > 0.05) continue;
     const out = -Math.sign(p.k);
     const nx = -Math.sin(p.h), nz = Math.cos(p.h);
-    const x = p.x + nx * (half + 0.55) * out, z = p.z + nz * (half + 0.55) * out;
+    const x = p.x + nx * (half + 0.72) * out, z = p.z + nz * (half + 0.72) * out;
     if (occupied(x, z, 0.4)) continue;
     for (let k = 0; k < 3; k++) {
       const t = new THREE.Mesh(tireGeo, k === 1 ? tireMat2 : tireMat);
@@ -523,7 +591,7 @@ function buildTrack(def) {
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4426 });
   let seed = 7;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let k = 0; k < 40; k++) {
+  for (let k = 0; k < 0; k++) { // árboles desactivados: desentonaban con el aspecto realista
     const x = lerp(T.bbox.minX - 1.2, T.bbox.maxX + 1.2, rnd()), z = lerp(T.bbox.minZ - 1.2, T.bbox.maxZ + 1.2, rnd());
     if (occupied(x, z, 0.8)) continue;
     const tr = new THREE.Group();
@@ -546,11 +614,7 @@ function buildTrack(def) {
       step.position.set(0, (0.12 + r * 0.12) / 2, r * 0.3);
       step.castShadow = true; step.receiveShadow = true;
       stand.add(step);
-      for (let s2 = 0; s2 < 9; s2++) {
-        const fan = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.08), new THREE.MeshStandardMaterial({ color: colors[(s2 + r) % 4] }));
-        fan.position.set(-1.05 + s2 * 0.26, 0.2 + r * 0.12, r * 0.3);
-        stand.add(fan);
-      }
+
     }
     stand.position.set(gx, 0, gz);
     stand.rotation.y = -p0.h + Math.PI;
@@ -606,7 +670,123 @@ const blobTex = (() => {
   g.save(); g.scale(1, 0.5); g.fillStyle = gr; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill(); g.restore();
   return new THREE.CanvasTexture(c);
 })();
+// ---------------------------------------------------------------------------
+// Modelo 3D realista del coche (Car Concept, Khronos / Eric Chadwick, CC-BY 4.0)
+// ---------------------------------------------------------------------------
+const CAR_LEN = 0.98;       // longitud del coche en unidades (≈ 12,5 cm; ≈ 6 cm de ancho)
+const NOSE_AHEAD = 0.16;    // la guía va 2 cm por detrás del morro
+let carModels = null;       // { hi, lo } ya orientados y escalados
+function prepareModel(scene) {
+  const box = new THREE.Box3().setFromObject(scene);
+  const c = box.getCenter(new THREE.Vector3());
+  // ¿Hacia dónde mira? Los faros marcan el morro
+  const head = new THREE.Box3();
+  scene.traverse((o) => { if (o.isMesh && /headlight/i.test(o.material.name || '')) head.expandByObject(o); });
+  const hc = head.isEmpty() ? new THREE.Vector3(0, 0, 1) : head.getCenter(new THREE.Vector3()).sub(c);
+  const pivot = new THREE.Group();
+  const inner = new THREE.Group();
+  inner.add(scene);
+  if (Math.abs(hc.z) > Math.abs(hc.x)) inner.rotation.y = hc.z > 0 ? Math.PI / 2 : -Math.PI / 2;
+  else if (hc.x < 0) inner.rotation.y = Math.PI;
+  pivot.add(inner);
+  pivot.updateMatrixWorld(true);
+  const b2 = new THREE.Box3().setFromObject(pivot);
+  const size = b2.getSize(new THREE.Vector3());
+  const k = CAR_LEN / size.x;
+  inner.scale.setScalar(k);
+  pivot.updateMatrixWorld(true);
+  const b3 = new THREE.Box3().setFromObject(pivot);
+  const c3 = b3.getCenter(new THREE.Vector3());
+  inner.position.set(-(b3.max.x - NOSE_AHEAD), -b3.min.y + 0.004, -c3.z);
+  const wheels = [];
+  scene.traverse((o) => {
+    if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; }
+    if (/^Wheel(Front|Rear)[LR]$/.test(o.name)) wheels.push(o.name);
+  });
+  return { pivot, wheels };
+}
+function loadCarModels() {
+  const ld = new GLTFLoader();
+  // Si el servidor no sirve .glb (por ejemplo, dentro de Claude), se usa la copia en texto base64
+  const fromText = (f) => fetch(`assets/models/${f}.txt`).then((r) => (r.ok ? r.text() : Promise.reject(new Error('sin modelo')))).then((b64) => {
+    const bin = atob(b64.trim());
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new Promise((res, rej) => ld.parse(buf.buffer, 'assets/models/', (g) => res(g.scene), rej));
+  });
+  const get = (f) => new Promise((res, rej) => ld.load(`assets/models/${f}`, (g) => res(g.scene), undefined, rej)).catch(() => fromText(f));
+  return Promise.all([get('car_hi.glb'), get('car_lo.glb')]).then(([hi, lo]) => {
+    carModels = { hi: prepareModel(hi), lo: prepareModel(lo) };
+    // Cambia los coches que ya están en pantalla por el modelo realista
+    for (const c of cars) {
+      const old = c.mesh;
+      c.mesh = makeCarMesh(c.liv);
+      c.mesh.position.copy(old.position); c.mesh.rotation.copy(old.rotation);
+      if (c.human) c.mesh.userData.ring.material.opacity = 0.7;
+      carsGroup.remove(old); carsGroup.add(c.mesh);
+    }
+    if (ghost) { const old = ghost.mesh; ghost.mesh = makeCarMesh(old.userData.liv, true); carsGroup.remove(old); carsGroup.add(ghost.mesh); }
+  }).catch(() => { /* sin modelo: se usa el coche hecho por código */ });
+}
+function paintModel(src, liv, ghost) {
+  const m = src.pivot.clone(true);
+  const cache = new Map();
+  const ghostMat = new THREE.MeshBasicMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.28, depthWrite: false });
+  m.traverse((o) => {
+    if (!o.isMesh) return;
+    if (ghost) { o.material = ghostMat; o.castShadow = false; return; }
+    const name = o.material.name || '';
+    let col = null;
+    if (/^Paint 1/.test(name) || /^Paint 2/.test(name)) col = liv.color;
+    else if (/^Interior 3/.test(name)) col = liv.accent;
+    if (col !== null) {
+      if (!cache.has(name)) {
+        const mat = o.material.clone();
+        mat.color = new THREE.Color(col);
+        if (/^Paint/.test(name)) { mat.clearcoat = 1; mat.clearcoatRoughness = 0.04; mat.metalness = Math.min(mat.metalness ?? 0.5, 0.6); mat.roughness = Math.min(mat.roughness ?? 0.3, 0.3); }
+        cache.set(name, mat);
+      }
+      o.material = cache.get(name);
+    }
+  });
+  const wheels = [];
+  m.traverse((o) => { if (src.wheels.includes(o.name)) wheels.push(o); });
+  m.userData.wheels = wheels;
+  return m;
+}
 function makeCarMesh(liv, ghost = false) {
+  if (carModels) {
+    const root = new THREE.Group();
+    root.userData.liv = liv;
+    const lod = new THREE.LOD();
+    const hi = paintModel(carModels.hi, liv, ghost), lo = paintModel(carModels.lo, liv, ghost);
+    lod.addLevel(hi, 0); lod.addLevel(lo, 7);
+    root.add(lod);
+    if (!ghost) {
+      // La sombra la proyecta la versión ligera (invisible): misma silueta, mucho menos coste
+      const shadowProxy = carModels.lo.pivot.clone(true);
+      const inv = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+      shadowProxy.traverse((o) => { if (o.isMesh) { o.material = inv; o.castShadow = true; o.receiveShadow = false; } });
+      root.add(shadowProxy);
+    }
+    root.userData.wheels = [...hi.userData.wheels, ...lo.userData.wheels];
+    if (!ghost) {
+      const blob = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.62), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0.7 }));
+      blob.rotation.x = -Math.PI / 2; blob.position.set(-CAR_LEN / 2 + NOSE_AHEAD, 0.007, 0);
+      root.add(blob);
+      // Guía de slot bajo el morro
+      const guide = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.012), darkMat);
+      guide.position.set(0, -0.012, 0); root.add(guide);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.46, 0.54, 40), new THREE.MeshBasicMaterial({ color: liv.color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(-CAR_LEN / 2 + NOSE_AHEAD, 0.012, 0);
+      root.add(ring);
+      root.userData.ring = ring;
+    }
+    return root;
+  }
+  return makeCarMeshSimple(liv, ghost);
+}
+function makeCarMeshSimple(liv, ghost = false) {
   const root = new THREE.Group();
   const g = new THREE.Group();
   const paint = ghost
@@ -780,7 +960,7 @@ function overviewCamera(out, target) {
   const el = (57 * Math.PI) / 180;
   const vf = (camera.fov * Math.PI) / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
   const needV = scrD * Math.sin(el) + 1.2;
-  let dist = Math.max((scrW / 2) / Math.tan(hf / 2), (needV / 2) / Math.tan(vf / 2)) * 1.05 + 1;
+  let dist = Math.max((scrW / 2) / Math.tan(hf / 2), (needV / 2) / Math.tan(vf / 2)) * (portrait ? 1.05 : 1.18) + 1;
   if (state === 'menu') dist *= 1.15;
   else if (portrait) dist *= 1.07;
   const a = az + orbit;
@@ -1012,6 +1192,8 @@ function stepRace(dt) {
     else {
       const p = placeCar(c.mesh, c.st.s, c.d, c.st.th);
       if (c.blink > 0) { c.blink -= dt; c.mesh.visible = Math.floor(c.blink * 12) % 2 === 0; } else c.mesh.visible = true;
+      const wh = c.mesh.userData.wheels;
+      if (wh) { const a = (c.st.v / 0.0105) * dt; for (const w of wh) w.rotateX(a); }
       // Chispas: al frenar fuerte o a alta velocidad
       const rate = (c.st.amps < -0.6 ? 70 : 0) + (c.st.v > 3 ? (c.st.v - 3) * 8 : 0);
       let k = rate * dt;
@@ -1568,6 +1750,7 @@ window.addEventListener('gamepadconnected', () => toast('🎮 Mando conectado: u
 setupComposer();
 applyQuality();
 showMenu();
+loadCarModels();
 overviewCamera(camPos, camTarget);
 requestAnimationFrame(loop);
 Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, new Promise((r) => setTimeout(r, 1500))])

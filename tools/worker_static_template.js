@@ -9,9 +9,18 @@ function body(path, f) {
   if (!b) { b = Buffer.from(f[1], 'base64'); cache.set(path, b); }
   return b;
 }
+const TYPES = { glb: 'model/gltf-binary', hdr: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain; charset=utf-8' };
 export default {
-  async fetch(req) {
+  async fetch(req, env) {
     const url = new URL(req.url);
+    // Archivos grandes (modelos, HDRI, texturas) desde el almacén KV
+    if (url.pathname.startsWith('/assets/') && env.ASSETS) {
+      const data = await env.ASSETS.get(url.pathname.slice(1), 'arrayBuffer');
+      if (data) {
+        const ext = url.pathname.split('.').pop();
+        return new Response(data, { headers: { 'content-type': TYPES[ext] || 'application/octet-stream', 'cache-control': 'public, max-age=604800', 'x-content-type-options': 'nosniff' } });
+      }
+    }
     const f = FILES[url.pathname];
     if (!f) return new Response('No encontrado', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     return new Response(body(url.pathname, f), {

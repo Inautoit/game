@@ -14,3 +14,12 @@ en un juego comercial sin pagar ni dar atribución. Aun así, los citamos.
 
 Código de terceros: three.js y sus módulos de ejemplo (`vendor/`), licencia MIT.
 Tipografía Fredoka, licencia SIL OFL.
+
+## Modelo del coche
+
+| Archivo | Recurso | Autor | Fuente | Licencia |
+|---|---|---|---|---|
+| `models/car_hi.glb`, `models/car_lo.glb` | Car Concept (optimizado: sin logotipos ni pedales/motor, malla simplificada, texturas WebP) | Eric Chadwick, a partir del modelo de dominio público de "Unity Fan" | Khronos glTF Sample Assets | **CC-BY 4.0** (hay que citar al autor) |
+
+Atribución que debe aparecer en el juego: *"Car Concept" de Eric Chadwick (Khronos glTF
+Sample Assets), CC-BY 4.0, basado en un modelo CC0 de Unity Fan. Modificado.*
