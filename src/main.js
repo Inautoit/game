@@ -1,6 +1,8 @@
 // Isla Rodante — inclina la isla para llevar la bola hasta la meta.
 import * as THREE from '../vendor/three.module.min.js';
-import { WORLDS, prepare, dailyLevel, dailyNumber } from './levels.js';
+import { WORLDS, prepare, dailyLevel, dailyNumber, infiniteLevel } from './levels.js';
+import { createEditor } from './editor.js';
+import * as api from './api.js';
 
 // ---------------------------------------------------------------------------
 // Utilidades y guardado
@@ -346,13 +348,16 @@ function startCamIntro() { camIntro = 0; }
 // ---------------------------------------------------------------------------
 // Estado de la partida
 // ---------------------------------------------------------------------------
-let state = 'menu'; // menu | levels | play | pause | done
-let cur = null;     // { wi, li, daily, n }
+// state: menu | levels | community | editor | play | pause | done
+// cur.mode: adv (aventura) | daily | inf (infinito) | test (probar mapa) | com (comunidad)
+let state = 'menu';
+let cur = null;
 const B = { x: 0, z: 0, vx: 0, vz: 0, y: BALL_R, vy: 0, falling: false, fallT: 0, sinking: 0, spawn: 0 };
 let tilt = { x: 0, z: 0 }, tiltTarget = { x: 0, z: 0 };
 let timer = 0, timerOn = false, falls = 0, gemsTaken = 0;
 const MAX_TILT = 0.24;
 const GRAV = 24;
+const MAX_HEARTS = 5;
 let confetti = [];
 let shake = 0;
 
@@ -363,6 +368,7 @@ const cellAt = (x, z) => {
 };
 const isWall = (c) => c === '#' || c === 'T';
 const isVoid = (c) => c === ' ' || c === 'o';
+const worldById = (id) => WORLDS.find((w) => w.id === id) || WORLDS[0];
 
 function placeBallAtStart(drop = true) {
   const [sx, sy] = level.start;
@@ -382,9 +388,10 @@ function isUnlocked(wi, li) {
 function totalStars() { return Object.values(getProgress()).reduce((s, p) => s + p.stars, 0); }
 const MAX_STARS = WORLDS.reduce((s, w) => s + w.levels.length * 3, 0);
 
+// ---- Modos de juego ----
 function startLevel(wi, li) {
   initAudio();
-  cur = { wi, li, daily: false };
+  cur = { mode: 'adv', wi, li };
   const wd = WORLDS[wi];
   buildLevel(prepare(wd.levels[li]), wd);
   beginPlay(`${wi + 1}-${li + 1}`, wd.levels[li].name);
@@ -393,10 +400,34 @@ function startDaily() {
   initAudio();
   const n = dailyNumber();
   const d = dailyLevel(n);
-  cur = { daily: true, n };
+  cur = { mode: 'daily', n };
   buildLevel(prepare(d), d.world);
   beginPlay(`#${n}`, 'Isla del día');
 }
+function startInfinite() {
+  initAudio();
+  cur = { mode: 'inf', n: 1, hearts: 3, seed: (Math.random() * 1e9) | 0, gemsRun: 0 };
+  loadInfinite();
+}
+function loadInfinite() {
+  const d = infiniteLevel(cur.n, cur.seed);
+  buildLevel(prepare(d), d.world);
+  beginPlay(`∞ ${cur.n}`, 'Modo infinito');
+}
+function startTest(rows, worldId) {
+  initAudio();
+  cur = { mode: 'test', rows, worldId };
+  buildLevel(prepare({ name: 'Tu mapa', map: rows }), worldById(worldId));
+  beginPlay('Prueba', 'Tu mapa');
+}
+function startCommunity(m) {
+  initAudio();
+  cur = { mode: 'com', m };
+  buildLevel(prepare({ name: m.name, map: m.map }), worldById(m.world));
+  beginPlay('🌍', m.name);
+  api.ping(m.id, 'play');
+}
+
 function beginPlay(tag, name) {
   island.rotation.set(0, 0, 0);
   tilt = { x: 0, z: 0 };
@@ -405,16 +436,21 @@ function beginPlay(tag, name) {
   placeBallAtStart(true);
   ui.lvTag.textContent = tag;
   ui.lvName.textContent = name;
-  ui.gems.textContent = '0/3';
+  ui.gemsPill.hidden = level.gems.length === 0;
+  ui.gems.textContent = `0/${level.gems.length}`;
   ui.time.textContent = fmtTime(0);
-  ui.par.textContent = 'Objetivo ' + fmtTime(level.par).replace(',0', '');
+  updatePar();
   state = 'play';
   setScreen('hud');
   calibrateMotion();
   startCamIntro();
-  showBanner(tag, name);
-  const first = !cur.daily && cur.wi === 0 && cur.li === 0 && !isDone(0, 0);
+  showBanner(tag, cur.mode === 'inf' ? `Isla ${cur.n}` : name);
+  const first = cur.mode === 'adv' && cur.wi === 0 && cur.li === 0 && !isDone(0, 0);
   ui.hint.classList.toggle('on', first);
+}
+function updatePar() {
+  if (cur.mode === 'inf') ui.par.textContent = '❤️'.repeat(Math.max(0, cur.hearts)) + '🤍'.repeat(Math.max(0, 3 - cur.hearts));
+  else ui.par.textContent = 'Objetivo ' + fmtTime(level.par).replace(',0', '');
 }
 
 // ---------------------------------------------------------------------------
@@ -441,11 +477,7 @@ function physics(dt) {
     B.y += B.vy * dt;
     B.x += B.vx * dt; B.z += B.vz * dt;
     B.fallT += dt;
-    if (B.fallT > 1.1) {
-      falls++;
-      placeBallAtStart(true);
-      sfx.respawn();
-    }
+    if (B.fallT > 1.1) respawnAfterFall();
     return;
   }
 
@@ -471,12 +503,11 @@ function physics(dt) {
       const cx = xx - ox, cz = yy - oz;
       const px = clamp(B.x, cx - 0.5, cx + 0.5), pz = clamp(B.z, cz - 0.5, cz + 0.5);
       let dx = B.x - px, dz = B.z - pz;
-      let d = Math.hypot(dx, dz);
+      const d = Math.hypot(dx, dz);
       if (d >= BALL_R) continue;
       if (d < 1e-6) { // centro dentro del muro: empuja por el eje más corto
         const ex = B.x - cx, ez = B.z - cz;
         if (Math.abs(ex) > Math.abs(ez)) { dx = Math.sign(ex) || 1; dz = 0; } else { dx = 0; dz = Math.sign(ez) || 1; }
-        d = 0;
         B.x = cx + dx * (0.5 + BALL_R); B.z = cz + dz * (0.5 + BALL_R);
       } else {
         dx /= d; dz /= d;
@@ -506,7 +537,7 @@ function physics(dt) {
     if (Math.hypot(B.x - g.x, B.z - g.z) < 0.45) {
       g.taken = true;
       gemsTaken++;
-      ui.gems.textContent = `${gemsTaken}/3`;
+      ui.gems.textContent = `${gemsTaken}/${gems.length}`;
       ui.gemsPill.classList.remove('pop'); void ui.gemsPill.offsetWidth; ui.gemsPill.classList.add('pop');
       sfx.gem(); vibrate(20);
     }
@@ -515,6 +546,18 @@ function physics(dt) {
   // Meta
   const [gx, gy] = level.goal;
   if (Math.hypot(B.x - (gx - ox), B.z - (gy - oz)) < 0.32) win();
+}
+
+function respawnAfterFall() {
+  if (state !== 'play') { B.falling = false; return; }
+  falls++;
+  if (cur.mode === 'inf') {
+    cur.hearts--;
+    updatePar();
+    if (cur.hearts <= 0) { gameOverInfinite(); return; }
+  }
+  placeBallAtStart(true);
+  sfx.respawn();
 }
 
 // ---------------------------------------------------------------------------
@@ -527,9 +570,18 @@ function win() {
   setRoll(0);
   sfx.win(); vibrate([30, 40, 30, 40, 80]);
   burstConfetti();
-  const stars = 1 + (gemsTaken === 3 ? 1 : 0) + (timer <= level.par ? 1 : 0);
+  const allGems = gemsTaken === gems.length;
+  const stars = 1 + (allGems ? 1 : 0) + (timer <= level.par ? 1 : 0);
+  const s = store.get('stats', { wins: 0, falls: 0, gems: 0 });
+  s.wins++; s.falls += falls; s.gems += gemsTaken;
+  store.set('stats', s);
+
+  if (cur.mode === 'inf') { winInfinite(); return; }
+  if (cur.mode === 'test') { editor.markVerified(cur.rows, cur.worldId); setTimeout(() => showDoneTest(), 1000); return; }
+  if (cur.mode === 'com') { winCommunity(stars); return; }
+
   let record = false;
-  if (cur.daily) {
+  if (cur.mode === 'daily') {
     const d = store.get('daily', {});
     const prev = d[cur.n];
     if (!prev || timer < prev.time) { d[cur.n] = { time: timer, stars, gems: gemsTaken }; record = !!prev; }
@@ -551,10 +603,59 @@ function win() {
     }
     store.set('progress', p);
   }
-  const s = store.get('stats', { wins: 0, falls: 0, gems: 0 });
-  s.wins++; s.falls += falls; s.gems += gemsTaken;
-  store.set('stats', s);
-  setTimeout(() => showComplete(stars, record), 1100);
+  setTimeout(() => showDoneLevel(stars, record), 1100);
+}
+
+function winInfinite() {
+  cur.gemsRun += gemsTaken;
+  const best = store.get('infBest', 0);
+  if (cur.n > best) store.set('infBest', cur.n);
+  cur.n++;
+  let bonus = false;
+  if (cur.n % 5 === 1 && cur.hearts < MAX_HEARTS) { cur.hearts++; bonus = true; }
+  setTimeout(() => {
+    if (state !== 'done' || !cur || cur.mode !== 'inf') return;
+    loadInfinite();
+    if (bonus) toast('¡+1 ❤️ por llegar hasta aquí!');
+  }, 1300);
+}
+
+function gameOverInfinite() {
+  state = 'done';
+  B.falling = false;
+  B.y = -50; // la bola ya cayó: la dejamos fuera de la vista
+  timerOn = false;
+  setRoll(0);
+  const reached = cur.n;
+  const prevBest = store.get('infBest', 0);
+  const best = Math.max(prevBest, reached - 1);
+  store.set('infBest', best);
+  const record = reached - 1 > prevBest && reached > 1;
+  shareText = `🏝️ Isla Rodante · Modo infinito\nHe llegado a la isla ${reached} 🔥\n¿Llegas más lejos? ${location.origin}${location.pathname}`;
+  openDone({
+    title: 'Sin corazones', stars: null, record,
+    k1: ['Llegaste a', `Isla ${reached}`, `Superadas: ${reached - 1}`],
+    k2: ['Récord', `Isla ${Math.max(best, reached)}`, `Gemas: ${cur.gemsRun}`],
+    primary: { label: 'Otra partida', fn: () => { closeModal('mDone'); startInfinite(); } },
+    share: true, retry: false, exitLabel: 'Salir',
+  });
+}
+
+async function winCommunity(stars) {
+  const m = cur.m;
+  const done = store.get('comDone', {});
+  const prev = done[m.id];
+  const record = !!prev && timer < prev;
+  if (!prev || timer < prev) done[m.id] = timer;
+  store.set('comDone', done);
+  api.ping(m.id, 'win', { time: timer });
+  shareText = `🏝️ He superado "${m.name}" de ${m.author} en ${fmtTime(timer)} en Isla Rodante.\n¿Puedes tú? ${mapLink(m.id)}`;
+  setTimeout(() => openDone({
+    title: '¡Mapa superado!', stars, record,
+    k1: ['Tiempo', fmtTime(timer), m.best_time ? `Mejor de todos: ${fmtTime(Math.min(m.best_time, timer))}` : '¡Primer récord!'],
+    k2: ['Gemas', `${gemsTaken}/${gems.length}`, `Caídas: ${falls}`],
+    primary: null, share: true, like: m.id, retry: true, exitLabel: 'Más mapas',
+  }), 1100);
 }
 
 function burstConfetti() {
@@ -604,14 +705,17 @@ canvas.addEventListener('pointercancel', endTouch);
 // Teclado (PC)
 const keys = new Set();
 window.addEventListener('keydown', (e) => {
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key)) { keys.add(e.key); initAudio(); ui.hint.classList.remove('on'); e.preventDefault(); }
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key) && state === 'play') {
+    keys.add(e.key); initAudio(); ui.hint.classList.remove('on'); e.preventDefault();
+  }
   if (e.key === 'Escape') { if (state === 'play') pause(); else if (state === 'pause') resume(); }
   if (e.key === 'r' && state === 'play') restart();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key));
 
 // Inclinación del dispositivo
-let motion = { beta: 0, gamma: 0, b0: 0, g0: 0, has: false };
+const motion = { beta: 0, gamma: 0, b0: 0, g0: 0, has: false };
 window.addEventListener('deviceorientation', (e) => {
   if (e.beta == null) return;
   motion.beta = e.beta; motion.gamma = e.gamma; motion.has = true;
@@ -660,11 +764,13 @@ function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   t += dt;
+  requestAnimationFrame(loop);
+  if (state === 'editor') return; // el editor no necesita la escena 3D
 
   if (state === 'play' || state === 'done') {
     if (state === 'play') {
       updateTiltTarget();
-      if (timerOn) { timer += dt; ui.time.textContent = fmtTime(timer); ui.timePill.classList.toggle('late', timer > level.par); }
+      if (timerOn) { timer += dt; ui.time.textContent = fmtTime(timer); ui.timePill.classList.toggle('late', cur.mode !== 'inf' && timer > level.par); }
     } else { tiltTarget.x = 0; tiltTarget.z = 0; }
     const kk = Math.min(1, dt * 9);
     tilt.x += (tiltTarget.x - tilt.x) * kk;
@@ -674,20 +780,18 @@ function loop(now) {
     while (rem > 0) { const s = Math.min(rem, 1 / 120); physics(s); rem -= s; }
     const speed = Math.hypot(B.vx, B.vz);
     setRoll(B.falling || B.spawn || B.sinking ? 0 : speed);
-    // Rodar
     if (speed > 1e-4 && !B.sinking) {
       axTmp.set(B.vz, 0, -B.vx).normalize();
       qTmp.setFromAxisAngle(axTmp, (speed * dt) / BALL_R);
       ball.quaternion.premultiply(qTmp);
     }
     ball.position.set(B.x, B.y, B.z);
-  } else if (state === 'menu' || state === 'levels') {
+  } else if (state === 'menu' || state === 'levels' || state === 'community') {
     island.rotation.set(0, island.rotation.y + dt * 0.18, 0);
     setRoll(0);
     ball.position.set(B.x, BALL_R + Math.abs(Math.sin(t * 2.2)) * 0.25, B.z);
   }
 
-  // Gemas, meta, nubes, confeti
   for (const g of gems) {
     if (!g.taken) {
       g.mesh.rotation.y += dt * 2;
@@ -722,7 +826,6 @@ function loop(now) {
     return true;
   });
 
-  // Cámara (entrada suave + temblor)
   camIntro = Math.min(1, camIntro + dt / 1.1);
   const e = easeOut(camIntro);
   camera.position.set(camGoal.x, camGoal.y * (1 + (1 - e) * 0.5), camGoal.z * (1 + (1 - e) * 0.35));
@@ -732,22 +835,20 @@ function loop(now) {
     camera.position.y += (Math.random() - 0.5) * shake;
   }
   camera.lookAt(camLook);
-
   renderer.render(scene, camera);
-  requestAnimationFrame(loop);
 }
 
 // ---------------------------------------------------------------------------
 // Interfaz
 // ---------------------------------------------------------------------------
 const ui = {
-  splash: $('splash'), menu: $('menu'), levels: $('levels'), hud: $('hud'),
+  splash: $('splash'), menu: $('menu'), levels: $('levels'), hud: $('hud'), community: $('community'), editor: $('editor'),
   lvTag: $('lvTag'), lvName: $('lvName'), time: $('time'), timePill: $('timePill'), par: $('par'),
   gems: $('gems'), gemsPill: $('gemsPill'), stick: $('stick'), knob: $('knob'), hint: $('hint'), banner: $('banner'),
-  starsTotal: $('starsTotal'), dailyN: $('dailyN'), dailySub: $('dailySub'), playSub: $('playSub'),
-  worldTabs: $('worldTabs'), levelGrid: $('levelGrid'), toast: $('toast'),
+  starsTotal: $('starsTotal'), dailyN: $('dailyN'), dailySub: $('dailySub'), playSub: $('playSub'), infSub: $('infSub'),
+  worldTabs: $('worldTabs'), levelGrid: $('levelGrid'), toast: $('toast'), comList: $('comList'),
 };
-const SCREENS = { menu: ui.menu, levels: ui.levels, hud: ui.hud };
+const SCREENS = { menu: ui.menu, levels: ui.levels, hud: ui.hud, community: ui.community, editor: ui.editor };
 function setScreen(name) {
   for (const [k, el] of Object.entries(SCREENS)) el.classList.toggle('open', k === name);
 }
@@ -766,12 +867,19 @@ function toast(msg) {
   ui.toast.textContent = msg;
   ui.toast.classList.add('on');
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => ui.toast.classList.remove('on'), 2200);
+  toast.t = setTimeout(() => ui.toast.classList.remove('on'), 2400);
 }
 function showBanner(tag, name) {
   ui.banner.querySelector('b').textContent = tag;
   ui.banner.querySelector('span').textContent = name;
   ui.banner.classList.remove('on'); void ui.banner.offsetWidth; ui.banner.classList.add('on');
+}
+const mapLink = (id) => `${location.origin}${location.pathname}?mapa=${id}`;
+async function shareOrCopy(text) {
+  try { if (navigator.share) { await navigator.share({ text }); return; } }
+  catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); toast('¡Copiado! Pégalo donde quieras'); }
+  catch { toast('No se pudo compartir'); }
 }
 
 // ---- Menú ----
@@ -785,7 +893,6 @@ function showMenu() {
   state = 'menu';
   cur = null;
   ui.stick.classList.remove('on');
-  // Isla de fondo: la del siguiente nivel
   const [wi, li] = nextLevel();
   buildLevel(prepare(WORLDS[wi].levels[li]), WORLDS[wi]);
   placeBallAtStart(false);
@@ -795,15 +902,20 @@ function showMenu() {
   const n = dailyNumber();
   ui.dailyN.textContent = '#' + n;
   const d = store.get('daily', {})[n];
-  ui.dailySub.textContent = d ? `✓ Tu tiempo: ${fmtTime(d.time)}` : 'Un laberinto nuevo cada día';
+  ui.dailySub.textContent = d ? `✓ ${fmtTime(d.time)}` : '¡Nueva!';
   const st = store.get('streak', { last: 0, count: 0 });
   const alive = st.last === n || st.last === n - 1;
-  $('streak').textContent = alive && st.count ? `🔥 ${st.count}` : '';
+  $('streak').textContent = alive && st.count ? `🔥${st.count}` : '';
+  const ib = store.get('infBest', 0);
+  ui.infSub.textContent = ib ? `Récord: isla ${ib}` : 'Islas sin fin';
   setScreen('menu');
 }
 
 $('playBtn').addEventListener('click', () => { sfx.click(); showLevels(nextLevel()[0]); });
 $('dailyBtn').addEventListener('click', () => { sfx.click(); startDaily(); });
+$('infBtn').addEventListener('click', () => { sfx.click(); startInfinite(); });
+$('comBtn').addEventListener('click', () => { sfx.click(); showCommunity(); });
+$('editBtn').addEventListener('click', () => { sfx.click(); showEditor(); });
 
 // ---- Selector de niveles ----
 let shownWorld = 0;
@@ -841,6 +953,146 @@ function showLevels(wi = shownWorld) {
 }
 $('levelsBack').addEventListener('click', () => { sfx.click(); showMenu(); });
 
+// ---- Comunidad ----
+let comSort = 'top';
+let comReq = 0;
+function miniMap(rows, worldId) {
+  const wd = worldById(worldId);
+  const c = document.createElement('canvas');
+  const w = Math.max(...rows.map((r) => r.length)), h = rows.length;
+  const s = Math.max(3, Math.floor(76 / Math.max(w, h)));
+  c.width = w * s; c.height = h * s;
+  c.className = 'mini';
+  const g = c.getContext('2d');
+  rows.forEach((r, y) => [...r].forEach((ch, x) => {
+    if (ch === ' ' || ch === 'o') return;
+    g.fillStyle = ch === '#' || ch === 'T' ? wd.wall : ch === '~' ? wd.ice : ch === 'S' ? '#ff5f7e' : ch === 'G' ? '#ffb020' : ch === '*' ? '#38b6ff' : wd.grass;
+    g.fillRect(x * s, y * s, s, s);
+  }));
+  return c;
+}
+function mapCard(m) {
+  const done = store.get('comDone', {})[m.id];
+  const b = document.createElement('button');
+  b.className = 'map-card' + (done ? ' done' : '');
+  b.appendChild(miniMap(m.map, m.world));
+  const info = document.createElement('div');
+  info.className = 'mc-info';
+  const name = document.createElement('b');
+  name.textContent = m.name;
+  const by = document.createElement('span');
+  by.className = 'by';
+  by.textContent = `por ${m.author}`;
+  const dif = document.createElement('span');
+  dif.className = 'dif';
+  dif.textContent = '●'.repeat(m.difficulty) + '○'.repeat(5 - m.difficulty);
+  dif.title = `Dificultad ${m.difficulty}/5`;
+  const st = document.createElement('span');
+  st.className = 'mc-stats';
+  st.textContent = `▶ ${m.plays}  ·  ✓ ${m.wins}  ·  ♥ ${m.likes}` + (m.best_time ? `  ·  ⏱ ${fmtTime(m.best_time)}` : '');
+  info.append(name, by, dif, st);
+  b.appendChild(info);
+  if (done) { const ok = document.createElement('i'); ok.className = 'mc-done'; ok.textContent = '✓'; b.appendChild(ok); }
+  b.addEventListener('click', () => { sfx.click(); startCommunity(m); });
+  return b;
+}
+async function loadCommunity() {
+  const id = ++comReq;
+  ui.comList.innerHTML = '<div class="com-empty">Cargando mapas…</div>';
+  document.querySelectorAll('#comTabs button').forEach((b) => b.classList.toggle('on', b.dataset.sort === comSort));
+  try {
+    let maps;
+    if (comSort === 'mine') {
+      const mine = store.get('myMaps', []);
+      maps = mine.length ? await api.listByIds(mine) : [];
+    } else maps = await api.listMaps(comSort);
+    if (id !== comReq) return;
+    ui.comList.innerHTML = '';
+    if (!maps.length) {
+      const e = document.createElement('div');
+      e.className = 'com-empty';
+      e.textContent = comSort === 'mine' ? 'Aún no has publicado mapas. ¡Crea el primero!' : 'Todavía no hay mapas aquí.';
+      ui.comList.appendChild(e);
+      return;
+    }
+    maps.forEach((m) => ui.comList.appendChild(mapCard(m)));
+  } catch (e) {
+    if (id !== comReq) return;
+    ui.comList.innerHTML = '';
+    const d = document.createElement('div');
+    d.className = 'com-empty';
+    d.textContent = e.message;
+    const r = document.createElement('button');
+    r.className = 'btn ghost'; r.innerHTML = '<span class="btn-main">Reintentar</span>';
+    r.addEventListener('click', loadCommunity);
+    d.appendChild(r);
+    ui.comList.appendChild(d);
+  }
+}
+function showCommunity() {
+  if (state !== 'menu' && state !== 'levels') { const [wi, li] = nextLevel(); buildLevel(prepare(WORLDS[wi].levels[li]), WORLDS[wi]); placeBallAtStart(false); }
+  state = 'community';
+  cur = null;
+  document.documentElement.style.setProperty('--sky1', '#c9e9ff');
+  document.documentElement.style.setProperty('--sky2', '#ffe6f2');
+  setScreen('community');
+  loadCommunity();
+}
+document.querySelectorAll('#comTabs button').forEach((b) => b.addEventListener('click', () => { sfx.click(); comSort = b.dataset.sort; loadCommunity(); }));
+$('comBack').addEventListener('click', () => { sfx.click(); showMenu(); });
+$('comCreate').addEventListener('click', () => { sfx.click(); showEditor(); });
+
+// ---- Editor ----
+const editor = createEditor({
+  onTest: (rows, worldId) => startTest(rows, worldId),
+  onPublish: (rows, worldId) => openPublish(rows, worldId),
+  onBack: () => showMenu(),
+  toast,
+  sfx: () => sfx.click(),
+});
+function showEditor() {
+  state = 'editor';
+  cur = null;
+  setScreen('editor');
+  editor.open();
+}
+
+let pubData = null;
+function openPublish(rows, worldId) {
+  pubData = { rows, worldId };
+  $('pubForm').hidden = false;
+  $('pubDone').hidden = true;
+  $('pubErr').textContent = '';
+  $('pubAuthor').value = store.get('author', '');
+  openModal('mPublish');
+  setTimeout(() => $('pubName').focus(), 350);
+}
+$('pubSend').addEventListener('click', async () => {
+  const name = $('pubName').value.trim(), author = $('pubAuthor').value.trim();
+  const btn = $('pubSend');
+  btn.disabled = true;
+  $('pubErr').textContent = '';
+  try {
+    const { id } = await api.publish({ name, author, world: pubData.worldId, map: pubData.rows });
+    store.set('author', author);
+    const mine = store.get('myMaps', []);
+    mine.unshift(id);
+    store.set('myMaps', mine.slice(0, 50));
+    $('pubForm').hidden = true;
+    $('pubDone').hidden = false;
+    $('pubLink').textContent = mapLink(id);
+    shareText = `🏝️ He creado un mapa en Isla Rodante: "${name}". ¿Eres capaz de superarlo?\n${mapLink(id)}`;
+    sfx.win();
+    editor.reset();
+  } catch (e) {
+    $('pubErr').textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+$('pubShare').addEventListener('click', () => shareOrCopy(shareText));
+$('pubSee').addEventListener('click', () => { closeModal('mPublish'); comSort = 'mine'; showCommunity(); });
+
 // ---- Pausa ----
 function pause() {
   if (state !== 'play') return;
@@ -858,58 +1110,118 @@ function resume() {
 }
 function restart() {
   closeModal('mPause'); closeModal('mDone');
-  if (cur.daily) startDaily(); else startLevel(cur.wi, cur.li);
+  if (!cur) return showMenu();
+  if (cur.mode === 'adv') startLevel(cur.wi, cur.li);
+  else if (cur.mode === 'daily') startDaily();
+  else if (cur.mode === 'inf') startInfinite();
+  else if (cur.mode === 'test') startTest(cur.rows, cur.worldId);
+  else if (cur.mode === 'com') startCommunity(cur.m);
+}
+function exitPlay() {
+  closeModal('mPause'); closeModal('mDone');
+  const mode = cur && cur.mode;
+  if (mode === 'adv') showLevels(cur.wi);
+  else if (mode === 'test') showEditor();
+  else if (mode === 'com') showCommunity();
+  else showMenu();
 }
 $('pauseBtn').addEventListener('click', pause);
 $('resumeBtn').addEventListener('click', resume);
 $('restartBtn').addEventListener('click', restart);
-$('quitBtn').addEventListener('click', () => { closeModal('mPause'); cur && !cur.daily ? showLevels(cur.wi) : showMenu(); });
+$('quitBtn').addEventListener('click', exitPlay);
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 
-// ---- Nivel completado ----
+// ---- Ventana de resultado ----
 let shareText = '';
-function showComplete(stars, record) {
-  const m = $('mDone');
-  $('doneTitle').textContent = cur.daily ? '¡Isla del día superada!' : ['', '¡Superado!', '¡Muy bien!', '¡Perfecto!'][stars];
-  $('doneTime').textContent = fmtTime(timer);
-  $('donePar').textContent = timer <= level.par ? '✓ Dentro del objetivo' : `Objetivo: ${fmtTime(level.par)}`;
-  $('doneGems').textContent = `${gemsTaken}/3`;
-  $('doneFalls').textContent = falls;
-  $('doneRecord').hidden = !record;
-  const starsEl = [...$('doneStars').children];
-  starsEl.forEach((el, i) => {
-    el.classList.remove('show', 'on'); void el.offsetWidth;
-    setTimeout(() => { el.classList.add('show'); if (i < stars) { el.classList.add('on'); sfx.star(i); } }, 250 + i * 230);
-  });
-  const nextBtn = $('nextBtn');
-  const shareBtn = $('shareBtn');
-  if (cur.daily) {
-    nextBtn.hidden = true; shareBtn.hidden = false;
-    shareText = `🏝️ Isla Rodante #${cur.n}\n⏱️ ${fmtTime(timer)} · 💎 ${gemsTaken}/3 · ${'⭐'.repeat(stars)}\n¿Me ganas? ${location.origin}${location.pathname}`;
+function openDone(o) {
+  $('doneTitle').textContent = o.title;
+  $('doneRecord').hidden = !o.record;
+  const starsBox = $('doneStars');
+  starsBox.hidden = o.stars == null;
+  if (o.stars != null) {
+    [...starsBox.children].forEach((el, i) => {
+      el.classList.remove('show', 'on'); void el.offsetWidth;
+      setTimeout(() => { el.classList.add('show'); if (i < o.stars) { el.classList.add('on'); sfx.star(i); } }, 250 + i * 230);
+    });
+  }
+  for (const [n, k] of [[1, o.k1], [2, o.k2]]) {
+    $('doneCap' + n).textContent = k[0];
+    $('doneVal' + n).textContent = k[1];
+    $('doneSub' + n).textContent = k[2] || '';
+  }
+  const primary = $('nextBtn');
+  primary.hidden = !o.primary;
+  if (o.primary) { primary.querySelector('.btn-main').textContent = o.primary.label; primary.onclick = o.primary.fn; }
+  $('shareBtn').hidden = !o.share;
+  const like = $('likeBtn');
+  like.hidden = !o.like;
+  if (o.like) {
+    const liked = store.get('liked', []).includes(o.like);
+    like.classList.toggle('on', liked);
+    like.querySelector('.btn-main').textContent = liked ? '♥ Te gusta' : '♡ Me gusta';
+    like.onclick = () => {
+      const l = store.get('liked', []);
+      if (l.includes(o.like)) return;
+      l.push(o.like); store.set('liked', l);
+      api.ping(o.like, 'like');
+      like.classList.add('on');
+      like.querySelector('.btn-main').textContent = '♥ Te gusta';
+      sfx.gem();
+    };
+  }
+  $('retryBtn').hidden = o.retry === false;
+  $('doneMenuBtn').querySelector('.btn-main').textContent = o.exitLabel || 'Salir';
+  $('doneBtns').classList.toggle('single', o.retry === false);
+  openModal('mDone');
+}
+
+function showDoneLevel(stars, record) {
+  let title = ['', '¡Superado!', '¡Muy bien!', '¡Perfecto!'][stars];
+  let primary = null;
+  let share = false;
+  if (cur.mode === 'daily') {
+    title = '¡Isla del día superada!';
+    share = true;
+    shareText = `🏝️ Isla Rodante #${cur.n}\n⏱️ ${fmtTime(timer)} · 💎 ${gemsTaken}/${gems.length} · ${'⭐'.repeat(stars)}\n¿Me ganas? ${location.origin}${location.pathname}`;
   } else {
     const w = WORLDS[cur.wi];
     const hasNext = cur.li < w.levels.length - 1 || cur.wi < WORLDS.length - 1;
-    nextBtn.hidden = !hasNext; shareBtn.hidden = hasNext;
+    if (hasNext) {
+      primary = { label: 'Siguiente nivel', fn: () => {
+        closeModal('mDone');
+        let { wi, li } = cur;
+        li++;
+        if (li >= WORLDS[wi].levels.length) { wi++; li = 0; }
+        startLevel(wi, li);
+      } };
+    } else {
+      title = '¡Has completado la aventura! 🏆';
+      share = true;
+      primary = { label: 'Modo infinito', fn: () => { closeModal('mDone'); startInfinite(); } };
+    }
     shareText = `🏝️ ¡He superado el nivel ${cur.wi + 1}-${cur.li + 1} de Isla Rodante con ${'⭐'.repeat(stars)}!\n${location.origin}${location.pathname}`;
-    if (!hasNext) $('doneTitle').textContent = '¡Has completado el juego! 🏆';
   }
-  openModal('mDone');
+  openDone({
+    title, stars, record,
+    k1: ['Tiempo', fmtTime(timer), timer <= level.par ? '✓ Dentro del objetivo' : `Objetivo: ${fmtTime(level.par)}`],
+    k2: ['Gemas', `${gemsTaken}/${gems.length}`, `Caídas: ${falls}`],
+    primary, share, retry: true, exitLabel: 'Salir',
+  });
 }
-$('nextBtn').addEventListener('click', () => {
-  closeModal('mDone');
-  let { wi, li } = cur;
-  li++;
-  if (li >= WORLDS[wi].levels.length) { wi++; li = 0; }
-  startLevel(wi, li);
-});
+
+function showDoneTest() {
+  openDone({
+    title: '¡Tu mapa funciona!', stars: null, record: false,
+    k1: ['Tiempo', fmtTime(timer), 'Ya puedes publicarlo'],
+    k2: ['Gemas', `${gemsTaken}/${gems.length}`, `Caídas: ${falls}`],
+    primary: { label: 'Publicar mapa', fn: () => { const { rows, worldId } = cur; closeModal('mDone'); showEditor(); openPublish(rows, worldId); } },
+    share: false, retry: true, exitLabel: 'Editar',
+  });
+}
+
 $('retryBtn').addEventListener('click', restart);
-$('doneMenuBtn').addEventListener('click', () => { closeModal('mDone'); cur && !cur.daily ? showLevels(cur.wi) : showMenu(); });
-$('shareBtn').addEventListener('click', async () => {
-  try { if (navigator.share) { await navigator.share({ text: shareText }); return; } }
-  catch (e) { if (e && e.name === 'AbortError') return; }
-  try { await navigator.clipboard.writeText(shareText); toast('¡Copiado! Pégalo donde quieras'); }
-  catch { toast('No se pudo compartir'); }
-});
+$('doneMenuBtn').addEventListener('click', exitPlay);
+$('shareBtn').addEventListener('click', () => shareOrCopy(shareText));
 
 // ---- Estadísticas ----
 function fillStats() {
@@ -919,10 +1231,13 @@ function fillStats() {
   const n = dailyNumber();
   $('sLevels').textContent = `${Object.keys(p).length}/${WORLDS.reduce((a, w) => a + w.levels.length, 0)}`;
   $('sStars').textContent = `${totalStars()}/${MAX_STARS}`;
+  $('sInf').textContent = store.get('infBest', 0);
+  $('sCom').textContent = Object.keys(store.get('comDone', {})).length;
   $('sGems').textContent = s.gems;
   $('sFalls').textContent = s.falls;
   $('sStreak').textContent = st.last === n || st.last === n - 1 ? st.count : 0;
   $('sMax').textContent = st.max || 0;
+  $('sMine').textContent = store.get('myMaps', []).length;
   const box = $('sWorlds');
   box.innerHTML = '';
   WORLDS.forEach((w, wi) => {
@@ -954,7 +1269,7 @@ $('optMotion').addEventListener('change', async (e) => {
 });
 $('resetBtn').addEventListener('click', () => {
   if (!confirm('¿Borrar tu progreso, estrellas y estadísticas? No se puede deshacer.')) return;
-  for (const k of ['progress', 'daily', 'streak', 'stats']) { try { localStorage.removeItem('isla.' + k); } catch { /* nada */ } }
+  for (const k of ['progress', 'daily', 'streak', 'stats', 'infBest', 'comDone']) { try { localStorage.removeItem('isla.' + k); } catch { /* nada */ } }
   closeModal('mSettings');
   showMenu();
   toast('Progreso borrado');
@@ -969,15 +1284,32 @@ window.addEventListener('orientationchange', () => setTimeout(fitCamera, 250));
 showMenu();
 fitCamera();
 requestAnimationFrame(loop);
+
+// Enlace directo a un mapa de la comunidad: ?mapa=xxxxxxx
+const sharedId = new URLSearchParams(location.search).get('mapa');
+async function openShared() {
+  if (!sharedId) return false;
+  history.replaceState(null, '', location.pathname);
+  try {
+    const m = await api.getMap(sharedId);
+    startCommunity(m);
+    toast(`Mapa de ${m.author}`);
+  } catch (e) { toast(e.message); }
+  return true;
+}
+
 Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, new Promise((r) => setTimeout(r, 1500))])
   .catch(() => {})
-  .then(() => setTimeout(() => {
+  .then(() => setTimeout(async () => {
     ui.splash.classList.add('done');
+    if (await openShared()) return;
     if (!store.get('seenHelp', false)) { store.set('seenHelp', true); setTimeout(() => openModal('mHelp'), 500); }
   }, 300));
 
 // Gancho para pruebas automáticas
 window.__isla = {
   get state() { return state; }, get B() { return B; }, get level() { return level; }, get timer() { return timer; },
-  get gemsTaken() { return gemsTaken; }, startLevel, startDaily, setTilt: (x, z) => { touch = { dx: (-z / MAX_TILT) * STICK_R, dy: (x / MAX_TILT) * STICK_R }; }, release: () => { touch = null; },
+  get gemsTaken() { return gemsTaken; }, get cur() { return cur; },
+  startLevel, startDaily, startInfinite, startTest, startCommunity, showCommunity, showEditor,
+  setTilt: (x, z) => { touch = { dx: (-z / MAX_TILT) * STICK_R, dy: (x / MAX_TILT) * STICK_R }; }, release: () => { touch = null; },
 };

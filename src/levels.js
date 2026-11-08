@@ -309,3 +309,223 @@ export function prepare(level) {
   len += bfs(map.map((r) => [...r]), cx, cy)[gy][gx];
   return { ...level, map, w, h: map.length, start: [sx, sy], goal: [gx, gy], gems, reachable: Number.isFinite(d[gy][gx]), par: Math.round(4 + len * 0.55) };
 }
+
+// ---------------------------------------------------------------------------
+// Validación de mapas (editor y servidor usan las mismas reglas)
+// ---------------------------------------------------------------------------
+export const MAP_LIMITS = { minW: 4, maxW: 16, minH: 4, maxH: 18, maxGems: 5 };
+const WALKABLE = (c) => c === '.' || c === '~' || c === 'S' || c === 'G' || c === '*';
+
+export function validateMap(rows) {
+  const errs = [];
+  if (!Array.isArray(rows) || !rows.length) return ['El mapa está vacío'];
+  const h = rows.length, w = Math.max(...rows.map((r) => r.length));
+  if (w < MAP_LIMITS.minW || h < MAP_LIMITS.minH) errs.push(`Tamaño mínimo ${MAP_LIMITS.minW}×${MAP_LIMITS.minH}`);
+  if (w > MAP_LIMITS.maxW || h > MAP_LIMITS.maxH) errs.push(`Tamaño máximo ${MAP_LIMITS.maxW}×${MAP_LIMITS.maxH}`);
+  const g = rows.map((r) => [...r.padEnd(w, ' ')]);
+  let S = null, G = null, gems = [];
+  g.forEach((r, y) => r.forEach((c, x) => {
+    if (!'#.~SGT* o'.includes(c)) errs.push('Hay casillas no válidas');
+    if (c === 'S') S = S ? 'dup' : [x, y];
+    if (c === 'G') G = G ? 'dup' : [x, y];
+    if (c === '*') gems.push([x, y]);
+  }));
+  if (!S) errs.push('Falta la salida');
+  if (!G) errs.push('Falta la meta');
+  if (S === 'dup') errs.push('Solo puede haber una salida');
+  if (G === 'dup') errs.push('Solo puede haber una meta');
+  if (gems.length > MAP_LIMITS.maxGems) errs.push(`Máximo ${MAP_LIMITS.maxGems} gemas`);
+  if (errs.length) return [...new Set(errs)];
+  const d = bfs(g, S[0], S[1]);
+  if (!Number.isFinite(d[G[1]][G[0]])) errs.push('No se puede llegar a la meta desde la salida');
+  if (gems.some(([x, y]) => !Number.isFinite(d[y][x]))) errs.push('Hay gemas a las que no se puede llegar');
+  return errs;
+}
+
+// Dificultad estimada de 1 a 5
+export function estimateDifficulty(rows) {
+  const lv = prepare({ map: rows });
+  let edge = 0, ice = 0;
+  lv.map.forEach((r, y) => [...r].forEach((c, x) => {
+    if (!WALKABLE(c)) return;
+    if (c === '~') ice++;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const n = (lv.map[y + dy] || '')[x + dx];
+      if (!n || n === ' ' || n === 'o') { edge++; break; }
+    }
+  }));
+  const score = (lv.par - 12) / 22 + edge / 26 + ice / 45;
+  return clampInt(1 + Math.round(score), 1, 5);
+}
+const clampInt = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ---------------------------------------------------------------------------
+// Modo infinito: islas generadas cada vez más difíciles
+// ---------------------------------------------------------------------------
+export function infiniteLevel(n, runSeed) {
+  const rnd = mulberry32(runSeed * 7919 + n * 104729);
+  const cw = Math.min(3 + Math.floor(n / 4), 7);
+  const ch = Math.min(3 + Math.floor(n / 3), 8);
+  const W = cw * 2 + 1, H = ch * 2 + 1;
+  const g = Array.from({ length: H }, () => Array(W).fill('#'));
+  const seen = Array.from({ length: ch }, () => Array(cw).fill(false));
+  const stack = [[0, 0]];
+  seen[0][0] = true;
+  g[1][1] = '.';
+  while (stack.length) {
+    const [x, y] = stack[stack.length - 1];
+    const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      .map(([dx, dy]) => [x + dx, y + dy, dx, dy])
+      .filter(([nx, ny]) => nx >= 0 && ny >= 0 && nx < cw && ny < ch && !seen[ny][nx]);
+    if (!nb.length) { stack.pop(); continue; }
+    const [nx, ny, dx, dy] = nb[Math.floor(rnd() * nb.length)];
+    seen[ny][nx] = true;
+    g[y * 2 + 1 + dy][x * 2 + 1 + dx] = '.';
+    g[ny * 2 + 1][nx * 2 + 1] = '.';
+    stack.push([nx, ny]);
+  }
+  // Atajos
+  for (let i = 0; i < 2 + cw; i++) {
+    const x = 1 + Math.floor(rnd() * (W - 2)), y = 1 + Math.floor(rnd() * (H - 2));
+    if (g[y][x] === '#' && (x + y) % 2 === 1) g[y][x] = '.';
+  }
+  // Salida, meta y gemas
+  const dist = bfs(g, 1, 1);
+  const cells = [];
+  for (let y = 1; y < H; y += 2) for (let x = 1; x < W; x += 2) cells.push([x, y, dist[y][x]]);
+  cells.sort((a, b) => b[2] - a[2]);
+  g[1][1] = 'S';
+  g[cells[0][1]][cells[0][0]] = 'G';
+  const free = cells.filter(([x, y]) => g[y][x] === '.');
+  for (let i = 0; i < 3 && free.length; i++) {
+    const k = Math.floor(rnd() * free.length);
+    const [x, y] = free.splice(k, 1)[0];
+    g[y][x] = '*';
+  }
+  // Peligros según el nivel
+  const pit = n >= 4 ? Math.min(0.35, 0.06 * (n - 3)) : 0;   // agujeros dentro
+  const edge = n >= 7 ? Math.min(0.7, 0.08 * (n - 6)) : 0;   // bordes sin muro
+  const ice = n >= 10 ? Math.min(0.6, 0.07 * (n - 9)) : 0;   // hielo
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (g[y][x] !== '#') continue;
+      const border = x === 0 || y === 0 || x === W - 1 || y === H - 1;
+      if (border ? rnd() < edge : rnd() < pit) g[y][x] = border ? ' ' : 'o';
+    }
+  }
+  if (ice) {
+    const seeds = Math.max(1, Math.round(ice * 6));
+    for (let s = 0; s < seeds; s++) {
+      let [x, y] = cells[Math.floor(rnd() * cells.length)];
+      for (let k = 0; k < 10; k++) {
+        if (g[y][x] === '.') g[y][x] = '~';
+        const [dx, dy] = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(rnd() * 4)];
+        const nx = x + dx, ny = y + dy;
+        if (WALKABLE((g[ny] || [])[nx])) { x = nx; y = ny; }
+      }
+    }
+  }
+  // Árboles decorativos en algunos muros
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g[y][x] === '#' && rnd() < 0.06) g[y][x] = 'T';
+  const world = WORLDS[Math.floor((n - 1) / 5) % WORLDS.length];
+  return { name: `Isla ${n}`, map: g.map((r) => r.join('')), world };
+}
+
+// ---------------------------------------------------------------------------
+// Mapas del equipo para estrenar la sección de Comunidad (se suben una vez)
+// ---------------------------------------------------------------------------
+export const TEAM_MAPS = [
+  { name: 'La escalera rota', world: 'desierto', map: [
+    '.S..       ',
+    '...o.      ',
+    ' o....*    ',
+    '   o...    ',
+    '    ....o  ',
+    '    *o...  ',
+    '      o....',
+    '       .*.G',
+  ] },
+  { name: 'Espiral helada', world: 'nieve', map: [
+    '#############',
+    '#S~~~~~~~~~~#',
+    '#o#########~#',
+    '#~#*~~~~~~#~#',
+    '#~#~#####~#~#',
+    '#~#~#G~*#~#~#',
+    '#~#~###~#~#~#',
+    '#~#~~~~~#~#~#',
+    '#~#######~o~#',
+    '#~~~~*~~~~~~#',
+    '#############',
+  ] },
+  { name: 'Hilo de seda', world: 'pradera', map: [
+    '...           ',
+    '.S...........*',
+    '...         ..',
+    '            . ',
+    '  *.......... ',
+    '  .           ',
+    '  ...........G',
+    '            *.',
+  ] },
+  { name: 'Campo de minas', world: 'desierto', map: [
+    '###########',
+    '#S..o...o*#',
+    '#.o.o.o.o.#',
+    '#.o...o...#',
+    '#.ooo.ooo.#',
+    '#*..o...o.#',
+    '#.o.o.o.o.#',
+    '#...o.*.oG#',
+    '###########',
+  ] },
+  { name: 'Patinaje artístico', world: 'nieve', map: [
+    ' ~~~~~~~~~ ',
+    '~~S~~o~~~*~',
+    '~~~~ooo~~~~',
+    '~o~~~o~~~o~',
+    '~~~~~~~~~~~',
+    '~*~o~~~o~~~',
+    '~~ooo~ooo~~',
+    '~~~o~*~o~G~',
+    ' ~~~~~~~~~ ',
+  ] },
+  { name: 'Laberinto sin paredes', world: 'pradera', map: [
+    'S..oG.*....',
+    'oo.ooooooo.',
+    '.o...o*....',
+    '.o.o.o.oooo',
+    '.....o..*..',
+    '.ooooooo.o.',
+    '...o.......',
+    'oo.o.ooooo.',
+    '...o.o...o.',
+    '.ooo.o.o.o.',
+    '...o...o.o.',
+    'oo.ooooo.o.',
+    '...........',
+  ] },
+  { name: 'Las cuatro esquinas', world: 'pradera', map: [
+    '....     ....',
+    '.S..     .*..',
+    '.............',
+    '..   .~.   ..',
+    '     ~~~     ',
+    '..   .~.   ..',
+    '.............',
+    '.*..     ..G.',
+    '....     .*..',
+  ] },
+  { name: 'Cumbre final', world: 'nieve', map: [
+    'T###########T',
+    '#S.o~~~~~o.*#',
+    '#..~~###~~..#',
+    '#oo~~#G#~~oo#',
+    '#~~~~#.#~~~~#',
+    '#~##o#.#o##~#',
+    '#~~~~~.~~~~~#',
+    '#o~*~ooo~~~o#',
+    '#~~~~~~~~~*~#',
+    'T###########T',
+  ] },
+];

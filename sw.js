@@ -1,6 +1,6 @@
 // Service worker: permite jugar sin conexión.
 // Red primero (siempre la última versión) y caché como respaldo.
-const CACHE = 'isla-rodante-v1';
+const CACHE = 'isla-rodante-v2';
 const FILES = [
   './', 'index.html', 'styles.css', 'src/main.js', 'src/levels.js', 'vendor/three.module.min.js',
   'manifest.webmanifest', 'fonts/fredoka.woff2',
@@ -20,7 +20,9 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const url = new URL(e.request.url);
+  // La API de mapas siempre va a la red (nunca a la caché)
+  if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {

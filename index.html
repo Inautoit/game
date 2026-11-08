@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Isla Rodante 🏝️</title>
-  <meta name="description" content="Inclina la isla y lleva la bola hasta la meta. 18 niveles en 3 mundos y una isla nueva cada día.">
+  <meta name="description" content="Inclina la isla y lleva la bola hasta la meta. Aventura, modo infinito, isla del día y mapas creados por jugadores.">
   <meta name="theme-color" content="#bfe8ff">
 
   <meta property="og:type" content="website">
@@ -63,14 +63,16 @@
     </div>
     <div class="menu-actions">
       <button id="playBtn" class="btn primary">
-        <span class="btn-main">Jugar</span>
+        <span class="btn-main">Aventura</span>
         <span id="playSub" class="btn-sub">Nivel 1-1</span>
       </button>
-      <button id="dailyBtn" class="btn secondary">
-        <span class="btn-main">Isla del día <span id="dailyN"></span> <span id="streak" class="streak"></span></span>
-        <span id="dailySub" class="btn-sub">Un laberinto nuevo cada día</span>
-      </button>
-      <div class="footer">v2.0 · Funciona sin conexión · <button class="link" data-open="mSettings">Privacidad</button></div>
+      <div class="tiles">
+        <button id="infBtn" class="tile t-inf"><span class="ti">∞</span><b>Infinito</b><small id="infSub">Islas sin fin</small></button>
+        <button id="dailyBtn" class="tile t-day"><span class="ti">📅</span><b>Isla del día <span id="dailyN"></span></b><small><span id="dailySub">¡Nueva!</span> <span id="streak"></span></small></button>
+        <button id="comBtn" class="tile t-com"><span class="ti">🌍</span><b>Comunidad</b><small>Mapas de jugadores</small></button>
+        <button id="editBtn" class="tile t-edit"><span class="ti">🛠️</span><b>Crear mapa</b><small>Diseña y comparte</small></button>
+      </div>
+      <div class="footer">v3.0 · Funciona sin conexión · <button class="link" data-open="mSettings">Privacidad</button></div>
     </div>
   </div>
 
@@ -84,6 +86,48 @@
     <div class="levels-panel">
       <div id="worldTabs" class="tabs"></div>
       <div id="levelGrid" class="level-grid"></div>
+    </div>
+  </div>
+
+  <!-- Comunidad -->
+  <div id="community" class="screen">
+    <div class="topbar">
+      <button id="comBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
+      <h2 class="title">Comunidad</h2>
+      <div class="spacer"></div>
+      <button id="comCreate" class="chip-btn">＋ Crear mapa</button>
+    </div>
+    <div class="com-panel">
+      <div id="comTabs" class="seg">
+        <button data-sort="top" class="on">🔥 Populares</button>
+        <button data-sort="new">🆕 Nuevos</button>
+        <button data-sort="hard">💀 Difíciles</button>
+        <button data-sort="mine">⭐ Míos</button>
+      </div>
+      <div id="comList" class="com-list"></div>
+    </div>
+  </div>
+
+  <!-- Editor de mapas -->
+  <div id="editor" class="screen">
+    <div class="topbar">
+      <button id="edBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
+      <h2 class="title">Crear mapa</h2>
+      <div class="spacer"></div>
+      <div id="edWorld" class="seg mini"></div>
+    </div>
+    <div class="ed-bar">
+      <div class="stepper" title="Ancho"><span>↔</span><button id="edWm" aria-label="Menos ancho">−</button><b id="edSizeW">9</b><button id="edWp" aria-label="Más ancho">＋</button></div>
+      <div class="stepper" title="Alto"><span>↕</span><button id="edHm" aria-label="Menos alto">−</button><b id="edSizeH">11</b><button id="edHp" aria-label="Más alto">＋</button></div>
+      <div class="ed-gems">💎 <b id="edGems">0/5</b></div>
+      <button id="edClear" class="chip-btn small">Nuevo</button>
+    </div>
+    <div id="edCanvasWrap" class="ed-canvas"><canvas id="edCanvas"></canvas></div>
+    <div id="edMsg" class="ed-msg"></div>
+    <div id="edTools" class="ed-tools"></div>
+    <div class="ed-actions">
+      <button id="edTest" class="btn secondary"><span class="btn-main">▶ Probar</span></button>
+      <button id="edPublish" class="btn primary" disabled><span class="btn-main">⬆ Publicar</span></button>
     </div>
   </div>
 
@@ -111,12 +155,15 @@
       <h3 id="doneTitle" class="center">¡Superado!</h3>
       <div id="doneRecord" class="badge" hidden>Nuevo récord</div>
       <div class="kv">
-        <div><span class="cap">Tiempo</span><b id="doneTime">0:00,0</b><small id="donePar"></small></div>
-        <div><span class="cap">Gemas</span><b id="doneGems">0/3</b><small>Caídas: <span id="doneFalls">0</span></small></div>
+        <div><span id="doneCap1" class="cap">Tiempo</span><b id="doneVal1">0:00,0</b><small id="doneSub1"></small></div>
+        <div><span id="doneCap2" class="cap">Gemas</span><b id="doneVal2">0/3</b><small id="doneSub2"></small></div>
       </div>
       <button id="nextBtn" class="btn primary"><span class="btn-main">Siguiente nivel</span></button>
-      <button id="shareBtn" class="btn primary" hidden><span class="btn-main">Compartir resultado</span></button>
-      <div class="row2">
+      <div class="row2 social">
+        <button id="likeBtn" class="btn ghost like" hidden><span class="btn-main">♡ Me gusta</span></button>
+        <button id="shareBtn" class="btn ghost" hidden><span class="btn-main">📤 Compartir</span></button>
+      </div>
+      <div id="doneBtns" class="row2">
         <button id="retryBtn" class="btn secondary"><span class="btn-main">Repetir</span></button>
         <button id="doneMenuBtn" class="btn ghost"><span class="btn-main">Salir</span></button>
       </div>
@@ -143,7 +190,8 @@
       <ol class="steps">
         <li><div class="step-ico">👆</div><div><b>Arrastra el dedo</b><br>en cualquier parte para inclinar la isla.</div></li>
         <li><div class="step-ico">⚽</div><div><b>Lleva la bola a la bandera</b><br>sin caerte por los bordes ni los agujeros.</div></li>
-        <li><div class="step-ico">⭐</div><div><b>Consigue 3 estrellas</b><br>Llega a la meta, recoge las 3 gemas y bate el tiempo objetivo.</div></li>
+        <li><div class="step-ico">⭐</div><div><b>Consigue 3 estrellas</b><br>Llega a la meta, recoge todas las gemas y bate el tiempo objetivo.</div></li>
+        <li><div class="step-ico">🛠️</div><div><b>Crea tus mapas</b><br>Diseña una isla, supérala y publícala para que la juegue todo el mundo.</div></li>
       </ol>
       <div class="worlds-info">
         <div><span>🌿</span><b>Pradera</b><small>Laberintos</small></div>
@@ -167,6 +215,9 @@
         <div><b id="sFalls">0</b><span>Caídas</span></div>
         <div><b id="sStreak">0</b><span>Racha diaria</span></div>
         <div><b id="sMax">0</b><span>Mejor racha</span></div>
+        <div><b id="sInf">0</b><span>Récord infinito</span></div>
+        <div><b id="sCom">0</b><span>Mapas superados</span></div>
+        <div><b id="sMine">0</b><span>Mapas creados</span></div>
       </div>
       <h4>Mundos</h4>
       <div id="sWorlds" class="worlds"></div>
@@ -186,7 +237,29 @@
         <h4>Privacidad</h4>
         <p>Isla Rodante no usa cuentas, anuncios ni rastreadores. Tu progreso se guarda solo en este dispositivo.</p>
       </div>
-      <p class="muted small center">Isla Rodante v2.0 · three.js (MIT) · Fredoka (OFL)</p>
+      <p class="muted small center">Isla Rodante v3.0 · three.js (MIT) · Fredoka (OFL)</p>
+    </div>
+  </div>
+
+  <!-- Publicar mapa -->
+  <div id="mPublish" class="modal" role="dialog" aria-modal="true" aria-labelledby="hPub">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hPub">Publicar mapa</h3>
+      <div id="pubForm">
+        <label class="field"><span>Nombre del mapa</span><input id="pubName" maxlength="28" placeholder="Ej.: El laberinto de hielo" autocomplete="off"></label>
+        <label class="field"><span>Tu nombre de jugador</span><input id="pubAuthor" maxlength="20" placeholder="Ej.: Lucía" autocomplete="nickname"></label>
+        <p class="muted small">Tu mapa será público: cualquiera podrá jugarlo desde la sección Comunidad.</p>
+        <div id="pubErr" class="err"></div>
+        <button id="pubSend" class="btn primary"><span class="btn-main">⬆ Publicar</span></button>
+      </div>
+      <div id="pubDone" hidden>
+        <div class="pub-ok">🎉</div>
+        <p class="center"><b>¡Publicado!</b><br><span class="muted">Comparte el enlace para que tus amigos lo jueguen:</span></p>
+        <div id="pubLink" class="linkbox"></div>
+        <button id="pubShare" class="btn primary"><span class="btn-main">📤 Compartir</span></button>
+        <button id="pubSee" class="btn ghost"><span class="btn-main">Ver mis mapas</span></button>
+      </div>
     </div>
   </div>
 
