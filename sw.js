@@ -1,9 +1,10 @@
 // Service worker: permite jugar sin conexión.
 // Red primero (siempre la última versión) y caché como respaldo.
-const CACHE = 'corte-perfecto-v2';
+const CACHE = 'isla-rodante-v1';
 const FILES = [
-  './', 'index.html', 'styles.css', 'src/game.js', 'manifest.webmanifest',
-  'fonts/fredoka.woff2', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
+  './', 'index.html', 'styles.css', 'src/main.js', 'src/levels.js', 'vendor/three.module.min.js',
+  'manifest.webmanifest', 'fonts/fredoka.woff2',
+  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {

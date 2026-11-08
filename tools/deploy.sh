@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Publica el juego como Worker de Cloudflare en https://corte-perfecto.inautoit.workers.dev
+# Publica el juego como Worker de Cloudflare en https://isla-rodante.inautoit.workers.dev
 # Requiere: CLOUDFLARE_API_TOKEN (permiso Workers Scripts: Edit) y CLOUDFLARE_ACCOUNT_ID.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-NAME="${WORKER_NAME:-corte-perfecto}"
+NAME="${WORKER_NAME:-isla-rodante}"
 TMP="$(mktemp -d)"
 mkdir -p "$TMP/dist"
-cp -r index.html styles.css src icons fonts manifest.webmanifest sw.js og-image.png "$TMP/dist/"
+cp -r index.html styles.css src vendor icons fonts manifest.webmanifest sw.js og-image.png "$TMP/dist/"
 python3 -I tools/build_worker.py "$TMP/dist" "$TMP/worker.js"
 API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$NAME"
 curl -fsS -X PUT "$API" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \

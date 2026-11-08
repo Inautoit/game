@@ -1,31 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffb36b"/><stop offset="1" stop-color="#ff4f8b"/>
-    </linearGradient>
-    <radialGradient id="ap" cx="0.35" cy="0.3" r="0.8">
-      <stop offset="0" stop-color="#ff8a90"/><stop offset="0.55" stop-color="#ef3b47"/><stop offset="1" stop-color="#a3141f"/>
-    </radialGradient>
-    <clipPath id="L"><polygon points="0,0 300,0 212,512 0,512"/></clipPath>
-    <clipPath id="Rr"><polygon points="300,0 512,0 512,512 212,512"/></clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fdcff"/><stop offset="1" stop-color="#ffd9ec"/></linearGradient>
+    <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a6e07c"/><stop offset="1" stop-color="#7cc35a"/></linearGradient>
+    <clipPath id="b"><circle cx="246" cy="236" r="62"/></clipPath>
   </defs>
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <circle cx="256" cy="256" r="190" fill="#ffd9a8" opacity="0.5"/>
-  <g transform="translate(-26,-6) rotate(-6 256 280)">
-    <g clip-path="url(#L)">
-      <circle cx="256" cy="285" r="150" fill="url(#ap)" stroke="#a3141f" stroke-width="6"/>
-      <line x1="300" y1="0" x2="212" y2="512" stroke="#fff3d4" stroke-width="36"/>
-    </g>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <g fill="#fff" opacity=".9"><ellipse cx="96" cy="420" rx="70" ry="26"/><ellipse cx="140" cy="404" rx="46" ry="26"/><ellipse cx="420" cy="440" rx="60" ry="22"/></g>
+  <!-- rocas bajo la isla -->
+  <path d="M106 300 L406 300 L360 350 L300 452 L262 360 L214 420 L180 352 L136 330 Z" fill="#8c5f43"/>
+  <path d="M106 300 L406 300 L384 330 L128 330 Z" fill="#b9825a"/>
+  <!-- césped -->
+  <path d="M96 290 Q96 262 124 258 L388 258 Q416 262 416 290 L416 300 Q416 316 396 316 L116 316 Q96 316 96 300 Z" fill="url(#grass)"/>
+  <rect x="106" y="226" width="58" height="40" rx="10" fill="#4fa65a"/>
+  <rect x="348" y="226" width="58" height="40" rx="10" fill="#3f9450"/>
+  <!-- bandera -->
+  <rect x="368" y="130" width="7" height="100" rx="3" fill="#fff"/>
+  <path d="M375 132 L428 150 L375 168 Z" fill="#ff4f8b"/>
+  <!-- bola de playa -->
+  <ellipse cx="250" cy="300" rx="58" ry="12" fill="#000" opacity=".15"/>
+  <g clip-path="url(#b)">
+    <rect x="160" y="160" width="200" height="160" fill="#fff"/>
+    <path d="M246 174 C200 200 196 270 246 298 L170 298 L170 174 Z" fill="#ff5f7e"/>
+    <path d="M246 174 C292 200 296 270 246 298 L322 298 L322 174 Z" fill="#38b6ff"/>
+    <path d="M246 174 C232 210 232 262 246 298 C260 262 260 210 246 174 Z" fill="#ffc93c"/>
   </g>
-  <g transform="translate(26,6) rotate(6 256 280)">
-    <g clip-path="url(#Rr)">
-      <circle cx="256" cy="285" r="150" fill="url(#ap)" stroke="#a3141f" stroke-width="6"/>
-      <line x1="300" y1="0" x2="212" y2="512" stroke="#fff3d4" stroke-width="36"/>
-    </g>
-  </g>
-  <path d="M262 140 q6 -40 26 -52" stroke="#6b3f1d" stroke-width="12" fill="none" stroke-linecap="round"/>
-  <ellipse cx="320" cy="104" rx="38" ry="16" transform="rotate(-25 320 104)" fill="#47b04b"/>
-  <g font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="58" text-anchor="middle" fill="#fff" stroke="#3a1f1a" stroke-width="10" paint-order="stroke">
-    <text x="150" y="470">50</text><text x="362" y="470">50</text>
-  </g>
+  <circle cx="246" cy="236" r="62" fill="none" stroke="#2f2540" stroke-opacity=".12" stroke-width="4"/>
+  <ellipse cx="224" cy="206" rx="16" ry="9" fill="#fff" opacity=".7" transform="rotate(-30 224 206)"/>
 </svg>

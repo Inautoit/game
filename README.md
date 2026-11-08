@@ -1,119 +1,79 @@
-# Corte Perfecto ✂️
+# Isla Rodante 🏝️
 
-**¿Eres capaz de cortar exactamente 50/50?**
+**Inclina la isla. Llega a la meta.**
 
-Juego de habilidad para **iPhone, iPad y Android** (también PC). Aparece una
-figura (manzana, tarta, pez, pizza, estrella…) y tienes que **cortarla en dos
-mitades exactas** con un deslizamiento del dedo. El juego calcula el área real
-de cada trozo y te dice el porcentaje: `49,8% / 50,2%`.
+Puzle de habilidad en **3D** para iPhone, iPad, Android y PC. Arrastra el dedo
+(o inclina el dispositivo) para inclinar una isla flotante y llevar la bola de
+playa hasta la bandera, recogiendo gemas y sin caerte por los bordes.
 
-- ⏱️ **Partidas de ~30 segundos**: 10 cortes, cada uno con su cuenta atrás.
-- 📅 **Reto diario**: las mismas 10 figuras para todo el mundo cada día (#1, #2, #3…).
-- 🔥 **Racha de días** jugando el reto diario.
-- 🎯 **Combos** al encadenar cortes perfectos.
-- 📤 **Compartir resultado** en un mensaje con emojis, al estilo Wordle:
-  ```
-  ✂️ Corte Perfecto #12
-  🎯🟩🟨🟩🎯🟧🟩🟩🎯🟩
-  Precisión: 96,4 % · 1534 pts
-  ```
-- 📲 **Instalable** en la pantalla de inicio y **funciona sin conexión** (PWA).
-- Sin librerías, sin compilación, sin servidor: solo archivos estáticos.
+## 🌐 Jugar
 
-## Cómo se juega
+**<https://isla-rodante.inautoit.workers.dev>**
 
-1. Desliza el dedo en línea recta a través de la figura.
-2. Al soltar, se corta por esa línea (la guía punteada te ayuda a apuntar).
-3. Cuanto más cerca del 50/50, más puntos:
+En iPhone / iPad (Safari): **Compartir → Añadir a pantalla de inicio** para
+tenerlo como app a pantalla completa y sin conexión.
 
-| Diferencia con 50 % | Resultado | Emoji |
-|---|---|---|
-| < 0,25 % | ¡PERFECTO! | 🎯 |
-| < 2,5 % | ¡Genial! | 🟩 |
-| < 5 % | Bien | 🟨 |
-| < 10 % | Regular | 🟧 |
-| ≥ 10 % | ¡Uy! | 🟥 |
-| Se acaba el tiempo | — | ⬛ |
+## Contenido
 
-A partir de la 4.ª figura empiezan a **girar**, y desde la 7.ª también **se mueven**.
-Las figuras no están centradas en la tabla y casi ninguna es simétrica: no vale
-cortar siempre por el medio 😉
+- **18 niveles en 3 mundos**, cada uno con su mecánica:
+  - 🌿 **Pradera** — laberintos.
+  - 🏜️ **Desierto** — agujeros y bordes sin barandilla.
+  - ❄️ **Nieve** — hielo que resbala.
+- **3 estrellas por nivel**: llegar a la meta, recoger las 3 gemas y batir el tiempo objetivo.
+- **Isla del día**: un laberinto nuevo cada día, igual para todos, con racha y resultado para compartir.
+- Progreso, estadísticas y ajustes (sonido, vibración, control por inclinación).
+- Sonido sintetizado (rodar, choques, gemas, victoria) y vibración.
+- Funciona sin conexión (PWA) y no recoge datos.
 
-## Probarlo en tu ordenador
+## Controles
+
+| Dispositivo | Control |
+|---|---|
+| Móvil / iPad | Arrastrar el dedo en cualquier parte (joystick virtual) |
+| Móvil / iPad | Inclinar el dispositivo (activar en Ajustes) |
+| PC | Flechas o WASD · `Esc` pausa · `R` reinicia |
+
+## Probar en local
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Abre <http://localhost:8000>. Desde el móvil (misma wifi):
-`http://IP-DE-TU-ORDENADOR:8000`.
+Abre <http://localhost:8000>.
 
-## 🌐 Jugar ahora
+## Publicar
 
-**<https://corte-perfecto.inautoit.workers.dev>**
-
-Publicado como Worker de Cloudflare. Para volver a publicar tras cambiar algo
-(sube antes la versión de caché en `sw.js`):
+Publicado como Worker de Cloudflare. Tras cambiar algo (sube la versión de
+caché en `sw.js`):
 
 ```bash
 CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... tools/deploy.sh
 ```
 
-## Alternativa: Cloudflare Pages (gratis)
+También sirve cualquier hosting estático (Cloudflare Pages, GitHub Pages,
+Netlify…): no hay que compilar nada.
 
-### Opción A — Conectado a GitHub (recomendada: se actualiza solo)
-1. Entra en <https://dash.cloudflare.com> → **Workers & Pages** → **Create** → pestaña **Pages** → **Connect to Git**.
-2. Elige este repositorio y la rama que quieras publicar.
-3. Configuración de compilación:
-   - **Framework preset:** `None`
-   - **Build command:** *(vacío)*
-   - **Build output directory:** `/`
-4. **Save and Deploy**. Tendrás una dirección tipo `https://corte-perfecto.pages.dev`.
-   Cada `git push` vuelve a publicar automáticamente.
+## Crear niveles
 
-### Opción B — Subir la carpeta a mano
-**Workers & Pages** → **Create** → **Pages** → **Upload assets** → arrastra la
-carpeta del proyecto (sin la carpeta `.git`).
+Los niveles están en `src/levels.js` como mapas de texto:
 
-### Opción C — Desde la terminal
-```bash
-npx wrangler pages deploy . --project-name corte-perfecto
 ```
-
-### Después de publicar
-- Si cambias de dirección, actualiza `og:image` y `og:url` en `index.html`
-  para que la vista previa salga bien al compartir el enlace.
-- Si cambias archivos, sube la versión de caché en `sw.js`
-  (`corte-perfecto-v1` → `v2`) para que los móviles cojan la versión nueva.
-- Puedes poner un dominio propio en **Custom domains** del proyecto de Pages.
-
-## Añadirlo a la pantalla de inicio
-
-- **iPhone / iPad (Safari):** botón **Compartir** → **Añadir a pantalla de inicio**.
-- **Android (Chrome):** menú ⋮ → **Instalar aplicación**.
-
-Se abre a pantalla completa con su icono, como una app.
+#  muro        .  suelo       ~  hielo
+S  salida      G  meta        *  gema (3 por nivel)
+T  árbol       espacio / o    vacío (te caes)
+```
 
 ## Estructura
 
 ```
-index.html            Página, HUD, menú y resultados
-styles.css            Estilos (adaptados a notch y zonas seguras)
-src/game.js           Todo el juego: figuras, corte, puntuación, sonido, controles
-manifest.webmanifest  Datos de la app instalable
-sw.js                 Service worker (modo sin conexión)
+index.html            Interfaz (menús, HUD, ventanas)
+styles.css            Estilos
+src/main.js           Motor del juego: escena 3D, física, controles, sonido
+src/levels.js         Niveles y generador de la Isla del día
+vendor/               three.js (licencia MIT)
 fonts/                Tipografía Fredoka (licencia OFL)
-_headers              Cabeceras para Cloudflare Pages
-tools/                Script de publicación como Worker de Cloudflare
-icons/                Iconos de la app
-og-image.png          Imagen para compartir en redes
+icons/, og-image.png  Iconos y vista previa para redes
+manifest.webmanifest  App instalable
+sw.js                 Modo sin conexión
+tools/                Publicación en Cloudflare
 ```
-
-## Ideas para seguir (y para monetizar)
-
-- **Ranking mundial del reto diario** con Cloudflare Workers + D1.
-- **Retar a un amigo**: enlace con tu puntuación para que intente superarla.
-- **Modo infinito / contrarreloj** y nuevas figuras cada semana.
-- **Cuchillos y tablas personalizados** (cosméticos de pago).
-- **Vídeo del corte** listo para TikTok / Reels.
-- Publicarlo en App Store / Google Play empaquetado con Capacitor.
