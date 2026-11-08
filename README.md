@@ -48,7 +48,18 @@ python3 -m http.server 8000
 Abre <http://localhost:8000>. Desde el móvil (misma wifi):
 `http://IP-DE-TU-ORDENADOR:8000`.
 
-## Publicarlo en Cloudflare Pages (gratis)
+## 🌐 Jugar ahora
+
+**<https://corte-perfecto.inautoit.workers.dev>**
+
+Publicado como Worker de Cloudflare. Para volver a publicar tras cambiar algo
+(sube antes la versión de caché en `sw.js`):
+
+```bash
+CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... tools/deploy.sh
+```
+
+## Alternativa: Cloudflare Pages (gratis)
 
 ### Opción A — Conectado a GitHub (recomendada: se actualiza solo)
 1. Entra en <https://dash.cloudflare.com> → **Workers & Pages** → **Create** → pestaña **Pages** → **Connect to Git**.
@@ -70,9 +81,8 @@ npx wrangler pages deploy . --project-name corte-perfecto
 ```
 
 ### Después de publicar
-- Cambia `og-image.png` en `index.html` por la URL completa
-  (`https://tu-dominio/og-image.png`) para que la vista previa salga bien al
-  compartir el enlace en WhatsApp o redes.
+- Si cambias de dirección, actualiza `og:image` y `og:url` en `index.html`
+  para que la vista previa salga bien al compartir el enlace.
 - Si cambias archivos, sube la versión de caché en `sw.js`
   (`corte-perfecto-v1` → `v2`) para que los móviles cojan la versión nueva.
 - Puedes poner un dominio propio en **Custom domains** del proyecto de Pages.
@@ -93,6 +103,7 @@ src/game.js           Todo el juego: figuras, corte, puntuación, sonido, contro
 manifest.webmanifest  Datos de la app instalable
 sw.js                 Service worker (modo sin conexión)
 _headers              Cabeceras para Cloudflare Pages
+tools/                Script de publicación como Worker de Cloudflare
 icons/                Iconos de la app
 og-image.png          Imagen para compartir en redes
 ```
