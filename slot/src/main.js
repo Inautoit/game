@@ -5,6 +5,7 @@ import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } 
 import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
 import { replay } from './verify.js';
 import { parsePrompt, normSpec, generateTrack, radiusKey } from './aitrack.js';
+import { createMusic } from './music.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
 import { makeTelemetry, telStep, telLap, dangerColor, drawTrace, SECTORS } from './telemetry.js';
@@ -33,7 +34,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('slot.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('slot.' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
 };
-const settings = Object.assign({ sound: true, vibe: true, lefty: false, cam: 'tv', tele: true, brakes: true }, store.get('settings', {}));
+const settings = Object.assign({ sound: true, music: true, vibe: true, lefty: false, cam: 'tv', tele: true, brakes: true }, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
 const vibrate = (p) => { if (settings.vibe && navigator.vibrate) navigator.vibrate(p); };
 const classOf = (setupRaw) => (setupRaw.magnet === 'sin' ? 'pro' : 'iman');
@@ -73,6 +74,14 @@ function decodeSlot() {
   if (!actx || !slotRaw || slotBuf) return;
   const ab = slotRaw.slice(0);
   actx.decodeAudioData(ab, (b) => { slotBuf = b; }, () => {});
+}
+let music = null;
+function updateMusic() {
+  if (!actx) return;
+  if (!music) music = createMusic(actx, master);
+  const want = settings.music && settings.sound && !['race', 'countdown', 'pause', 'results', 'splash'].includes(state);
+  if (want && !music.playing && actx.state === 'running') music.play();
+  else if (!want && music.playing) music.stop(state === 'countdown' ? 0.6 : 0.3);
 }
 function initAudio() {
   if (!actx) {
@@ -1759,6 +1768,7 @@ function loop(now) {
   last = now;
   watchPerf(rawDt);
   requestAnimationFrame(loop);
+  updateMusic();
   if (!T) return;
   if (state === 'countdown' || state === 'race' || state === 'results') {
     stepRace(dt);
@@ -1770,10 +1780,17 @@ function loop(now) {
       let n = 0;
       while (race.acc >= DT && n < 40) { race.acc -= DT; n++; race.simT += DT; for (const c of cars) physStep(c); }
       for (const c of cars) {
+        demoMistakes(c, dt);
         if (c.crash) animateCrash(c, dt);
         else {
           const p = placeCar(c.mesh, c.st.s, c.d, c.st.th);
-          if (c.st.amps < -0.6 && Math.random() < 0.6) emitSpark(p.x, p.y + 0.02, p.z, Math.cos(p.h), Math.sin(p.h));
+          if (c.blink > 0) { c.blink -= dt; c.mesh.visible = Math.floor(c.blink * 12) % 2 === 0; } else c.mesh.visible = true;
+          const wh = c.mesh.userData.wheels;
+          if (wh) { const a = (c.st.v / 0.0105) * dt; for (const w of wh) w.rotateX(a); }
+          updateSkids(c, p);
+          const rate = (c.st.amps < -0.6 ? 70 : 0) + (c.st.v > 3 ? (c.st.v - 3) * 8 : 0);
+          let k = rate * dt;
+          while (k > 0) { if (Math.random() < k) emitSpark(p.x, p.y + 0.02, p.z, Math.cos(p.h), Math.sin(p.h)); k -= 1; }
         }
       }
       updateSparks(dt);
@@ -2003,6 +2020,16 @@ function showMenu() {
   setScreen('menu');
 }
 // Fondo del menú: una carrera de exhibición retransmitida como en la tele (4 coches, circuitos largos)
+const DEMO_MAG = ['bajo', 'sin', 'medio', 'bajo'];
+// Errores del piloto en la exhibición: a menudo aprieta un poco de más (derrapa) y de vez en cuando
+// entra muy pasado en una curva (se sale). Medido: una salida cada ~15 s entre los 4 coches.
+function demoMistakes(c, dt) {
+  if (c.crash) return;
+  if (c.mistake > 0) { c.mistake -= dt; return; }
+  const r = Math.random();
+  if (r < dt * 0.02) { c.mistake = 0.7; c.mistakeMul = 1.14 + Math.random() * 0.12; }
+  else if (r < dt * 0.82) { c.mistake = 0.8; c.mistakeMul = 1.04 + Math.random() * 0.06; }
+}
 const DEMO_TRACKS = ['autodromo', 'internacional', 'gp', 'resistencia', 'montana', 'chicane'];
 let demoIdx = Math.floor(Math.random() * DEMO_TRACKS.length);
 function demoRace() {
@@ -2013,7 +2040,8 @@ function demoRace() {
   const mine = store.get('car0', 'muscle');
   const order = [mine, ...CARS.map((c) => c.id).filter((id) => id !== mine)];
   for (let l = 0; l < T.offsets.length; l++) {
-    makeCar({ liv: LIVERIES[l % LIVERIES.length], lane: l, human: false, name: 'demo', setupRaw: DEFAULT_SETUP, skill: 0.985 - l * 0.012, carId: order[l % order.length] });
+    // Imanes distintos: los de poco imán derrapan más (y alguno acabará fuera)
+    makeCar({ liv: LIVERIES[l % LIVERIES.length], lane: l, human: false, name: 'demo', setupRaw: { ...DEFAULT_SETUP, magnet: DEMO_MAG[l % DEMO_MAG.length] }, skill: 0.985 - l * 0.012, carId: order[l % order.length] });
   }
   // Salen en pelotón, escalonados
   cars.forEach((c, i) => { c.st.s = (T.L - i * 1.6) % T.L; });
@@ -2023,8 +2051,7 @@ function demoRace() {
 }
 // Realizador: cambia de plano cada pocos segundos, como en una retransmisión
 let shot = null, lastShot = '';
-// Los planos a ras de pista (frontal y suelo) salen más a menudo: son los que más lucen
-const SHOTS = ['frontal', 'suelo', 'frontal', 'suelo', 'pista', 'lateral', 'persecucion', 'grua', 'aereo'];
+const SHOTS = ['pista', 'lateral', 'persecucion', 'frontal', 'grua', 'aereo', 'tele', 'pista', 'lateral'];
 const tmpV = new THREE.Vector3();
 function newShot() {
   const live = cars.map((c, i) => i).filter((i) => !cars[i].crash);
@@ -2032,10 +2059,22 @@ function newShot() {
   let type;
   do type = SHOTS[Math.floor(Math.random() * SHOTS.length)]; while (type === lastShot);
   lastShot = type;
-  const ci = shot && live.length > 1 && Math.random() < 0.6 ? live.filter((i) => i !== shot.ci)[Math.floor(Math.random() * (live.length - 1))] : live[Math.floor(Math.random() * live.length)];
+  // Como un realizador de verdad: a menudo pincha el coche que va más cruzado o que está apretando
+  const hot = live.slice().sort((a, b) => (Math.abs(cars[b].st.th) + (cars[b].mistake > 0 ? 0.3 : 0)) - (Math.abs(cars[a].st.th) + (cars[a].mistake > 0 ? 0.3 : 0)))[0];
+  const ci = Math.random() < 0.35 ? hot : shot && live.length > 1 && Math.random() < 0.6 ? live.filter((i) => i !== shot.ci)[Math.floor(Math.random() * (live.length - 1))] : live[Math.floor(Math.random() * live.length)];
   const c = cars[ci];
   shot = { type, ci, t: 0, dur: 4 + Math.random() * 2.5, side: Math.random() < 0.5 ? 1 : -1, a0: Math.random() * Math.PI * 2, fov: 30 };
-  shot.fov = { pista: 22, suelo: 30, lateral: 28, persecucion: 34, frontal: 30, grua: 36, aereo: 40 }[type];
+  shot.fov = { pista: 22, tele: 17, lateral: 28, persecucion: 34, frontal: 30, grua: 36, aereo: 40 }[type];
+  if (type === 'tele') {
+    // Teleobjetivo a ras de pista, lejos y por delante: se ve al coche trazar las curvas
+    const half = (T.offsets.length * LANE_W) / 2 + 0.55;
+    shot.dist = 7.5;
+    const ok = [shot.side, -shot.side].find((sg) => {
+      const q = at(c.st.s + shot.dist, half * sg), r = at(c.st.s, c.d);
+      return clearView(tmpV.set(q.x - T.center.x, q.y + 0.16, q.z - T.center.z).clone(), new THREE.Vector3(r.x - T.center.x, r.y + 0.12, r.z - T.center.z));
+    });
+    if (ok === undefined) { type = shot.type = 'frontal'; shot.fov = 30; } else { shot.side = ok; shot.edge = half * ok; }
+  }
   if (type === 'pista') {
     const low = false;
     // Cámara fija junto a la pista, por delante del coche: lo ve llegar y pasar.
@@ -2070,7 +2109,8 @@ function clearView(a, b) {
   return !hits.some((h) => h.object.visible !== false && h.object.material && !h.object.material.transparent);
 }
 function menuCamera(dt) {
-  if (!shot || shot.t >= shot.dur || cars[shot.ci].crash) { if (!newShot()) { overviewCamera(camGoalPos, camGoalTarget); camPos.lerp(camGoalPos, Math.min(1, dt * 3)); camTarget.lerp(camGoalTarget, Math.min(1, dt * 3)); return; } }
+  if (shot && cars[shot.ci].crash && !shot.crashT) shot.crashT = shot.t;
+  if (!shot || shot.t >= shot.dur || (shot.crashT !== undefined && shot.t - shot.crashT > 1.6)) { if (!newShot()) { overviewCamera(camGoalPos, camGoalTarget); camPos.lerp(camGoalPos, Math.min(1, dt * 3)); camTarget.lerp(camGoalTarget, Math.min(1, dt * 3)); return; } }
   shot.t += dt;
   const c = cars[shot.ci], k = shot.t / shot.dur;
   const p = at(c.st.s, c.d);
@@ -2080,11 +2120,11 @@ function menuCamera(dt) {
   const sd = shot.side;
   switch (shot.type) {
     case 'pista': camGoalPos.copy(shot.fixed); camGoalTarget.set(px, py + 0.08, pz); break;
-    case 'suelo': {
-      // Cámara a ras de pista que rueda junto al carril: el coche le alcanza y la pasa
-      const along = 1.5 - 2.6 * k;
-      camGoalPos.set(px + fx * along + nx * 0.55 * sd, py + 0.1, pz + fz * along + nz * 0.55 * sd);
-      camGoalTarget.set(px + fx * 0.1, py + 0.12, pz + fz * 0.1);
+    case 'tele': {
+      // Va por delante siguiendo la pista (también en las curvas) y se acerca poco a poco
+      const q = at(c.st.s + shot.dist - 2.5 * k, shot.edge);
+      camGoalPos.set(q.x + ox, q.y + 0.16, q.z + oz);
+      camGoalTarget.set(px, py + 0.1, pz);
       break;
     }
     case 'lateral': {
@@ -3133,6 +3173,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && !(r
 // ---- Ajustes y estadísticas ----
 function fillSettings() {
   $('optSound').checked = settings.sound;
+  $('optMusic').checked = settings.music;
   $('optVibe').checked = settings.vibe;
   $('optLefty').checked = settings.lefty;
   $('optTele').checked = settings.tele;
@@ -3140,6 +3181,7 @@ function fillSettings() {
   $('resetConfirm').hidden = true;
 }
 $('optSound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); initAudio(); setMuted(); sfx.click(); });
+$('optMusic').addEventListener('change', (e) => { settings.music = e.target.checked; saveSettings(); initAudio(); });
 $('optVibe').addEventListener('change', (e) => { settings.vibe = e.target.checked; saveSettings(); vibrate(30); });
 $('optLefty').addEventListener('change', (e) => { settings.lefty = e.target.checked; saveSettings(); });
 $('optTele').addEventListener('change', (e) => { settings.tele = e.target.checked; saveSettings(); });

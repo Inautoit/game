@@ -172,3 +172,13 @@ relacionado con ella.
   (lazos con el giro justo, horquillas de 180°, chicanes, rectas largas y, si hay puente, un ocho con rampas) y se
   queda con el que mejor cumple la ficha. Todos pasan por `autoClose`/`validateTrack`: siempre cerrados y sin cruces.
 - `deploy.sh` publica con `keep_bindings: ["secret_text"]` para no borrar el secreto en cada despliegue.
+
+## Menú: carrera de exhibición más real y música
+
+- Los coches de la exhibición llevan imanes distintos (bajo, sin, medio, bajo) y su piloto comete errores: a menudo
+  aprieta de más y derrapa, y de vez en cuando entra pasado y se sale (medido: una salida cada ~15 s entre los 4).
+  Hay marcas de frenada, chispas y ruedas girando como en carrera. El realizador pincha a menudo el coche que va más
+  cruzado y, si el coche del plano se sale, aguanta el plano para que se vea.
+- Plano «tele»: teleobjetivo a ras de pista, lejos y por delante, siguiendo la pista para ver cómo traza las curvas.
+- Música (`src/music.js`): electrónica de carreras sintetizada en directo con Web Audio, 116 BPM, 32 compases con
+  entrada, cuerpo y subida. Suena en los menús y se funde al empezar la carrera. Se quita en Ajustes → Música.
