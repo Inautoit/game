@@ -92,8 +92,11 @@
       <button id="edBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
       <div><h2 class="title">Crear circuito</h2><div id="edInfo" class="subtitle"></div></div>
       <div class="spacer"></div>
-      <button id="edTest" class="btn small secondary"><span class="btn-main">▶ Probar</span></button>
-      <button id="edPublish" class="btn small primary"><span class="btn-main">Publicar</span></button>
+      <div class="ed-actions">
+        <button id="edSave" class="btn small ghost"><span class="btn-main">💾 Guardar</span></button>
+        <button id="edTest" class="btn small secondary"><span class="btn-main">▶ Probar</span></button>
+        <button id="edPublish" class="btn small primary"><span class="btn-main">Publicar</span></button>
+      </div>
     </div>
     <div class="ed-body">
       <canvas id="edCanvas" class="ed-canvas" aria-label="Vista del circuito"></canvas>
@@ -222,6 +225,17 @@
         <button id="againBtn" class="btn secondary"><span class="btn-main">Revancha</span></button>
         <button id="resMenuBtn" class="btn ghost"><span class="btn-main">Circuitos</span></button>
       </div>
+    </div>
+  </div>
+
+  <!-- Guardar circuito -->
+  <div id="mSave" class="modal center" role="dialog" aria-modal="true" aria-labelledby="hSave">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hSave">Guardar circuito</h3>
+      <label class="field"><span>Nombre del circuito</span><input id="saveName" maxlength="28" placeholder="Ej.: Curvas del Pinar"></label>
+      <p class="muted small">Se guarda en este dispositivo, en «Mis circuitos». Para que lo jueguen otros, usa «Publicar».</p>
+      <button id="saveGo" class="btn primary"><span class="btn-main">Guardar</span></button>
     </div>
   </div>
 

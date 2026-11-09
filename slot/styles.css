@@ -418,3 +418,10 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .btn.on-ready { background: linear-gradient(135deg, #3ddc84, #1f9d48); color: #08210f; box-shadow: 0 5px 0 #146b30; }
 .on-laps { margin-top: 10px; justify-content: space-between; }
 .on-laps[hidden] { display: none; }
+#editor .topbar { flex-wrap: wrap; }
+.ed-actions { display: flex; gap: 8px; }
+@media (max-width: 620px) {
+  .ed-actions { width: 100%; }
+  .ed-actions .btn { flex: 1; }
+  #editor .title { font-size: 24px; }
+}

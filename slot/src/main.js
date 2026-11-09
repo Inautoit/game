@@ -1960,13 +1960,25 @@ function showCircuits() {
     if (!mine.length) empty('Aún no has creado circuitos. Pulsa «＋ Crear».');
     for (const d of mine) {
       const closed = closeDraft(d);
-      if (!closed.pieces) continue;
-      const def = draftDef(d, closed);
       const wrap = document.createElement('div'); wrap.className = 'circ-wrap';
-      wrap.appendChild(circButton(def, [
-        ['', d.name || 'Sin nombre'], ['', `${lenTxt(def)} · ${d.lanes} carriles · ${d.laps} ${d.laps === 1 ? 'vuelta' : 'vueltas'}`],
-        ['by', d.published ? '🌍 Publicado' : '📝 Solo en este dispositivo'], ['rec', recTxt(def)],
-      ], () => chooseTrack(def)));
+      if (!closed.pieces && pickForOnline) continue;
+      if (!closed.pieces) {
+        // Sin terminar: se abre en el editor
+        const b = document.createElement('button'); b.className = 'circ';
+        const info = document.createElement('div'); info.className = 'ci';
+        const nm = document.createElement('b'); nm.textContent = d.name || 'Sin nombre';
+        const st = document.createElement('small'); st.textContent = `✏️ Sin terminar · ${d.pieces.length} piezas`;
+        const hint = document.createElement('small'); hint.className = 'rec'; hint.textContent = 'Toca para seguir editándolo';
+        info.append(nm, st, hint); b.appendChild(info);
+        b.addEventListener('click', () => { sfx.click(); openEditor(d); });
+        wrap.appendChild(b);
+      } else {
+        const def = draftDef(d, closed);
+        wrap.appendChild(circButton(def, [
+          ['', d.name || 'Sin nombre'], ['', `${lenTxt(def)} · ${d.lanes} carriles · ${d.laps} ${d.laps === 1 ? 'vuelta' : 'vueltas'}`],
+          ['by', d.published ? '🌍 Publicado' : '📝 Solo en este dispositivo'], ['rec', recTxt(def)],
+        ], () => chooseTrack(def)));
+      }
       if (!pickForOnline) {
         const act = document.createElement('div'); act.className = 'circ-act';
         const ed = document.createElement('button'); ed.textContent = 'Editar';
@@ -1996,6 +2008,7 @@ function openEditor(d) {
   showEditor();
 }
 function saveDraft() {
+  draft.saved = true;
   const l = myTracks();
   const i = l.findIndex((x) => x.lid === draft.lid);
   if (i >= 0) l[i] = draft; else l.unshift(draft);
@@ -2019,14 +2032,15 @@ function segButtons(box, items, cur, onPick) {
 }
 function renderEditor() {
   if (!draft) return;
+  if (draft.pieces.length > 1 && draft.saved) saveDraft();   // una vez guardado, se guarda solo con cada cambio
   const closed = closeDraft(draft);
   const info = $('edInfo');
   if (closed.pieces) {
     const def = draftDef(draft, closed);
-    info.textContent = `${draft.pieces.length} piezas · ${lenTxt(def)} · cerrado ✓`;
+    info.textContent = `${draft.name ? draft.name + ' · ' : ''}${draft.pieces.length} piezas · ${lenTxt(def)} · cerrado ✓`;
     info.className = 'subtitle good';
   } else {
-    info.textContent = `${draft.pieces.length} piezas · ${closed.error}`;
+    info.textContent = `${draft.name ? draft.name + ' · ' : ''}${draft.pieces.length} piezas · ${closed.error}`;
     info.className = 'subtitle bad';
   }
   $('edTest').disabled = $('edPublish').disabled = !closed.pieces;
@@ -2053,6 +2067,21 @@ for (const it of PALETTE) {
   });
   $('edPalette').appendChild(b);
 }
+$('edSave').addEventListener('click', () => {
+  if (!draft) return;
+  sfx.click();
+  $('saveName').value = draft.name || '';
+  openModal('mSave');
+  setTimeout(() => $('saveName').focus(), 300);
+});
+$('saveGo').addEventListener('click', () => {
+  const name = $('saveName').value.trim();
+  draft.name = name || draft.name || `Mi circuito ${myTracks().length + 1}`;
+  saveDraft();
+  closeModal('mSave'); sfx.best(); toast('💾 Guardado en «Mis circuitos»');
+  renderEditor();
+});
+$('saveName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveGo').click(); });
 $('edUndo').addEventListener('click', () => { if (draft && draft.pieces.length) { sfx.click(); draft.pieces.pop(); renderEditor(); } });
 $('edClear').addEventListener('click', (e) => {
   const b = e.currentTarget;
