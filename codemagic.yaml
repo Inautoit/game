@@ -1,0 +1,51 @@
+# Compilación en la nube de la app de iPhone/iPad de Turbo Slot (Codemagic, codemagic.io).
+# Se puede manejar entero desde un iPad: Codemagic compila en sus Mac, firma la app con tu cuenta de Apple
+# y la sube a TestFlight. Guía paso a paso: slot/app/README.md («Hacerlo todo desde un iPad»).
+workflows:
+  ios-testflight:
+    name: Turbo Slot → TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: Turbo Slot ASC        # el nombre que le des a la clave de API en Codemagic
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.turboslot.juego
+      vars:
+        APP_STORE_APPLE_ID: 0                  # cámbialo por el «Apple ID» numérico de la app en App Store Connect
+      node: 20
+      xcode: latest
+    triggering:
+      events: []                               # solo cuando le das a «Start new build»
+    scripts:
+      - name: Instalar dependencias
+        script: |
+          cd slot/app
+          npm ci
+      - name: Copiar el juego a la app y preparar el proyecto de iOS
+        script: |
+          cd slot/app
+          bash build-www.sh
+          npx cap sync ios
+      - name: Firmar con tu cuenta de Apple
+        script: |
+          xcode-project use-profiles
+      - name: Número de compilación (uno más que el último de TestFlight)
+        script: |
+          cd slot/app/ios/App
+          LAST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          NEXT=$(( ${LAST:-0} + 1 ))
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $NEXT;/g" App.xcodeproj/project.pbxproj
+          echo "Compilación número $NEXT"
+      - name: Compilar la app
+        script: |
+          xcode-project build-ipa \
+            --project "slot/app/ios/App/App.xcodeproj" \
+            --scheme "App"
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

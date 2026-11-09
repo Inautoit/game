@@ -20,6 +20,39 @@ app/
    con un servicio de compilación para iOS (Codemagic, Bitrise o GitHub Actions con macOS): mismos pasos, sin Mac.
 3. **Node.js 20 o posterior** en ese Mac.
 
+## Hacerlo todo desde un iPad (sin Mac)
+
+Xcode no existe para iPad, así que la app se compila **en la nube con Codemagic** (codemagic.io), que tiene sus
+propios Mac. Todo lo demás se hace en Safari y con apps de Apple. La configuración ya está en el repositorio
+(`codemagic.yaml`, en la raíz).
+
+1. **Apple Developer** — app *Apple Developer* en el iPad → *Cuenta* → *Inscribirse* (99 €/año). Espera la
+   confirmación por correo (1–2 días).
+2. **Registrar el identificador de la app** — Safari → developer.apple.com → *Certificates, IDs & Profiles* →
+   *Identifiers* → **+** → *App IDs* → *App* → descripción «Turbo Slot», *Bundle ID explícito*:
+   `com.turboslot.juego` (si está cogido, usa otro y dímelo para cambiarlo en el proyecto).
+3. **Crear la app en App Store Connect** — app *App Store Connect* (o appstoreconnect.apple.com) → *Apps* → **+** →
+   *Nueva app* → iOS, nombre «Turbo Slot», idioma español, el Bundle ID del paso 2, SKU `turboslot`.
+   Apunta el **Apple ID** numérico que aparece en *Información de la app* (algo como 6740000000).
+4. **Clave de API para Codemagic** — App Store Connect → *Usuarios y acceso* → *Integraciones* → *App Store Connect
+   API* → *Generar clave*, rol **App Manager**. Descarga el archivo `.p8` (solo se puede una vez; guárdalo en
+   Archivos) y apunta el *Issuer ID* y el *Key ID*. **No se lo pases a nadie**: va solo a Codemagic.
+5. **Codemagic** — Safari → codemagic.io → entra con GitHub → *Add application* → el repositorio `inautoit/game` →
+   tipo *codemagic.yaml*. En *Team settings → Team integrations → Developer Portal → Manage keys* añade la clave
+   del paso 4 con el nombre **`Turbo Slot ASC`** (Issuer ID, Key ID y el archivo .p8).
+6. **Poner el Apple ID** — en el repositorio, en `codemagic.yaml`, cambia `APP_STORE_APPLE_ID: 0` por el número
+   del paso 3 (o pídemelo y lo cambio yo).
+7. **Compilar** — en Codemagic, *Start new build* → rama `claude/cool-curie-smt2sl` → flujo *Turbo Slot → TestFlight*.
+   Tarda 10–15 min; si sale bien, la app aparece en TestFlight en unos minutos más. Si falla, mándame la captura
+   del paso que sale en rojo.
+8. **Probar** — app *TestFlight* en el iPad (y en el iPhone) → instala Turbo Slot. Invita a amigos desde App Store
+   Connect → *TestFlight* → *Pruebas externas*.
+9. **Ficha y envío** — en App Store Connect rellena la ficha (texto, capturas, privacidad, edades: ver más abajo),
+   elige la compilación de TestFlight y pulsa *Enviar a revisión*.
+
+Las capturas se pueden hacer en el propio iPad (botón superior + subir volumen) y en un iPhone; Apple pide las de
+iPad de 13" y de iPhone de 6,9" o 6,7".
+
 ## Compilar la app (en el Mac)
 
 ```bash
