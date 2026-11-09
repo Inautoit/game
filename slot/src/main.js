@@ -104,45 +104,120 @@ const sfx = {
   go() { tone(1040, 1040, 0.4, 'square', 0.07); },
   lap() { tone(1320, 1320, 0.06, 'sine', 0.07); },
   best() { tone(1320, 1320, 0.07, 'sine', 0.07); tone(1760, 1760, 0.12, 'sine', 0.07, 0.08); },
-  crash() { noise(0.45, 0.4, 900); tone(170, 60, 0.3, 'triangle', 0.14); },
+  // El coche sale de la ranura y da vueltas: golpes de plástico cada vez más flojos
+  crash() {
+    noise(0.12, 0.25, 3000);
+    let tt = 0, v = 0.5;
+    for (let i = 0; i < 9; i++) { click(v, 1600 + Math.random() * 2400, 2, tt); tt += 0.05 + Math.random() * 0.12 + i * 0.012; v *= 0.72; }
+  },
   finish() { [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.22, 'square', 0.05, i * 0.12)); },
 };
-// Motor de corriente continua: zumbido del colector (2 pulsos por vuelta) + piñón-corona + trencillas
+// Sonido de coche de slot (no de coche de verdad):
+// - motor eléctrico pequeño: zumbido agudo del colector (3 polos) que sube con las rpm,
+// - silbido del piñón contra la corona,
+// - roce de las trencillas sobre los raíles de metal (siseo con chispazos al acelerar),
+// - "tac-tac" de las ruedas al pasar por las juntas de las piezas de pista,
+// - goma de los neumáticos al deslizar.
+let clickBuf = null;
+function getClick() {
+  if (!clickBuf && actx) {
+    const n = Math.round(actx.sampleRate * 0.012);
+    clickBuf = actx.createBuffer(1, n, actx.sampleRate);
+    const d = clickBuf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (n * 0.18));
+  }
+  return clickBuf;
+}
+// Golpecito corto de plástico (juntas de pista, chispas, piezas al volcar)
+function click(vol, freq = 2600, q = 3, when = 0) {
+  if (!actx || vol < 0.0005) return;
+  const sN = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  sN.buffer = getClick(); sN.playbackRate.value = 0.8 + Math.random() * 0.5;
+  f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+  g.gain.value = vol;
+  sN.connect(f).connect(g).connect(master);
+  sN.start(actx.currentTime + when);
+}
+// Curva de saturación suave: el zumbido "rasca" más cuanto más corriente pide el motor
+const growlCurve = (() => { const n = 1024, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = Math.tanh(x * 3) / Math.tanh(3); } return c; })();
 function makeEngine(human) {
   if (!actx) return null;
-  const o1 = actx.createOscillator(), o2 = actx.createOscillator(), o3 = actx.createOscillator();
-  o1.type = 'sawtooth'; o2.type = 'square'; o3.type = 'triangle';
-  const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1500; f.Q.value = 1.2;
-  const g = actx.createGain(); g.gain.value = 0;
-  const g2 = actx.createGain(); g2.gain.value = 0.35;
-  const g3 = actx.createGain(); g3.gain.value = 0.25;
-  o1.connect(f); o2.connect(g2).connect(f); o3.connect(g3).connect(f);
-  f.connect(g).connect(master);
-  o1.start(); o2.start(); o3.start();
-  const ns = actx.createBufferSource(); ns.buffer = getNoise(); ns.loop = true;
-  const nf = actx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 3200; nf.Q.value = 4;
-  const ng = actx.createGain(); ng.gain.value = 0;
-  ns.connect(nf).connect(ng).connect(master); ns.start();
-  const rs = actx.createBufferSource(); rs.buffer = getNoise(); rs.loop = true;
-  const rf = actx.createBiquadFilter(); rf.type = 'highpass'; rf.frequency.value = 5000;
-  const rg = actx.createGain(); rg.gain.value = 0;
-  rs.connect(rf).connect(rg).connect(master); rs.start();
-  return { o1, o2, o3, f, g, ng, rg, srcs: [o1, o2, o3, ns, rs], vol: human ? 0.06 : 0.018 };
+  const now = actx.currentTime;
+  // Motor: diente de sierra (colector) + cuadrada a la frecuencia de giro (rotor algo desequilibrado)
+  const comm = actx.createOscillator(); comm.type = 'sawtooth';
+  const rot = actx.createOscillator(); rot.type = 'square';
+  const rotG = actx.createGain(); rotG.gain.value = 0.18;
+  const pre = actx.createGain(); pre.gain.value = 1;
+  const shaper = actx.createWaveShaper(); shaper.curve = growlCurve;
+  // Sin graves (no es un motor de explosión) y con la resonancia de la carrocería de plástico
+  const hp = actx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 260; hp.Q.value = 0.7;
+  const body = actx.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 2300; body.Q.value = 1.6; body.gain.value = 7;
+  const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6500;
+  const mg = actx.createGain(); mg.gain.value = 0;
+  comm.connect(pre); rot.connect(rotG).connect(pre);
+  pre.connect(shaper).connect(hp).connect(body).connect(lp).connect(mg).connect(master);
+  // Engranajes: silbido fino del piñón (9 dientes)
+  const gear = actx.createOscillator(); gear.type = 'triangle';
+  const gg = actx.createGain(); gg.gain.value = 0;
+  gear.connect(gg).connect(master);
+  // Trencillas sobre los raíles: siseo agudo
+  const br = actx.createBufferSource(); br.buffer = getNoise(); br.loop = true; br.playbackRate.value = 1.3;
+  const brf = actx.createBiquadFilter(); brf.type = 'bandpass'; brf.frequency.value = 5200; brf.Q.value = 1.2;
+  const brg = actx.createGain(); brg.gain.value = 0;
+  br.connect(brf).connect(brg).connect(master);
+  // Rodadura de los neumáticos sobre el plástico de la pista
+  const rl = actx.createBufferSource(); rl.buffer = getNoise(); rl.loop = true; rl.playbackRate.value = 0.7;
+  const rlf = actx.createBiquadFilter(); rlf.type = 'bandpass'; rlf.frequency.value = 900; rlf.Q.value = 0.9;
+  const rlg = actx.createGain(); rlg.gain.value = 0;
+  rl.connect(rlf).connect(rlg).connect(master);
+  // Goma al deslizar
+  const sq = actx.createBufferSource(); sq.buffer = getNoise(); sq.loop = true;
+  const sqf = actx.createBiquadFilter(); sqf.type = 'bandpass'; sqf.frequency.value = 1700; sqf.Q.value = 2.5;
+  const sqg = actx.createGain(); sqg.gain.value = 0;
+  sq.connect(sqf).connect(sqg).connect(master);
+  for (const o of [comm, rot, gear, br, rl, sq]) o.start(now + Math.random() * 0.05);
+  return {
+    comm, rot, gear, pre, body, mg, gg, brg, rlg, sqf, sqg, human,
+    srcs: [comm, rot, gear, br, rl, sq],
+    vol: human ? 0.075 : 0.02, joint: null, spark: 0,
+  };
 }
 function updateEngine(e, st, on) {
   if (!e || !actx) return;
   const t = actx.currentTime;
-  const rps = st.rpm / 60;
-  const fr = Math.max(30, rps * 2);
-  e.o1.frequency.setTargetAtTime(fr, t, 0.02);
-  e.o2.frequency.setTargetAtTime(fr * 0.5, t, 0.02);
-  e.o3.frequency.setTargetAtTime(fr * 0.333 * 9, t, 0.02);
-  e.f.frequency.setTargetAtTime(700 + Math.abs(st.amps) * 900, t, 0.03);
-  const load = clamp(Math.abs(st.amps) / 2.5, 0, 1);
-  e.g.gain.setTargetAtTime(on ? e.vol * (0.25 + 0.75 * Math.min(1, rps / 250)) * (0.6 + 0.4 * load) : 0, t, 0.03);
-  const slide = clamp((st.Fr - 0.9) * 6, 0, 1) * clamp(st.v - 0.8, 0, 1);
-  e.ng.gain.setTargetAtTime(on ? slide * e.vol * 1.4 : 0, t, 0.04);
-  e.rg.gain.setTargetAtTime(on ? clamp(st.v / 6, 0, 1) * e.vol * 0.25 : 0, t, 0.05);
+  const rps = st.rpm / 60;                 // vueltas por segundo del motor (≈ 300 a tope)
+  const v = Math.max(0, st.v);
+  const load = clamp(Math.abs(st.amps) / 2.2, 0, 1);
+  const spin = clamp(rps / 300, 0, 1);
+  // Colector de 3 polos: 3 pulsos por vuelta (con un mínimo para que se oiga el arranque)
+  const fc = Math.max(40, rps * 3);
+  e.comm.frequency.setTargetAtTime(fc, t, 0.012);
+  e.rot.frequency.setTargetAtTime(Math.max(14, rps), t, 0.012);
+  e.gear.frequency.setTargetAtTime(Math.max(120, rps * 9), t, 0.012);
+  e.pre.gain.setTargetAtTime(0.5 + load * 2.2, t, 0.03);          // más corriente = más "raspado"
+  e.body.frequency.setTargetAtTime(1900 + spin * 1400, t, 0.05);
+  const live = on ? 1 : 0;
+  e.mg.gain.setTargetAtTime(live * e.vol * (0.18 + 0.82 * Math.pow(spin, 0.7)) * (0.55 + 0.45 * load), t, 0.02);
+  e.gg.gain.setTargetAtTime(live * e.vol * 0.12 * spin * (0.4 + 0.6 * load), t, 0.03);
+  e.brg.gain.setTargetAtTime(live * e.vol * 0.55 * clamp(v / 5, 0, 1), t, 0.04);
+  e.rlg.gain.setTargetAtTime(live * e.vol * 0.5 * clamp(v / 4, 0, 1), t, 0.05);
+  const slide = clamp((st.Fr - 0.9) * 6, 0, 1) * clamp(v - 0.6, 0, 1) + clamp((Math.abs(st.th) - 0.12) * 3, 0, 1) * clamp(v - 0.4, 0, 1);
+  e.sqf.frequency.setTargetAtTime(1300 + v * 120, t, 0.05);
+  e.sqg.gain.setTargetAtTime(live * e.vol * 1.1 * clamp(slide, 0, 1), t, 0.04);
+  if (!on || !T) { e.joint = null; return; }
+  // Juntas de pista cada 35 cm: "tac" de las ruedas delanteras y luego de las traseras
+  const piece = 0.35 / SCALE;
+  const j = Math.floor(st.s / piece);
+  if (e.joint !== null && j !== e.joint && v > 0.25) {
+    const vol = e.vol * (e.human ? 1.6 : 1.2) * clamp(v / 4, 0.25, 1);
+    const gap = 0.082 / Math.max(0.4, v);   // distancia entre ejes / velocidad
+    click(vol, 2400, 2.5);
+    if (gap < 0.25) click(vol * 0.7, 2100, 2.5, gap);
+  }
+  e.joint = j;
+  // Chispazos de las trencillas al pedir mucha corriente
+  e.spark -= 1 / 60;
+  if (load > 0.55 && v > 0.5 && e.spark <= 0 && Math.random() < 0.35) { click(e.vol * 0.5 * load, 6500, 4); e.spark = 0.03 + Math.random() * 0.08; }
 }
 function stopEngine(e) {
   if (!e) return;
@@ -2439,7 +2514,7 @@ Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, n
 // Gancho para pruebas automáticas
 window.__slot = {
   get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; },
-  startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
+  get actx() { return actx; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },
 };
