@@ -205,3 +205,17 @@ relacionado con ella.
   (`startAt = ahora + 10 s + 5,2 s`) y cada móvil calcula el momento de la presentación con el reloj del servidor,
   así que empieza y acaba a la vez en todos.
 - El editor empieza con solo la recta de meta.
+
+## La sala y los circuitos Premium
+
+- **Sala del club** alrededor de la mesa (`buildRoom` en `src/main.js`): suelo de tarima, paredes con zócalo de
+  madera, ventanas, pósteres inventados, estanterías con trofeos, una puerta, luces en el techo, otra mesa tapada
+  y sillas. Texturas pequeñas dibujadas por código, a propósito en baja resolución (es el fondo). Las paredes solo se
+  ven desde dentro, así que las tomas desde fuera de la sala ven a través, como en una maqueta.
+- **Circuitos Premium** (`PREMIUM` en `src/tracks.js`, pestaña «Premium»): exclusivos de temporada que cambiarán con
+  las actualizaciones. Usan el mismo ranking mundial (`o:<id>`) y se pueden elegir en las salas online.
+  - *Subida al Pico* (19,2 m): sube en espiral hasta 49 cm (pendiente máx. ~11 %) y baja; terreno que sostiene la
+    pista, pico nevado dentro de la espiral, pinos y rocas (`src/decor.js`, `makeTerrain` / `buildMountain`).
+  - *Urbano del Puerto* (13,3 m): calles de noche entre edificios en miniatura con ventanas encendidas, farolas,
+    muelle, mar y barcos (`buildCity`).
+- La pasada de TV de la presentación va más despacio (de 6 a 14 s; 9 s en el online, que dura 13 s en total).

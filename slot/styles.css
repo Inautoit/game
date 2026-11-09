@@ -667,3 +667,13 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 #hud.intro > *:not(.intro-card) { opacity: 0; pointer-events: none; }
 #hud > * { transition: opacity 0.4s; }
 #hud.intro ~ #tele, body:has(#hud.intro) #tele { opacity: 0; }
+
+/* ---- Circuitos Premium ---- */
+.prem-head { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 10px; padding: 14px 16px; border-radius: 16px; background: linear-gradient(100deg, rgba(212, 175, 55, 0.28), rgba(212, 175, 55, 0.06)); border: 1px solid rgba(212, 175, 55, 0.55); }
+.prem-head b { font-family: var(--font-d); font-style: italic; font-weight: 700; font-size: 22px; text-transform: uppercase; color: #f3d36b; }
+.prem-head span { justify-self: end; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #f3d36b; }
+.prem-head small { grid-column: 1 / -1; color: var(--ink-2); font-size: 13px; }
+.circ.premium { position: relative; border: 1px solid rgba(212, 175, 55, 0.6); box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.15); }
+.prem-tag { position: absolute; top: 8px; right: 10px; padding: 3px 8px; border-radius: 6px; background: linear-gradient(180deg, #f3d36b, #c9a227); color: #2a1f00; font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+#circTabs .tab-prem { color: #f3d36b; }
+#circTabs .tab-prem.on { background: linear-gradient(180deg, #f3d36b, #c9a227); color: #2a1f00; }

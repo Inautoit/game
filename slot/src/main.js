@@ -1,10 +1,11 @@
 // Turbo Slot — simulador de coches de slot 1:32.
 import * as THREE from '../vendor/three.module.min.js';
-import { TRACKS, sample, laneOffsets, LANE_W, DS } from './tracks.js';
+import { TRACKS, PREMIUM, PREMIUM_SEASON, findTrack, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } from './editor.js';
 import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
 import { replay } from './verify.js';
 import { createMusic } from './music.js';
+import { makeTerrain, buildMountain, buildCity } from './decor.js';
 import { isSynced, mergeProfile, otherStats, fitProfile } from './sync.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
@@ -336,6 +337,7 @@ const SCENERY = {
   verde: { table: '#3d7d4c', table2: '#356c42', bg: ['#2a3550', '#121826'], light: 1, hdri: 'artist_workshop', mat: 'grass004', tint: 0xffffff },
   arena: { table: '#c9a26b', table2: '#b88f58', bg: ['#4a3a30', '#1b1411'], light: 1, hdri: 'artist_workshop', mat: 'ground037', tint: 0xf0e2c8 },
   noche: { table: '#26375a', table2: '#1f2e4c', bg: ['#141b2e', '#06080f'], light: 0.75, hdri: 'neon_photostudio', mat: 'fabric086', tint: 0x33457a },
+  ciudad: { table: '#3a3d44', table2: '#30333a', bg: ['#141b2e', '#06080f'], light: 0.7, hdri: 'neon_photostudio', mat: 'ground037', tint: 0x5c5f66, night: true },
 };
 const texLoader = new THREE.TextureLoader();
 const texCache = new Map();
@@ -442,6 +444,8 @@ function buildTrack(def) {
   T.center = { x: cx, z: cz };
   trackGroup.position.set(-cx, 0, -cz);
   carsGroup.position.set(-cx, 0, -cz);
+  // Circuitos de montaña: terreno que sostiene la pista cuando va en alto
+  T.terrain = def.decor === 'montana' ? makeTerrain(P, half) : null;
 
   // Textura de la pista: asfalto de plástico, ranuras, raíles de cobre y bordes
   // Textura de la pista (alta resolución): una pieza recta estándar de 35 cm por repetición
@@ -601,6 +605,7 @@ function buildTrack(def) {
       const px = p.x + nx * (half - 0.1) * sgn, pz = p.z + nz * (half - 0.1) * sgn;
       // Si debajo pasa otro tramo de pista (con sus pianos), ahí no va pilar: el puente salva el hueco
       if (onLowerTrack(px, pz, p.y)) continue;
+      if (T.terrain && T.terrain.h(px, pz) > p.y - 0.4) continue;   // ya lo sostiene la montaña
       const pil = new THREE.Mesh(new THREE.BoxGeometry(0.12, p.y - 0.09, 0.12), pillarMat);
       pil.position.set(px, (p.y - 0.09) / 2, pz);
       pil.castShadow = true;
@@ -669,7 +674,8 @@ function buildTrack(def) {
   T.lights = lightsArr;
 
   // Mesa
-  const tw = T.bbox.maxX - T.bbox.minX + 3.4, td = T.bbox.maxZ - T.bbox.minZ + 3.4;
+  const extra = def.decor ? 8 : 0;   // los circuitos con decorado llevan más mesa alrededor
+  const tw = T.bbox.maxX - T.bbox.minX + 3.4 + extra, td = T.bbox.maxZ - T.bbox.minZ + 3.4 + extra;
   // Tapete de la mesa (hierba, tierra o tela) con relieve real, y madera en el marco
   const topCol = loadTex(sc.mat + '_color', true), topNor = loadTex(sc.mat + '_normal', false);
   const woodCol = loadTex('wood095_color', true), woodNor = loadTex('wood095_normal', false);
@@ -684,6 +690,14 @@ function buildTrack(def) {
   trackGroup.add(table);
   T.table = { tw, td, cx, cz };
   buildRoom(sideMat);
+  if (def.decor) {
+    let seed = 0;
+    for (const ch of def.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+    const dg = new THREE.Group(); dg.name = 'decor';
+    if (def.decor === 'montana' && T.terrain) buildMountain(dg, T.terrain, T.table, half, seed);
+    if (def.decor === 'ciudad') buildCity(dg, P, half, T.table, seed, !!sc.night);
+    trackGroup.add(dg);
+  }
   const rimMat = new THREE.MeshStandardMaterial({ map: woodCol, normalMap: woodNor, color: 0xb07a4e, roughness: 0.45 });
   for (const [w2, d2, x2, z2] of [[tw + 0.3, 0.15, 0, td / 2 + 0.075], [tw + 0.3, 0.15, 0, -td / 2 - 0.075], [0.15, td, tw / 2 + 0.075, 0], [0.15, td, -tw / 2 - 0.075, 0]]) {
     const r = new THREE.Mesh(new THREE.BoxGeometry(w2, 0.38, d2), rimMat);
@@ -973,22 +987,157 @@ function placeCrowd() {
   }
   trackGroup.add(grp);
 }
-// Suelo de la sala y patas de la mesa, para que la gente esté de pie sobre algo
+// ---- La sala del club: suelo, paredes, ventanas, pósteres, estanterías y luces ----
+// A propósito en baja resolución (texturas pequeñas, pocas piezas): es el fondo, detrás del público.
+const ROOM_H = 3.0 / 0.126;          // 3 m de techo
+const roomTex = {};
+function roomCanvas(key, w, h, draw) {
+  if (!roomTex[key]) {
+    const t = canvasTex(w, h, draw, false);
+    t.userData.keep = true; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 1;
+    t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+    roomTex[key] = t;
+  }
+  return roomTex[key];
+}
+function wallTex() {
+  return roomCanvas('wall', 256, 128, (g, w, h) => {
+    g.fillStyle = '#b9b2a6'; g.fillRect(0, 0, w, h);                       // pintura
+    for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.04})`; g.fillRect(Math.random() * w, Math.random() * h, 3, 3); }
+    const zy = h * 0.66;                                                    // zócalo de madera (1 m)
+    g.fillStyle = '#6d4a2f'; g.fillRect(0, zy, w, h - zy);
+    for (let x = 0; x < w; x += 32) { g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(x, zy, 2, h - zy); }
+    g.fillStyle = '#4e331f'; g.fillRect(0, zy - 4, w, 5);                   // moldura
+    g.fillStyle = '#2b2b2b'; g.fillRect(0, h - 6, w, 6);                    // rodapié
+  });
+}
+const POSTERS = [
+  ['#c62828', '#ffcc00', 'GRAN PREMIO', '1:32', 'car'],
+  ['#1f3b73', '#ffffff', 'SLOT CLUB', 'DESDE 1985', 'flag'],
+  ['#1b1b1b', '#ffcc00', 'RESISTENCIA', '24 HORAS', 'car'],
+  ['#2e7d32', '#ffffff', 'CAMPEONATO', 'REGIONAL', 'cup'],
+  ['#ef6c00', '#1b1b1b', 'TURBO SLOT', 'CARRERAS', 'flag'],
+];
+function posterTex(i) {
+  const [bg, fg, t1, t2, art] = POSTERS[i % POSTERS.length];
+  return roomCanvas('poster' + i, 96, 128, (g, w, h) => {
+    g.fillStyle = bg; g.fillRect(0, 0, w, h);
+    g.fillStyle = fg; g.font = 'bold 14px sans-serif'; g.textAlign = 'center';
+    g.fillText(t1, w / 2, 22); g.font = 'bold 11px sans-serif'; g.fillText(t2, w / 2, h - 12);
+    if (art === 'car') {        // silueta de coche de carreras
+      g.beginPath(); g.moveTo(14, 82); g.lineTo(26, 66); g.lineTo(58, 62); g.lineTo(74, 70); g.lineTo(84, 82); g.closePath(); g.fill();
+      g.fillStyle = '#111'; g.beginPath(); g.arc(30, 84, 7, 0, 7); g.arc(70, 84, 7, 0, 7); g.fill();
+    } else if (art === 'flag') { // bandera a cuadros
+      for (let y = 0; y < 5; y++) for (let x = 0; x < 6; x++) { g.fillStyle = (x + y) % 2 ? fg : '#111'; g.fillRect(18 + x * 10, 40 + y * 10, 10, 10); }
+    } else {                     // copa
+      g.fillStyle = '#e6b422'; g.beginPath(); g.moveTo(30, 40); g.lineTo(66, 40); g.lineTo(60, 70); g.lineTo(36, 70); g.closePath(); g.fill(); g.fillRect(44, 70, 8, 14); g.fillRect(34, 84, 28, 6);
+    }
+    g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 3; g.strokeRect(2, 2, w - 4, h - 4);
+  });
+}
+function windowTex() {
+  return roomCanvas('window', 128, 96, (g, w, h) => {
+    const grd = g.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, '#cfe6ff'); grd.addColorStop(0.7, '#e9f3ff'); grd.addColorStop(1, '#9fb68a');
+    g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#7f9a6a'; g.beginPath(); g.moveTo(0, 70); g.quadraticCurveTo(40, 52, 80, 66); g.quadraticCurveTo(110, 58, 128, 64); g.lineTo(128, 96); g.lineTo(0, 96); g.fill();
+    g.fillStyle = '#f2f2f2'; g.fillRect(0, 0, w, 6); g.fillRect(0, h - 6, w, 6); g.fillRect(0, 0, 6, h); g.fillRect(w - 6, 0, 6, h); g.fillRect(w / 2 - 3, 0, 6, h); g.fillRect(0, h / 2 - 3, w, 6);
+  });
+}
+function doorTex() {
+  return roomCanvas('door', 64, 128, (g, w, h) => {
+    g.fillStyle = '#5a3b24'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#3f2817'; g.lineWidth = 4; g.strokeRect(10, 10, w - 20, h * 0.4); g.strokeRect(10, h * 0.5, w - 20, h * 0.42);
+    g.fillStyle = '#d9b44a'; g.beginPath(); g.arc(w - 12, h * 0.52, 3, 0, 7); g.fill();
+    g.fillStyle = '#1b5e20'; g.fillRect(16, 2, w - 32, 7); g.fillStyle = '#fff'; g.font = 'bold 6px sans-serif'; g.textAlign = 'center'; g.fillText('SALIDA', w / 2, 8);
+  });
+}
 function buildRoom(woodMat) {
   const { tw, td, cx, cz } = T.table;
-  const R = Math.max(tw, td) / 2 + 40;
-  const fade = canvasTex(256, 256, (g, w, h) => {
-    const grd = g.createRadialGradient(w / 2, h / 2, w * 0.25, w / 2, h / 2, w / 2);
-    grd.addColorStop(0, '#fff'); grd.addColorStop(1, '#000');
-    g.fillStyle = grd; g.fillRect(0, 0, w, h);
-  }, false);
+  const M = 30;                                     // ~3,8 m de sala alrededor de la mesa
+  const W = tw + 2 * M, D = td + 2 * M;
+  let seed = 7;
+  for (const ch of String(T.def.id || 'x')) seed = (seed * 33 + ch.charCodeAt(0)) >>> 0;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const room = new THREE.Group(); room.name = 'room';
+  // Suelo de tarima
   const floorCol = loadTex('wood095_color', true).clone();   // copia: la textura de la mesa no se toca
   floorCol.userData = {};
-  floorCol.repeat.set(R / 6, R / 6);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(R * 2, R * 2), new THREE.MeshStandardMaterial({ map: floorCol, color: 0x6b5a4a, roughness: 0.8, alphaMap: fade, transparent: true, depthWrite: false }));
+  floorCol.repeat.set(W / 10, D / 10);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ map: floorCol, color: 0x6b5a4a, roughness: 0.8 }));
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(cx, FLOOR_Y, cz);
-  trackGroup.add(floor);
+  room.add(floor);
+  // Paredes (solo se ven por dentro: desde fuera, la cámara ve a través, como en una maqueta)
+  const wt = wallTex();
+  const walls = [
+    [W, cx, cz - D / 2, 0], [W, cx, cz + D / 2, Math.PI], [D, cx - W / 2, cz, Math.PI / 2], [D, cx + W / 2, cz, -Math.PI / 2],
+  ];
+  const deco = (tex, w, h, emissive = 0) => new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, emissive: emissive ? 0xffffff : 0x000000, emissiveMap: emissive ? tex : null, emissiveIntensity: emissive }));
+  let doorDone = false;
+  walls.forEach(([len, x, z, ry], wi) => {
+    const t = wt.clone(); t.userData = {}; t.wrapS = THREE.RepeatWrapping; t.repeat.set(len / 20, 1); t.needsUpdate = true;
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(len, ROOM_H), new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }));
+    wall.position.set(x, FLOOR_Y + ROOM_H / 2, z); wall.rotation.y = ry;
+    room.add(wall);
+    // Cosas colgadas en la pared, cada 9–14 unidades
+    const dirX = Math.cos(ry), dirZ = -Math.sin(ry);       // a lo largo de la pared
+    const inX = Math.sin(ry), inZ = Math.cos(ry);          // hacia dentro de la sala
+    for (let u = -len / 2 + 8; u < len / 2 - 8; u += 9 + rnd() * 6) {
+      const r = rnd();
+      let m, y;
+      if (!doorDone && wi === 1 && u > -len / 4) { m = deco(doorTex(), 7.5, 16.5); y = FLOOR_Y + 8.25; doorDone = true; }
+      else if (r < 0.35) { m = deco(windowTex(), 12, 8.5, 0.55); y = FLOOR_Y + 14.5; }
+      else if (r < 0.75) { m = deco(posterTex(Math.floor(rnd() * 5)), 5.5, 7.4); y = FLOOR_Y + 14 + rnd() * 2; }
+      else {
+        // Estantería con trofeos y cajas
+        m = new THREE.Group(); y = FLOOR_Y + 12;
+        const shelf = new THREE.Mesh(new THREE.BoxGeometry(10, 0.4, 2), woodMat); m.add(shelf);
+        for (let k = 0; k < 4; k++) {
+          const gold = rnd() < 0.5;
+          const item = gold ? new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.25, 1.8, 8), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 }))
+            : new THREE.Mesh(new THREE.BoxGeometry(2, 1.4, 1.4), new THREE.MeshStandardMaterial({ color: pickc(['#c62828', '#1f3b73', '#f9a825', '#2e7d32', '#eeeeee'], rnd), roughness: 0.8 }));
+          item.position.set(-3.6 + k * 2.4, gold ? 1.1 : 0.9, 0); m.add(item);
+        }
+      }
+      m.position.set(x + dirX * u + inX * 0.08 + (m.isGroup ? inX * 1 : 0), y, z + dirZ * u + inZ * 0.08 + (m.isGroup ? inZ * 1 : 0));
+      m.rotation.y = ry;
+      room.add(m);
+    }
+  });
+  // Techo con pantallas de luz
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ color: 0xd8d6d0, roughness: 1 }));
+  ceil.rotation.x = Math.PI / 2; ceil.position.set(cx, FLOOR_Y + ROOM_H, cz);
+  room.add(ceil);
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+  for (let x = -W / 2 + 14; x < W / 2 - 6; x += 22) for (let zz = -D / 2 + 14; zz < D / 2 - 6; zz += 22) {
+    const l = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.4), lampMat);
+    l.rotation.x = Math.PI / 2; l.position.set(cx + x, FLOOR_Y + ROOM_H - 0.05, cz + zz);
+    room.add(l);
+  }
+  // Otra mesa de slot al fondo (tapada) y unas sillas, para que la sala tenga vida
+  const far = new THREE.Group();
+  const top2 = new THREE.Mesh(new THREE.BoxGeometry(22, 0.4, 12), new THREE.MeshStandardMaterial({ color: 0x2f5a3a, roughness: 1 }));
+  top2.position.y = -0.2; far.add(top2);
+  const cover = new THREE.Mesh(new THREE.BoxGeometry(22.4, 0.9, 12.4), new THREE.MeshStandardMaterial({ color: 0x8a8f99, roughness: 1, transparent: true, opacity: 0.85 }));
+  cover.position.y = 0.3; far.add(cover);
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.6, -FLOOR_Y, 0.6), woodMat); leg.position.set(sx * 10.4, FLOOR_Y / 2 - 0.2, sz * 5.4); far.add(leg);
+  }
+  far.position.set(cx + (rnd() < 0.5 ? -1 : 1) * (W / 2 - 13), 0, cz - D / 2 + 9);
+  room.add(far);
+  const chairMat = new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.7 });
+  for (let k = 0; k < 4; k++) {
+    const ch = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.4, 3.6), chairMat); seat.position.y = 3.6; ch.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(3.6, 4, 0.4), chairMat); back.position.set(0, 5.6, -1.6); ch.add(back);
+    for (const [a, b] of [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]) { const lg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.6, 0.3), chairMat); lg.position.set(a, 1.8, b); ch.add(lg); }
+    const side = k % 2 ? 1 : -1;
+    ch.position.set(cx + side * (W / 2 - 4), FLOOR_Y, cz + (rnd() - 0.5) * D * 0.6);
+    ch.rotation.y = side * Math.PI / 2;
+    room.add(ch);
+  }
+  trackGroup.add(room);
+  // Patas de la mesa
   const legH = -0.32 - FLOOR_Y;
   for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.7, legH, 0.7), woodMat);
@@ -2551,6 +2700,19 @@ function showCircuits() {
     TRACKS.forEach((def, i) => box.appendChild(circButton(def, [
       ['', `${i + 1}. ${def.name}`], ['', `${lenTxt(def)} · ${def.lanes} carriles · ${def.laps} vueltas`], ['rec', recTxt(def)],
     ], () => chooseTrack(def))));
+  } else if (circTab === 'premium') {
+    const head = document.createElement('div'); head.className = 'prem-head';
+    head.innerHTML = '<b>Circuitos Premium</b><span></span><small>Exclusivos tipo maqueta. Cambian con cada temporada: ¡córrelos mientras estén!</small>';
+    head.querySelector('span').textContent = PREMIUM_SEASON;
+    box.appendChild(head);
+    PREMIUM.forEach((def) => {
+      const b = circButton(def, [
+        ['', def.name], ['', `${lenTxt(def)} · ${def.lanes} carriles · ${def.laps} vueltas`], ['by', def.blurb], ['rec', recTxt(def)],
+      ], () => chooseTrack(def));
+      b.classList.add('premium');
+      const tag = document.createElement('i'); tag.className = 'prem-tag'; tag.textContent = 'Premium'; b.appendChild(tag);
+      box.appendChild(b);
+    });
   } else if (circTab === 'comunidad') {
     const list = commCache[commSort];
     const render = (tracks) => {
@@ -2798,7 +2960,7 @@ function onlineEntry() {
 }
 function roomDef(tr) {
   if (!tr) return null;
-  if (tr.kind === 'oficial') return TRACKS.find((t) => t.id === tr.id) || null;
+  if (tr.kind === 'oficial') return findTrack(tr.id);
   if (!tr.def) return null;
   return { id: 'c_' + (tr.id || 'sala'), cid: /^[a-z0-9]{7}$/.test(tr.id) ? tr.id : null, name: tr.name, lanes: tr.lanes, laps: tr.laps, scenery: tr.def.scenery, pieces: tr.def.pieces };
 }
@@ -2980,7 +3142,7 @@ function updateRemote(c) {
   c.lap = r.lap; c.st.s = r.s; c.st.v = r.v; c.st.th = r.th;
 }
 function sendRoomTrack(def, laps) {
-  const kind = TRACKS.includes(def) ? 'oficial' : 'comunidad';
+  const kind = TRACKS.includes(def) || PREMIUM.includes(def) ? 'oficial' : 'comunidad';
   room.send({ t: 'track', track: { kind, id: kind === 'oficial' ? def.id : (def.cid || def.id), name: def.name, lanes: def.lanes, laps, def: kind === 'oficial' ? undefined : { pieces: def.pieces, scenery: def.scenery } } });
 }
 function onlinePickTrack(def) {
@@ -3150,7 +3312,7 @@ $('chBack').addEventListener('click', () => { sfx.click(); champ = null; showMen
 const rankId = () => (acct ? acct.rid : deviceId);   // con cuenta, los tiempos van a la cuenta
 const deviceId = (() => { let d = store.get('device', null); if (!d) { d = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join(''); store.set('device', d); } return d; })();
 function rankKeyOf(def) {
-  if (TRACKS.includes(def)) return 'o:' + def.id;
+  if (TRACKS.includes(def) || PREMIUM.includes(def)) return 'o:' + def.id;
   if (def.cid) return 'c:' + def.cid;
   return null;
 }
@@ -3387,7 +3549,7 @@ $('garBack').addEventListener('click', () => { sfx.click(); if (mode === 'online
 // ---- Carrera: pausa, cámara y resultados ----
 // ---- Presentación del circuito: helicóptero sobre la mesa y una pasada de TV por toda la vuelta ----
 const MODE_NAME = { practica: 'Práctica', '1p': 'Carrera', '2p': '2 Jugadores' };
-const ONLINE_INTRO = 10;   // segundos (el servidor deja este margen antes del semáforo)
+const ONLINE_INTRO = 13;   // segundos (el servidor deja este margen antes del semáforo)
 function startIntro(online) {
   const meters = T.L * SCALE;
   if (online) {
@@ -3396,7 +3558,7 @@ function startIntro(online) {
     const left = (syncEnd - room.serverNow()) / 1000;
     if (left < 2) return;
     race.intro = { t: ONLINE_INTRO - left, d1: 3.6, d2: ONLINE_INTRO - 4, a0: (online.startAt % 628) / 100, snap: false, fixed: true, syncEnd };
-  } else race.intro = { t: 0, d1: 3.6, d2: clamp(2.6 + meters / 6, 3.6, 8.5), a0: Math.random() * Math.PI * 2, snap: false };
+  } else race.intro = { t: 0, d1: 3.6, d2: clamp(4.2 + meters / 3.6, 6, 14), a0: Math.random() * Math.PI * 2, snap: false };
   state = 'intro';
   $('introHint').textContent = online ? 'La salida es a la vez para todos' : 'Toca para empezar';
   $('introMode').textContent = champ && champ.cup ? champ.cup.name : MODE_NAME[race.mode] || 'Carrera';

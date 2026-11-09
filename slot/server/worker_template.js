@@ -3,7 +3,7 @@
 // - API de circuitos de la comunidad (D1),
 // - salas online en tiempo real (un Durable Object por sala, con WebSockets).
 import { Buffer } from 'node:buffer';
-import { validateTrack, TRACKS } from './tracks.js';
+import { validateTrack, TRACKS, findTrack } from './tracks.js';
 import { verifyLap } from './verify.js';
 
 const FILES = __FILES__;
@@ -212,7 +212,7 @@ async function tracksApi(req, env, url, parts) {
 // ---------------------------------------------------------------------------
 async function trackDefFor(db, key) {
   if (key.startsWith('o:')) {
-    const t = TRACKS.find((x) => x.id === key.slice(2));
+    const t = findTrack(key.slice(2));
     return t ? { pieces: t.pieces, lanes: t.lanes } : null;
   }
   if (key.startsWith('c:')) {
@@ -439,8 +439,8 @@ export class Room {
     if (!this.track) return;
     clearTimeout(this.autoTimer); this.autoAt = 0;
     this.phase = 'race';
-    // 10 s de presentación del circuito (igual para todos, no se puede saltar) + 5,2 s de semáforo
-    this.startAt = Date.now() + 10000 + 5200;
+    // 13 s de presentación del circuito (igual para todos, no se puede saltar) + 5,2 s de semáforo
+    this.startAt = Date.now() + 13000 + 5200;
     for (const p of this.players.values()) p.fin = null;
     // CPU en los carriles libres (los conduce el móvil del anfitrión)
     this.bots = [];

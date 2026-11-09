@@ -48,6 +48,24 @@ export const TRACKS = [
   },
 ];
 
+// --- Circuitos Premium: exclusivos de temporada, tipo maqueta (cambian con las actualizaciones) ---
+// decor: decorado especial que monta el juego alrededor de la pista (montaña, ciudad…)
+export const PREMIUM = [
+  {
+    id: 'pico', name: 'Subida al Pico', lanes: 4, laps: 4, scenery: 'verde', decor: 'montana', premium: true, long: true,
+    blurb: 'Sube en espiral hasta la cima de la montaña y baja a toda velocidad',
+    pieces: [['S', 4, 0], ['C', 90, 6, 0.6], ['S', 28, 1.9], ['C', 90, 6, 2.5], ['S', 10, 2.8], ['C', -360, 4.2, 3.9], ['S', 6, 3.9], ['C', 90, 6, 3.3], ['S', null, 1.2], ['C', 90, 6, 0.7], ['S', null, 0]],
+  },
+  {
+    id: 'puerto', name: 'Urbano del Puerto', lanes: 4, laps: 5, scenery: 'ciudad', decor: 'ciudad', premium: true,
+    blurb: 'Calles de noche entre edificios, con la recta junto al mar',
+    pieces: [['S', null], ['C', 90, 3.2], ['S', 10], ['C', 90, 3.2], ['S', 4], ['C', -90, 3.0], ['S', 4], ['C', 90, 3.0], ['S', 6], ['C', 45, 3.2], ['C', -45, 3.2], ['S', 4], ['C', 90, 3.2], ['S', null], ['C', 90, 3.2]],
+  },
+];
+export const PREMIUM_SEASON = 'Temporada 1';
+export const ALL_TRACKS = [...TRACKS, ...PREMIUM];
+export const findTrack = (id) => ALL_TRACKS.find((t) => t.id === id) || null;
+
 export const LANE_W = 0.62; // separación entre carriles
 export const DS = 0.04;     // paso de muestreo
 
