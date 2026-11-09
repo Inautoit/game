@@ -1600,7 +1600,7 @@ function endRace() {
     else earned = raceReward(bestPos, Math.min(race.laps, 20));
     addCoins(earned);
   }
-  $('resCoins').hidden = !earned;
+  $('resCoins').hidden = true;
   $('resCoins').textContent = `+${earned} créditos`;
   if (race.mode === 'online') { $('nextBtn').hidden = true; $('resChamp').hidden = true; setTimeout(() => openModal('mResults'), 300); return; }
   $('resChamp').hidden = true;
@@ -1950,7 +1950,6 @@ function showMenu() {
   demoRace();
   const pos = store.get('pos', {});
   $('trophies').textContent = `${TRACKS.filter((t) => pos[t.id] === 1).length}/${TRACKS.length}`;
-  $('coins').textContent = coins().toLocaleString('es-ES');
   setScreen('menu');
 }
 function demoRace() {
@@ -2638,7 +2637,7 @@ function champAfterRace(order) {
     if (!best[key] || myCup < best[key]) { best[key] = myCup; store.set('cups', best); }
     if (myCup === 1) sfx.finish();
     const prize = [400, 200, 100][myCup - 1] || 0;
-    if (prize) { addCoins(prize); $('resCoins').hidden = false; $('resCoins').textContent = `${$('resCoins').textContent ? $('resCoins').textContent + ' · ' : ''}Premio de la copa: +${prize}`; }
+    if (prize) addCoins(prize);
   } else {
     $('nextBtn').hidden = false;
     $('nextBtn').querySelector('.btn-main').textContent = `Siguiente: ${champ.defs[champ.idx + 1].name} ›`;
@@ -2649,11 +2648,11 @@ $('chBack').addEventListener('click', () => { sfx.click(); champ = null; showMen
 
 // ---- Créditos y tienda ----
 const coins = () => store.get('coins', 300);
-const ownedCars = () => { const o = store.get('ownedCars', ['muscle']).filter((id) => CARS.some((c) => c.id === id)); return o.includes('muscle') ? o : ['muscle', ...o]; };
+// Todos los coches están disponibles desde el principio (no hay que comprarlos)
+const ownedCars = () => CARS.map((c) => c.id);
 function addCoins(n) {
   if (!n) return;
   store.set('coins', coins() + n);
-  $('coins').textContent = coins().toLocaleString('es-ES');
 }
 // Créditos de una carrera: por puesto y por vuelta (para 1 jugador; en 2 jugadores, el que gane)
 function raceReward(myPos, laps) { return ([120, 70, 45, 25][myPos - 1] || 15) + laps * 5; }
@@ -2665,37 +2664,23 @@ function showShop(from) {
 }
 let shopFrom = 'menu';
 function renderShop() {
-  $('shCoins').textContent = coins().toLocaleString('es-ES');
   const box = $('shList'); box.innerHTML = '';
-  const owned = ownedCars(), sel = store.get('car0', 'muscle');
+  const sel = store.get('car0', 'muscle');
   for (const car of CARS) {
     const card = document.createElement('div');
-    const has = owned.includes(car.id);
-    card.className = 'shop-card' + (has ? ' owned' : '');
+    card.className = 'shop-card owned';
     const img = new Image(); img.src = `assets/cars/${car.id}.webp`; img.alt = car.name; img.loading = 'lazy';
     const info = document.createElement('div'); info.className = 'info';
     const nm = document.createElement('b'); nm.textContent = car.name;
     const ty = document.createElement('small'); ty.textContent = car.type;
-    const st = document.createElement('small'); st.className = 'tag-own';
-    st.textContent = has ? (sel === car.id ? 'Equipado' : 'En tu garaje') : '';
     const btn = document.createElement('button');
-    btn.className = 'btn ' + (has ? 'ghost' : coins() >= car.price ? 'primary' : 'ghost');
+    btn.className = 'btn ' + (sel === car.id ? 'ghost' : 'primary');
     const bm = document.createElement('span'); bm.className = 'btn-main';
-    if (has) { bm.textContent = sel === car.id ? 'Equipado' : 'Equipar'; btn.disabled = sel === car.id; }
-    else { bm.textContent = `Comprar · ${car.price.toLocaleString('es-ES')}`; btn.disabled = coins() < car.price; }
+    bm.textContent = sel === car.id ? 'Tu coche' : 'Elegir';
+    btn.disabled = sel === car.id;
     btn.appendChild(bm);
-    if (!has && coins() < car.price) { const sub = document.createElement('span'); sub.className = 'btn-sub'; sub.textContent = `Te faltan ${(car.price - coins()).toLocaleString('es-ES')}`; btn.appendChild(sub); }
-    btn.addEventListener('click', () => {
-      if (has) { store.set('car0', car.id); sfx.click(); toast(`${car.name} equipado`); renderShop(); return; }
-      if (coins() < car.price) return;
-      store.set('coins', coins() - car.price);
-      store.set('ownedCars', [...owned, car.id]);
-      store.set('car0', car.id);
-      sfx.best(); toast(`¡${car.name} es tuyo!`);
-      loadCar(car.id);
-      renderShop();
-    });
-    info.append(nm, ty, st, btn);
+    btn.addEventListener('click', () => { store.set('car0', car.id); loadCar(car.id); sfx.click(); toast(`${car.name} elegido`); renderShop(); });
+    info.append(nm, ty, btn);
     card.append(img, info);
     box.appendChild(card);
   }
@@ -2714,15 +2699,14 @@ function renderCarPick() {
     b.addEventListener('click', () => { sfx.click(); editing.carId = id; loadCar(id); renderGarage(); });
     box.appendChild(b);
   }
-  const sh = document.createElement('button'); sh.className = 'shop'; sh.textContent = 'Tienda ›';
+  const sh = document.createElement('button'); sh.className = 'shop'; sh.textContent = 'Ver todos ›';
   sh.addEventListener('click', () => { sfx.click(); showShop('garage'); });
   box.appendChild(sh);
 }
 $('playShop').addEventListener('click', () => { initAudio(); sfx.click(); showShop('menu'); });
-$('coinChip').addEventListener('click', () => { initAudio(); sfx.click(); showShop('menu'); });
 $('shBack').addEventListener('click', () => {
   sfx.click();
-  if (shopFrom === 'garage') { state = 'garage'; const sel = store.get('car0', 'muscle'); if (editing && ownedCars().includes(sel) && entries.length === 0) editing.carId = sel; renderGarage(); setScreen('garage'); }
+  if (shopFrom === 'garage') { state = 'garage'; const sel = store.get('car0', 'muscle'); if (editing && entries.length === 0) editing.carId = sel; renderGarage(); setScreen('garage'); }
   else showMenu();
 });
 

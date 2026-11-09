@@ -48,7 +48,6 @@
     <div class="topbar">
       <button class="icon-btn" data-open="mHelp" aria-label="Cómo jugar"><svg><use href="#i-help"/></svg></button>
       <div class="chip"><svg class="cup" viewBox="0 0 24 24" aria-label="Trofeos"><path d="M7 3h10v3h3v2a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V17h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V6h3Zm0 5H6a2 2 0 0 0 1 1.7Zm10 0v1.7A2 2 0 0 0 18 8Z" fill="currentColor"/></svg><span id="trophies">0/6</span></div>
-      <button id="coinChip" class="chip coin-chip" aria-label="Créditos: abrir la tienda"><svg class="coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7v10M9.5 9.5h3.8a1.7 1.7 0 0 1 0 3.4h-2.6a1.7 1.7 0 0 0 0 3.4h3.8" stroke="#1b1300" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg><span id="coins">0</span></button>
       <div class="spacer"></div>
       <button class="icon-btn" data-open="mStats" aria-label="Estadísticas"><svg><use href="#i-stats"/></svg></button>
       <button class="icon-btn" data-open="mSettings" aria-label="Ajustes"><svg><use href="#i-gear"/></svg></button>
@@ -65,7 +64,7 @@
         <button id="play2" class="btn ghost"><span class="btn-main">2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
       </div>
       <div class="row2">
-        <button id="playShop" class="btn ghost"><span class="btn-main">Tienda</span><span class="btn-sub">Coches nuevos</span></button>
+        <button id="playShop" class="btn ghost"><span class="btn-main">Coches</span><span class="btn-sub">Elige el tuyo</span></button>
         <button id="playEditor" class="btn ghost"><span class="btn-main">Crear circuito</span><span class="btn-sub">Y compártelo</span></button>
       </div>
       <div class="footer">v3.0 · Editor de circuitos · Online con salas · Mando de consola</div>
@@ -96,9 +95,8 @@
   <div id="shop" class="screen">
     <div class="topbar">
       <button id="shBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
-      <div><h2 class="title">Tienda</h2><div class="subtitle">Gana créditos corriendo: carreras, copas, vueltas y récords</div></div>
+      <div><h2 class="title">Coches</h2><div class="subtitle">Todos disponibles · elige el que quieras</div></div>
       <div class="spacer"></div>
-      <div class="chip coin-chip"><svg class="coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7v10M9.5 9.5h3.8a1.7 1.7 0 0 1 0 3.4h-2.6a1.7 1.7 0 0 0 0 3.4h3.8" stroke="#1b1300" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg><span id="shCoins">0</span></div>
     </div>
     <div id="shList" class="shop-list"></div>
     <p class="muted small center">Todos los coches corren igual: lo que cambia es el aspecto. Gana el reglaje y el piloto.</p>
