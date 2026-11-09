@@ -13,6 +13,7 @@ import { makeTelemetry, telStep, telLap, dangerColor, drawTrace, SECTORS } from 
 import { RGBELoader } from '../vendor/jsm/loaders/RGBELoader.js';
 import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from '../vendor/jsm/utils/SkeletonUtils.js';
+import { mergeGeometries } from '../vendor/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from '../vendor/jsm/postprocessing/ShaderPass.js';
@@ -496,15 +497,21 @@ function buildTrack(def) {
   nor.colorSpace = THREE.NoColorSpace;
   nor.repeat.set(6, 6);
   trackTexCache.set('nor', nor);
+  // Filas de la malla: en los circuitos largos, una de cada 2 o 3 muestras (no se nota y pesa mucho menos)
+  const ST = n > 6000 ? 3 : n > 3000 ? 2 : 1;
+  const rows = [];
+  for (let i = 0; i < n; i += ST) rows.push(i);
+  rows.push(n);
+  const nr = rows.length - 1;
   const pos = [], uv = [], idx = [];
-  for (let i = 0; i <= n; i++) {
+  rows.forEach((i, r) => {
     const p = P[i % n];
     const nx = -Math.sin(p.h), nz = Math.cos(p.h);
     const v = (i * DS) / PIECE;
     pos.push(p.x + nx * half, p.y + 0.002, p.z + nz * half, p.x - nx * half, p.y + 0.002, p.z - nz * half);
     uv.push(0, v, 1, v);
-    if (i < n) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-  }
+    if (r < nr) { const a = r * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  });
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
@@ -521,13 +528,13 @@ function buildTrack(def) {
   for (const d of offsets) {
     for (const side of [-1, 1]) {
       const c0 = d + side * 0.045;
-      for (let i = 0; i <= n; i++) {
+      rows.forEach((i, r) => {
         const p = P[i % n];
         const nx = -Math.sin(p.h), nz = Math.cos(p.h);
         rp.push(p.x + nx * (c0 - 0.012), p.y + 0.0045, p.z + nz * (c0 - 0.012), p.x + nx * (c0 + 0.012), p.y + 0.0045, p.z + nz * (c0 + 0.012));
-        if (i < n) ri.push(rv + i * 2, rv + i * 2 + 1, rv + i * 2 + 2, rv + i * 2 + 1, rv + i * 2 + 3, rv + i * 2 + 2);
-      }
-      rv += (n + 1) * 2;
+        if (r < nr) ri.push(rv + r * 2, rv + r * 2 + 1, rv + r * 2 + 2, rv + r * 2 + 1, rv + r * 2 + 3, rv + r * 2 + 2);
+      });
+      rv += (nr + 1) * 2;
     }
   }
   const rg = new THREE.BufferGeometry();
@@ -540,13 +547,13 @@ function buildTrack(def) {
 
   // Faldones laterales (grosor de la pista)
   const sk = [], skIdx = [];
-  for (let i = 0; i <= n; i++) {
+  rows.forEach((i, r) => {
     const p = P[i % n];
     const nx = -Math.sin(p.h), nz = Math.cos(p.h);
     const bottom = p.y > 0.05 ? p.y - 0.09 : -0.02;
     for (const sgn of [1, -1]) sk.push(p.x + nx * half * sgn, p.y + 0.002, p.z + nz * half * sgn, p.x + nx * half * sgn, bottom, p.z + nz * half * sgn);
-    if (i < n) { const a = i * 4; skIdx.push(a, a + 1, a + 4, a + 1, a + 5, a + 4, a + 2, a + 3, a + 6, a + 3, a + 7, a + 6); }
-  }
+    if (r < nr) { const a = r * 4; skIdx.push(a, a + 1, a + 4, a + 1, a + 5, a + 4, a + 2, a + 3, a + 6, a + 3, a + 7, a + 6); }
+  });
   const skGeo = new THREE.BufferGeometry();
   skGeo.setAttribute('position', new THREE.Float32BufferAttribute(sk, 3));
   skGeo.setIndex(skIdx);
@@ -587,7 +594,7 @@ function buildTrack(def) {
   // Puente: pilares y barandillas
   const clear = half + 0.32;   // pista + pianos + un margen
   const onLowerTrack = (x, z, y) => {
-    for (let j = 0; j < n; j++) {
+    for (let j = 0; j < n; j += 3) {
       const q = P[j];
       if (q.y > y - 0.3) continue;
       const dx = q.x - x, dz = q.z - z;
@@ -597,6 +604,7 @@ function buildTrack(def) {
   };
   const pillarMat = new THREE.MeshStandardMaterial({ color: 0xd9d9de, roughness: 0.6 });
   const railMat = new THREE.MeshStandardMaterial({ color: 0xff5252, roughness: 0.5 });
+  const pillars = [];   // [x, z, alto]: se dibujan todos de una vez (instancias)
   for (let i = 0; i < n; i += Math.round(1.1 / DS)) {
     const p = P[i];
     if (p.y < 0.25) continue;
@@ -606,23 +614,27 @@ function buildTrack(def) {
       // Si debajo pasa otro tramo de pista (con sus pianos), ahí no va pilar: el puente salva el hueco
       if (onLowerTrack(px, pz, p.y)) continue;
       if (T.terrain && T.terrain.h(px, pz) > p.y - 0.4) continue;   // ya lo sostiene la montaña
-      const pil = new THREE.Mesh(new THREE.BoxGeometry(0.12, p.y - 0.09, 0.12), pillarMat);
-      pil.position.set(px, (p.y - 0.09) / 2, pz);
-      pil.castShadow = true;
-      trackGroup.add(pil);
+      pillars.push([px, pz, p.y - 0.09]);
     }
+  }
+  if (pillars.length) {
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(0.12, 1, 0.12), pillarMat, pillars.length);
+    const m4 = new THREE.Matrix4();
+    pillars.forEach(([x, z, hgt], k) => { m4.makeScale(1, hgt, 1).setPosition(x, hgt / 2, z); im.setMatrixAt(k, m4); });
+    im.castShadow = true;
+    trackGroup.add(im);
   }
   for (const sgn of [1, -1]) {
     let seg = [];
     const flush = () => {
       if (seg.length < 2) { seg = []; return; }
       const curve = new THREE.CatmullRomCurve3(seg);
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, seg.length * 2, 0.025, 6, false), railMat);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(2, seg.length), 0.025, 5, false), railMat);
       tube.castShadow = true;
       trackGroup.add(tube);
       seg = [];
     };
-    for (let i = 0; i < n; i += 3) {
+    for (let i = 0; i < n; i += 10) {
       const p = P[i];
       if (p.y > 0.12) {
         const nx = -Math.sin(p.h), nz = Math.cos(p.h);
@@ -746,6 +758,7 @@ function buildTrack(def) {
   const tireGeo = new THREE.TorusGeometry(0.12, 0.05, 8, 16).rotateX(Math.PI / 2);
   const tireMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1f, roughness: 0.9 });
   const tireMat2 = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.9 });
+  const tiresB = [], tiresW = [];   // pilas de neumáticos: se dibujan todas de una vez
   const occupied = (x, z, r) => {
     for (let i = 0; i < n; i += 4) if (Math.hypot(P[i].x - x, P[i].z - z) < half + r) return true;
     return false;
@@ -757,12 +770,15 @@ function buildTrack(def) {
     const nx = -Math.sin(p.h), nz = Math.cos(p.h);
     const x = p.x + nx * (half + 0.72) * out, z = p.z + nz * (half + 0.72) * out;
     if (occupied(x, z, 0.4)) continue;
-    for (let k = 0; k < 3; k++) {
-      const t = new THREE.Mesh(tireGeo, k === 1 ? tireMat2 : tireMat);
-      t.position.set(x, 0.05 + k * 0.09, z);
-      t.castShadow = true;
-      trackGroup.add(t);
-    }
+    for (let k = 0; k < 3; k++) (k === 1 ? tiresW : tiresB).push([x, 0.05 + k * 0.09, z]);
+  }
+  for (const [list, mat] of [[tiresB, tireMat], [tiresW, tireMat2]]) {
+    if (!list.length) continue;
+    const im = new THREE.InstancedMesh(tireGeo, mat, list.length);
+    const m4 = new THREE.Matrix4();
+    list.forEach(([x, y, z], k) => { m4.makeTranslation(x, y, z); im.setMatrixAt(k, m4); });
+    im.castShadow = true;
+    trackGroup.add(im);
   }
   const treeMat = new THREE.MeshStandardMaterial({ color: def.scenery === 'arena' ? 0x6f9a3a : 0x2f7d3f, flatShading: true, roughness: 0.9 });
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4426 });
@@ -959,7 +975,9 @@ function placeCrowd() {
   let seed = 0;
   for (const ch of String(T.def.id || 'x')) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
   const r = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  const max = quality >= 2 ? 6 : quality === 1 ? 12 : 22;
+  // En el móvil (pantalla táctil) menos gente: cada persona son 6 dibujos con su esqueleto animado
+  const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const max = quality >= 2 ? 5 : quality === 1 ? (touch ? 7 : 12) : (touch ? 12 : 22);
   const gap = 3.6;   // del borde de la mesa al centro de la persona (~45 cm)
   const spots = [];
   // [inicio x, inicio z, dirección x, dirección z, largo, normal hacia la mesa x, z]
@@ -1051,6 +1069,37 @@ function doorTex() {
     g.fillStyle = '#1b5e20'; g.fillRect(16, 2, w - 32, 7); g.fillStyle = '#fff'; g.font = 'bold 6px sans-serif'; g.textAlign = 'center'; g.fillText('SALIDA', w / 2, 8);
   });
 }
+// Junta en una sola malla todas las piezas fijas que comparten material (menos llamadas de dibujo:
+// en el móvil es lo que más cuesta). Las piezas con el mismo aspecto se juntan aunque tengan materiales distintos.
+function mergeStatic(group) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const m = new THREE.Matrix4();
+  const buckets = new Map();
+  const sig = (mt) => [mt.type, mt.color && mt.color.getHex(), mt.map && mt.map.uuid, mt.emissive && mt.emissive.getHex(), mt.emissiveMap && mt.emissiveMap.uuid, mt.emissiveIntensity, mt.roughness, mt.metalness, mt.transparent, mt.opacity].join('|');
+  const olds = [];
+  group.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || Array.isArray(o.material)) return;
+    let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    g.applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld));
+    const key = sig(o.material);
+    if (!buckets.has(key)) buckets.set(key, { mat: o.material, geos: [], cast: false });
+    const b = buckets.get(key); b.geos.push(g); b.cast = b.cast || o.castShadow;
+    olds.push(o);
+  });
+  for (const o of olds) { o.geometry.dispose(); }
+  group.clear();
+  for (const b of buckets.values()) {
+    const merged = mergeGeometries(b.geos);
+    b.geos.forEach((g) => g.dispose());
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, b.mat);
+    mesh.castShadow = b.cast; mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+}
 function buildRoom(woodMat) {
   const { tw, td, cx, cz } = T.table;
   const M = 30;                                     // ~3,8 m de sala alrededor de la mesa
@@ -1136,6 +1185,7 @@ function buildRoom(woodMat) {
     ch.rotation.y = side * Math.PI / 2;
     room.add(ch);
   }
+  mergeStatic(room);
   trackGroup.add(room);
   // Patas de la mesa
   const legH = -0.32 - FLOOR_Y;
@@ -3542,11 +3592,23 @@ $('garGo').addEventListener('click', () => {
   if (mode === '2p' && entries.length < 2) beginEntry();
   else if (mode === 'online') onlineCarChosen(entries[0]);
   else if (champ && champ.idx === 0 && !champ.entries) { champ.entries = entries.slice(); startChampRace(); }
-  else startRace({ def: selDef, mode, entries });
+  else withVeil(selDef, () => startRace({ def: selDef, mode, entries }));
 });
 $('garBack').addEventListener('click', () => { sfx.click(); if (mode === 'online') { showOnline(); return; } if (champ && !champ.entries && !entries.length) { champ = null; showChamp(); return; } if (entries.length) { entries.pop(); beginEntry(); } else showCircuits(); });
 
 // ---- Carrera: pausa, cámara y resultados ----
+// Los circuitos con decorado (montaña, ciudad) tardan un momento en montarse: se avisa en pantalla
+// en vez de dejar la imagen congelada
+function withVeil(def, fn) {
+  if (!def || !(def.decor || def.long)) { fn(); return; }
+  const v = $('loadVeil');
+  $('loadName').textContent = def.name;
+  v.classList.add('on');
+  requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
+    try { fn(); } finally { v.classList.remove('on'); }
+  }, 30)));
+}
+
 // ---- Presentación del circuito: helicóptero sobre la mesa y una pasada de TV por toda la vuelta ----
 const MODE_NAME = { practica: 'Práctica', '1p': 'Carrera', '2p': '2 Jugadores' };
 const ONLINE_INTRO = 13;   // segundos (el servidor deja este margen antes del semáforo)
@@ -3635,7 +3697,7 @@ $('quitBtn').addEventListener('click', () => {
   if (race.mode === 'online') { room && room.send({ t: 'fin', time: 9999, best: Infinity }); afterRace(); return; }
   if (race.mode === 'practica') endPractice(); mode = race.mode; clearCars(); afterRace();
 });
-$('againBtn').addEventListener('click', () => { closeModal('mResults'); startRace({ def: race.def, mode: race.mode, entries: race.entries }); });
+$('againBtn').addEventListener('click', () => { closeModal('mResults'); const r = race; withVeil(r.def, () => startRace({ def: r.def, mode: r.mode, entries: r.entries })); });
 $('nextBtn').addEventListener('click', () => {
   closeModal('mResults');
   if (race.champ) { champ.idx++; startChampRace(); return; }
@@ -3746,7 +3808,7 @@ Promise.race([document.fonts ? Promise.all([document.fonts.load('italic 700 20px
 
 // Gancho para pruebas automáticas
 window.__slot = {
-  get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; }, get wrGhost() { return wrGhost; }, get shot() { return shot; }, get world() { return world; },
+  get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; }, get wrGhost() { return wrGhost; }, get shot() { return shot; }, get world() { return world; }, measure: () => new Promise((res) => { renderer.info.autoReset = false; renderer.info.reset(); requestAnimationFrame(() => requestAnimationFrame(() => { const r = { ...renderer.info.render }; renderer.info.autoReset = true; let meshes = 0, shadow = 0, inst = 0, skinned = 0; scene.traverse((o) => { if (o.isMesh && o.visible) { meshes++; if (o.castShadow) shadow++; if (o.isInstancedMesh) inst++; if (o.isSkinnedMesh) skinned++; } }); res({ ...r, meshes, shadow, inst, skinned }); })); }), breakdown: () => { const out = {}; const tri = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3; scene.traverse((o) => { if (!o.isMesh) return; let a = o, tag = ''; while (a && !tag) { if (a.name) tag = a.name; a = a.parent; } tag = tag || (o.isSkinnedMesh ? 'skinned' : o.parent && o.parent.type) || 'x'; if (o.parent === trackGroup) tag = 'track:' + (o.geometry.type); const n = o.isInstancedMesh ? o.count : 1; const e = out[tag] || (out[tag] = { meshes: 0, tris: 0, shadow: 0 }); e.meshes++; e.tris += Math.round(tri(o.geometry) * n); if (o.castShadow) e.shadow++; }); return out; }, get info() { return { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, quality }; },
   get actx() { return actx; }, get slotBuf() { return slotBuf; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },

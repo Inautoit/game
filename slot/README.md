@@ -221,3 +221,14 @@ relacionado con ella.
     escalera, dos horquillas y otra chicane; ciudad de noche en manzanas, farolas, muelle, mar y barcos.
   - Se diseñan y comprueban con una herramienta que mide el largo, las rectas de cierre, las pendientes y los cruces.
 - La pasada de TV de la presentación va más despacio (de 6 a 14 s; 9 s en el online, que dura 13 s en total).
+
+## Rendimiento en el móvil
+
+- Lo repetido se dibuja de una vez (instancias): pilares de los puentes y pilas de neumáticos. La sala se junta en
+  unas pocas mallas por material (`mergeStatic`). Barandillas con menos triángulos y, en los circuitos largos, la
+  pista se construye con una fila cada 2–3 muestras. En el Puerto: de 3.120 a ~980 llamadas de dibujo por fotograma;
+  en el Pico, de 1,5 M a 0,8 M triángulos (similar a Resistencia).
+- En pantallas táctiles, menos público (12 personas como mucho; 7 o 5 si baja la calidad gráfica).
+- Mientras se monta un circuito con decorado sale «Preparando el circuito» en vez de quedarse la imagen congelada.
+- Los Premium rediseñados tienen identificador nuevo (`pico-xl`, `puerto-xl`): ranking y fantasmas empiezan de cero,
+  porque los tiempos del trazado anterior no valen para el nuevo.

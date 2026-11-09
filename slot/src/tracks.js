@@ -52,12 +52,12 @@ export const TRACKS = [
 // decor: decorado especial que monta el juego alrededor de la pista (montaña, ciudad…)
 export const PREMIUM = [
   {
-    id: 'pico', name: 'Subida al Pico', lanes: 4, laps: 3, scenery: 'verde', decor: 'montana', premium: true, long: true,
+    id: 'pico-xl', name: 'Subida al Pico', lanes: 4, laps: 3, scenery: 'verde', decor: 'montana', premium: true, long: true,
     blurb: 'Rasante en meta, subida larga, espiral hasta la cima, herraduras de bajada y chicane en el valle',
     pieces: [['S', 22, 0], ['S', 14, 0.9], ['C', 30, 7, 0.9], ['C', -60, 7, 0.9], ['C', 30, 7, 0.9], ['S', 14, 0], ['S', 6, 0], ['C', 90, 7, 0.4], ['S', 48, 2.6], ['C', -360, 6, 4.4], ['S', 8, 4.4], ['C', 90, 7, 4.2], ['C', -40, 6, 4.0], ['C', 80, 6, 3.8], ['C', -40, 6, 3.6], ['S', 10, 3.2], ['C', 180, 4.5, 2.7], ['S', 18, 2.0], ['C', -180, 4.5, 1.5], ['S', 18, 1.0], ['C', 40, 5, 0.9], ['C', -80, 5, 0.7], ['C', 40, 5, 0.6], ['S', 40, 0.2], ['C', 90, 7, 0], ['S', 12, 0.7], ['S', 12, 0], ['S', null, 0], ['C', 90, 7, 0], ['S', null, 0]],
   },
   {
-    id: 'puerto', name: 'Urbano del Puerto', lanes: 4, laps: 3, scenery: 'ciudad', decor: 'ciudad', premium: true, long: true,
+    id: 'puerto-xl', name: 'Urbano del Puerto', lanes: 4, laps: 3, scenery: 'ciudad', decor: 'ciudad', premium: true, long: true,
     blurb: 'Recta del puerto, rampa en espiral, calles en escalera, dos horquillas y dos chicanes, de noche',
     pieces: [['S', 56, 0], ['C', 35, 4, 0], ['C', -70, 4, 0], ['C', 35, 4, 0], ['S', 14, 0], ['C', 90, 4.5, 0], ['S', 26, 0.9], ['C', -360, 5.5, 2.3], ['S', 16, 2.3], ['C', 90, 4.5, 2.2], ['S', 8, 2.1], ['C', -90, 3.5, 2.0], ['S', 10, 1.9], ['C', 90, 3.5, 1.8], ['S', 10, 1.7], ['C', 90, 3.5, 1.6], ['S', 10, 1.5], ['C', -90, 3.5, 1.4], ['S', 12, 1.1], ['C', 180, 3.4, 0.8], ['S', 30, 0.5], ['C', -180, 3.4, 0.3], ['S', 30, 0.1], ['C', -35, 4, 0], ['C', 70, 4, 0], ['C', -35, 4, 0], ['S', 44, 0], ['C', 90, 4.5, 0], ['S', null, 0], ['C', 90, 4.5, 0], ['S', null, 0]],
   },
