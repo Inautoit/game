@@ -79,10 +79,15 @@ let music = null;
 function updateMusic() {
   if (!actx) return;
   if (!music) music = createMusic(actx, master);
-  const want = settings.music && settings.sound && !['race', 'countdown', 'pause', 'results', 'splash'].includes(state);
+  // Suena en la pantalla de inicio y en todo el juego, menos mientras se corre
+  const want = settings.music && settings.sound && !['race', 'countdown'].includes(state);
   if (want && !music.playing && actx.state === 'running') music.play();
-  else if (!want && music.playing) music.stop(state === 'countdown' ? 0.6 : 0.3);
+  else if (!want && music.playing) music.stop(0.6);
+  const hint = document.getElementById('soundHint');
+  if (hint) hint.hidden = actx.state === 'running' || !settings.sound;
 }
+// Los navegadores no dejan sonar nada hasta que se toca la pantalla: el primer toque arranca el audio
+for (const ev of ['pointerdown', 'touchend', 'keydown']) window.addEventListener(ev, () => { initAudio(); }, { capture: true, passive: true });
 function initAudio() {
   if (!actx) {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -1776,24 +1781,26 @@ function loop(now) {
     updateTele();
   } else if (state === 'menu' || state === 'circuits' || state === 'garage') {
     if (race && race.demo) {
-      race.acc += dt;
+      // A cámara lenta, como en un anuncio: se ve cada derrape
+      const sdt = dt * DEMO_SPEED;
+      race.acc += sdt;
       let n = 0;
       while (race.acc >= DT && n < 40) { race.acc -= DT; n++; race.simT += DT; for (const c of cars) physStep(c); }
       for (const c of cars) {
-        demoMistakes(c, dt);
-        if (c.crash) animateCrash(c, dt);
+        demoMistakes(c, sdt);
+        if (c.crash) animateCrash(c, sdt);
         else {
           const p = placeCar(c.mesh, c.st.s, c.d, c.st.th);
-          if (c.blink > 0) { c.blink -= dt; c.mesh.visible = Math.floor(c.blink * 12) % 2 === 0; } else c.mesh.visible = true;
+          if (c.blink > 0) { c.blink -= sdt; c.mesh.visible = Math.floor(c.blink * 12) % 2 === 0; } else c.mesh.visible = true;
           const wh = c.mesh.userData.wheels;
-          if (wh) { const a = (c.st.v / 0.0105) * dt; for (const w of wh) w.rotateX(a); }
+          if (wh) { const a = (c.st.v / 0.0105) * sdt; for (const w of wh) w.rotateX(a); }
           updateSkids(c, p);
           const rate = (c.st.amps < -0.6 ? 70 : 0) + (c.st.v > 3 ? (c.st.v - 3) * 8 : 0);
-          let k = rate * dt;
+          let k = rate * sdt;
           while (k > 0) { if (Math.random() < k) emitSpark(p.x, p.y + 0.02, p.z, Math.cos(p.h), Math.sin(p.h)); k -= 1; }
         }
       }
-      updateSparks(dt);
+      updateSparks(sdt);
     }
     orbit += dt * 0.05;
   }
@@ -2021,6 +2028,7 @@ function showMenu() {
 }
 // Fondo del menú: una carrera de exhibición retransmitida como en la tele (4 coches, circuitos largos)
 const DEMO_MAG = ['bajo', 'sin', 'medio', 'bajo'];
+const DEMO_SPEED = 0.5;   // la exhibición va a la mitad de velocidad (cámara lenta)
 // Errores del piloto en la exhibición: a menudo aprieta un poco de más (derrapa) y de vez en cuando
 // entra muy pasado en una curva (se sale). Medido: una salida cada ~15 s entre los 4 coches.
 function demoMistakes(c, dt) {
@@ -2057,21 +2065,23 @@ function newShot() {
   const live = cars.map((c, i) => i).filter((i) => !cars[i].crash);
   if (!live.length) return false;
   let type;
-  do type = SHOTS[Math.floor(Math.random() * SHOTS.length)]; while (type === lastShot);
+  // El primer plano es el aéreo de presentación del circuito, como en una retransmisión
+  if (!shot) type = 'aereo';
+  else do type = SHOTS[Math.floor(Math.random() * SHOTS.length)]; while (type === lastShot);
   lastShot = type;
   // Como un realizador de verdad: a menudo pincha el coche que va más cruzado o que está apretando
   const hot = live.slice().sort((a, b) => (Math.abs(cars[b].st.th) + (cars[b].mistake > 0 ? 0.3 : 0)) - (Math.abs(cars[a].st.th) + (cars[a].mistake > 0 ? 0.3 : 0)))[0];
   const ci = Math.random() < 0.35 ? hot : shot && live.length > 1 && Math.random() < 0.6 ? live.filter((i) => i !== shot.ci)[Math.floor(Math.random() * (live.length - 1))] : live[Math.floor(Math.random() * live.length)];
   const c = cars[ci];
-  shot = { type, ci, t: 0, dur: 4 + Math.random() * 2.5, side: Math.random() < 0.5 ? 1 : -1, a0: Math.random() * Math.PI * 2, fov: 30 };
+  shot = { type, ci, t: 0, dur: 7 + Math.random() * 3, side: Math.random() < 0.5 ? 1 : -1, a0: Math.random() * Math.PI * 2, fov: 30 };
   shot.fov = { pista: 22, tele: 17, lateral: 28, persecucion: 34, frontal: 30, grua: 36, aereo: 40 }[type];
   if (type === 'tele') {
     // Teleobjetivo a ras de pista, lejos y por delante: se ve al coche trazar las curvas
     const half = (T.offsets.length * LANE_W) / 2 + 0.55;
-    shot.dist = 7.5;
+    shot.dist = 8;
     const ok = [shot.side, -shot.side].find((sg) => {
       const q = at(c.st.s + shot.dist, half * sg), r = at(c.st.s, c.d);
-      return clearView(tmpV.set(q.x - T.center.x, q.y + 0.16, q.z - T.center.z).clone(), new THREE.Vector3(r.x - T.center.x, r.y + 0.12, r.z - T.center.z));
+      return clearView(tmpV.set(q.x - T.center.x, q.y + 0.42, q.z - T.center.z).clone(), new THREE.Vector3(r.x - T.center.x, r.y + 0.12, r.z - T.center.z));
     });
     if (ok === undefined) { type = shot.type = 'frontal'; shot.fov = 30; } else { shot.side = ok; shot.edge = half * ok; }
   }
@@ -2093,8 +2103,8 @@ function newShot() {
     if (!found) { lastShot = ''; shot.type = type = 'persecucion'; shot.fov = 34; }
     else shot.fixed = found;
   }
-  // Corte seco con un fundido muy corto a negro
-  const cut = $('menuCut'); cut.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => cut.classList.remove('on')));
+  // Sale del fundido a negro poco a poco
+  requestAnimationFrame(() => $('menuCut').classList.remove('on'));
   shot.snap = true;
   return true;
 }
@@ -2109,8 +2119,10 @@ function clearView(a, b) {
   return !hits.some((h) => h.object.visible !== false && h.object.material && !h.object.material.transparent);
 }
 function menuCamera(dt) {
-  if (shot && cars[shot.ci].crash && !shot.crashT) shot.crashT = shot.t;
-  if (!shot || shot.t >= shot.dur || (shot.crashT !== undefined && shot.t - shot.crashT > 1.6)) { if (!newShot()) { overviewCamera(camGoalPos, camGoalTarget); camPos.lerp(camGoalPos, Math.min(1, dt * 3)); camTarget.lerp(camGoalTarget, Math.min(1, dt * 3)); return; } }
+  // Si el coche del plano se sale, el plano aguanta un poco para que se vea y luego corta
+  if (shot && cars[shot.ci].crash && shot.crashT === undefined) { shot.crashT = shot.t; shot.dur = Math.min(shot.dur, shot.t + 3); }
+  if (shot && shot.t > shot.dur - 0.45) $('menuCut').classList.add('on');   // fundido a negro antes del corte
+  if (!shot || shot.t >= shot.dur) { if (!newShot()) { overviewCamera(camGoalPos, camGoalTarget); camPos.lerp(camGoalPos, Math.min(1, dt * 3)); camTarget.lerp(camGoalTarget, Math.min(1, dt * 3)); return; } }
   shot.t += dt;
   const c = cars[shot.ci], k = shot.t / shot.dur;
   const p = at(c.st.s, c.d);
@@ -2123,7 +2135,7 @@ function menuCamera(dt) {
     case 'tele': {
       // Va por delante siguiendo la pista (también en las curvas) y se acerca poco a poco
       const q = at(c.st.s + shot.dist - 2.5 * k, shot.edge);
-      camGoalPos.set(q.x + ox, q.y + 0.16, q.z + oz);
+      camGoalPos.set(q.x + ox, q.y + 0.42, q.z + oz);
       camGoalTarget.set(px, py + 0.1, pz);
       break;
     }
@@ -2138,14 +2150,14 @@ function menuCamera(dt) {
       camGoalTarget.set(px + fx * 1.2, py + 0.12, pz + fz * 1.2);
       break;
     case 'frontal': {
-      // A ras de pista, delante del coche: se le ve venir desde abajo
-      const d = 2.6 - 0.9 * k;
-      camGoalPos.set(px + fx * d + nx * 0.42 * sd, py + 0.13, pz + fz * d + nz * 0.42 * sd);
-      camGoalTarget.set(px, py + 0.14, pz);
+      // Bajo, delante del coche: se le ve venir
+      const d = 2.8 - 0.8 * k;
+      camGoalPos.set(px + fx * d + nx * 0.5 * sd, py + 0.3, pz + fz * d + nz * 0.5 * sd);
+      camGoalTarget.set(px, py + 0.1, pz);
       break;
     }
     case 'grua': {
-      const a = shot.a0 + k * 0.9;
+      const a = shot.a0 + k * 0.6;
       camGoalPos.set(px + Math.cos(a) * 3.2, py + 1.3 + 0.9 * k, pz + Math.sin(a) * 3.2);
       camGoalTarget.set(px, py + 0.1, pz);
       break;
@@ -2158,7 +2170,7 @@ function menuCamera(dt) {
   if (shot.snap) { camPos.copy(camGoalPos); camTarget.copy(camGoalTarget); shot.snap = false; }
   else {
     // Los planos móviles siguen al coche casi pegados; la cámara fija solo gira
-    const kp = 1 - Math.exp(-dt * (shot.fixed ? 30 : 14)), kt = 1 - Math.exp(-dt * 18);
+    const kp = 1 - Math.exp(-dt * (shot.fixed ? 30 : 8)), kt = 1 - Math.exp(-dt * 10);
     camPos.lerp(camGoalPos, kp); camTarget.lerp(camGoalTarget, kt);
   }
 }

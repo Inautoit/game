@@ -181,4 +181,8 @@ relacionado con ella.
   cruzado y, si el coche del plano se sale, aguanta el plano para que se vea.
 - Plano «tele»: teleobjetivo a ras de pista, lejos y por delante, siguiendo la pista para ver cómo traza las curvas.
 - Música (`src/music.js`): electrónica de carreras sintetizada en directo con Web Audio, 116 BPM, 32 compases con
-  entrada, cuerpo y subida. Suena en los menús y se funde al empezar la carrera. Se quita en Ajustes → Música.
+  entrada, cuerpo y subida. Suena desde la pantalla de inicio y en todo el juego menos mientras se corre (cuenta
+  atrás y carrera). El navegador no deja sonar nada hasta el primer toque, así que arranca con él (hay un aviso).
+  Se quita en Ajustes → Música.
+- La exhibición va a cámara lenta (×0,5), los planos duran 7–10 s y se enlazan con fundidos a negro; siempre empieza
+  con el plano aéreo del circuito.

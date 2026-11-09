@@ -573,8 +573,11 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .live-tag span { padding: 6px 12px; background: rgba(10, 12, 18, 0.82); color: #fff; }
 .live-tag span:empty { display: none; }
 @keyframes livePulse { 50% { opacity: 0.25; } }
-.menu-cut { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.16s ease; }
-.menu-cut.on { opacity: 1; transition: none; }
+.menu-cut { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.7s ease; }
+.menu-cut.on { opacity: 1; transition: opacity 0.4s ease-in; }
+.sound-hint { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 22px); transform: translateX(-50%); padding: 7px 14px; border-radius: 999px; background: rgba(10, 12, 18, 0.75); color: #fff; font-size: 13px; font-weight: 600; letter-spacing: 0.02em; pointer-events: none; animation: hintPulse 2.4s ease-in-out infinite; z-index: 5; }
+.sound-hint[hidden] { display: none; }
+@keyframes hintPulse { 50% { opacity: 0.55; } }
 /* Pantalla horizontal (iPad, ordenador): menú en columna a la izquierda, el vídeo a la derecha */
 @media (min-aspect-ratio: 1/1) and (min-width: 700px) {
   #menu { background: linear-gradient(90deg, rgba(6, 8, 12, 0.92) 0%, rgba(6, 8, 12, 0.72) 28%, rgba(6, 8, 12, 0) 52%), linear-gradient(180deg, rgba(6, 8, 12, 0.45), transparent 22%, transparent 80%, rgba(6, 8, 12, 0.5)); }
