@@ -36,7 +36,7 @@ upload() {
     -F "dmath.js=@$TMP/dmath.js;type=application/javascript+module" \
     -F "verify.js=@$TMP/verify.js;type=application/javascript+module"
 }
-BASE="\"main_module\":\"worker.js\",\"compatibility_date\":\"2024-11-01\",\"compatibility_flags\":[\"nodejs_compat\"],\"bindings\":$BINDINGS"
+BASE="\"main_module\":\"worker.js\",\"keep_bindings\":[\"secret_text\"],\"compatibility_date\":\"2024-11-01\",\"compatibility_flags\":[\"nodejs_compat\"],\"bindings\":$BINDINGS"
 # La primera vez hay que crear la clase de las salas (migración v1); después ya existe
 OUT=$(upload "{$BASE}")
 if ! echo "$OUT" | grep -q '"success": *true'; then

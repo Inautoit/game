@@ -158,3 +158,17 @@ relacionado con ella.
 - Menú en columna a la izquierda en iPad y ordenador, y abajo en el móvil, con el logotipo encima.
 - Todos los circuitos son de 4 carriles (La Horquilla se ha ensanchado para que quepan). El editor ya no deja elegir 2.
 - Los pilares de los puentes no se ponen donde pasa otro tramo de pista por debajo.
+
+## Crear circuito con IA
+
+- En el editor, **Crear con IA**: describes el circuito («largo y rápido, con una horquilla y un puente, de noche») y
+  se monta solo. Luego se puede retocar pieza a pieza, probar y publicar como cualquier otro.
+- **Quién entiende el texto**: `POST /api/ai/track` (en el Worker) pide a Claude una *ficha* del circuito (largo,
+  estilo, curvas, horquillas, chicanes, rectas largas, puente, escenario, vueltas, sentido) con salida JSON
+  estructurada. Necesita el secreto `ANTHROPIC_API_KEY` en el Worker y está limitado a 25 por día y por IP (tabla
+  `ai_uses`). Si no hay clave o no hay conexión, el juego usa su propio intérprete de palabras clave
+  (`parsePrompt` en `src/aitrack.js`).
+- **Quién monta el trazado**: `generateTrack` (`src/aitrack.js`) prueba trazados al azar con piezas del editor
+  (lazos con el giro justo, horquillas de 180°, chicanes, rectas largas y, si hay puente, un ocho con rampas) y se
+  queda con el que mejor cumple la ficha. Todos pasan por `autoClose`/`validateTrack`: siempre cerrados y sin cruces.
+- `deploy.sh` publica con `keep_bindings: ["secret_text"]` para no borrar el secreto en cada despliegue.

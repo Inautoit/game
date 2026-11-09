@@ -440,6 +440,12 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
   #editor .title { font-size: 24px; }
 }
 .ed-finish { width: 100%; min-height: 52px; }
+.ai-text { width: 100%; margin-top: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: var(--ink); font: inherit; font-size: 16px; resize: none; user-select: text; -webkit-user-select: text; touch-action: auto; }
+.ai-text:focus { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.ai-ex { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.ai-ex button { padding: 7px 11px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); font-size: 13px; color: var(--ink-2); }
+.ai-ex button:hover { color: var(--ink); border-color: rgba(255, 255, 255, 0.3); }
+#aiGo:disabled { opacity: 0.6; }
 .ed-finish .btn-sub { font-size: 12px; }
 .ed-finish:disabled { opacity: 0.55; box-shadow: none; }
 

@@ -4,6 +4,7 @@ import { TRACKS, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } from './editor.js';
 import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
 import { replay } from './verify.js';
+import { parsePrompt, normSpec, generateTrack, radiusKey } from './aitrack.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
 import { makeTelemetry, telStep, telLap, dangerColor, drawTrace, SECTORS } from './telemetry.js';
@@ -2022,7 +2023,8 @@ function demoRace() {
 }
 // Realizador: cambia de plano cada pocos segundos, como en una retransmisión
 let shot = null, lastShot = '';
-const SHOTS = ['pista', 'lateral', 'persecucion', 'frontal', 'grua', 'aereo', 'pista', 'lateral'];
+// Los planos a ras de pista (frontal y suelo) salen más a menudo: son los que más lucen
+const SHOTS = ['frontal', 'suelo', 'frontal', 'suelo', 'pista', 'lateral', 'persecucion', 'grua', 'aereo'];
 const tmpV = new THREE.Vector3();
 function newShot() {
   const live = cars.map((c, i) => i).filter((i) => !cars[i].crash);
@@ -2033,18 +2035,19 @@ function newShot() {
   const ci = shot && live.length > 1 && Math.random() < 0.6 ? live.filter((i) => i !== shot.ci)[Math.floor(Math.random() * (live.length - 1))] : live[Math.floor(Math.random() * live.length)];
   const c = cars[ci];
   shot = { type, ci, t: 0, dur: 4 + Math.random() * 2.5, side: Math.random() < 0.5 ? 1 : -1, a0: Math.random() * Math.PI * 2, fov: 30 };
-  shot.fov = { pista: 22, lateral: 28, persecucion: 34, frontal: 26, grua: 36, aereo: 40 }[type];
+  shot.fov = { pista: 22, suelo: 30, lateral: 28, persecucion: 34, frontal: 30, grua: 36, aereo: 40 }[type];
   if (type === 'pista') {
+    const low = false;
     // Cámara fija junto a la pista, por delante del coche: lo ve llegar y pasar.
     // Se prueba a cada lado y a dos distancias hasta encontrar un sitio sin vallas ni gradas delante.
-    const ahead = Math.max(2, c.st.v / SCALE) * shot.dur * 0.4;
+    const ahead = Math.max(2, c.st.v / SCALE) * shot.dur * (low ? 0.22 : 0.4);
     const half = (T.offsets.length * LANE_W) / 2;
     let found = null;
-    for (const dist of [0.95, 1.6]) for (const sgn of [shot.side, -shot.side]) {
+    for (const dist of low ? [0.32, 0.6] : [0.95, 1.6]) for (const sgn of [shot.side, -shot.side]) {
       if (found) break;
       const q = at(c.st.s + ahead, 0);
       const nx = -Math.sin(q.h), nz = Math.cos(q.h);
-      const cam = new THREE.Vector3(q.x + nx * (half + dist) * sgn - T.center.x, q.y + 0.45, q.z + nz * (half + dist) * sgn - T.center.z);
+      const cam = new THREE.Vector3(q.x + nx * (half + dist) * sgn - T.center.x, q.y + (low ? 0.14 : 0.45), q.z + nz * (half + dist) * sgn - T.center.z);
       const seesCar = [c.st.s, c.st.s + ahead * 0.5, c.st.s + ahead].every((s2) => { const r = at(s2, c.d); return clearView(cam, tmpV.set(r.x - T.center.x, r.y + 0.12, r.z - T.center.z)); });
       if (seesCar) found = cam;
     }
@@ -2077,6 +2080,13 @@ function menuCamera(dt) {
   const sd = shot.side;
   switch (shot.type) {
     case 'pista': camGoalPos.copy(shot.fixed); camGoalTarget.set(px, py + 0.08, pz); break;
+    case 'suelo': {
+      // Cámara a ras de pista que rueda junto al carril: el coche le alcanza y la pasa
+      const along = 1.5 - 2.6 * k;
+      camGoalPos.set(px + fx * along + nx * 0.55 * sd, py + 0.1, pz + fz * along + nz * 0.55 * sd);
+      camGoalTarget.set(px + fx * 0.1, py + 0.12, pz + fz * 0.1);
+      break;
+    }
     case 'lateral': {
       const along = -0.7 + 1.4 * k;
       camGoalPos.set(px + nx * 1.9 * sd + fx * along, py + 0.32, pz + nz * 1.9 * sd + fz * along);
@@ -2088,9 +2098,10 @@ function menuCamera(dt) {
       camGoalTarget.set(px + fx * 1.2, py + 0.12, pz + fz * 1.2);
       break;
     case 'frontal': {
-      const d = 2.8 - 0.8 * k;
-      camGoalPos.set(px + fx * d + nx * 0.5 * sd, py + 0.3, pz + fz * d + nz * 0.5 * sd);
-      camGoalTarget.set(px, py + 0.1, pz);
+      // A ras de pista, delante del coche: se le ve venir desde abajo
+      const d = 2.6 - 0.9 * k;
+      camGoalPos.set(px + fx * d + nx * 0.42 * sd, py + 0.13, pz + fz * d + nz * 0.42 * sd);
+      camGoalTarget.set(px, py + 0.14, pz);
       break;
     }
     case 'grua': {
@@ -2107,7 +2118,7 @@ function menuCamera(dt) {
   if (shot.snap) { camPos.copy(camGoalPos); camTarget.copy(camGoalTarget); shot.snap = false; }
   else {
     // Los planos móviles siguen al coche casi pegados; la cámara fija solo gira
-    const kp = 1 - Math.exp(-dt * (shot.type === 'pista' ? 30 : 14)), kt = 1 - Math.exp(-dt * 18);
+    const kp = 1 - Math.exp(-dt * (shot.fixed ? 30 : 14)), kt = 1 - Math.exp(-dt * 18);
     camPos.lerp(camGoalPos, kp); camTarget.lerp(camGoalTarget, kt);
   }
 }
@@ -2279,6 +2290,36 @@ function saveDraft() {
   if (i >= 0) l[i] = draft; else l.unshift(draft);
   saveMyTracks(l.slice(0, 40));
 }
+// ---- Crear circuito con IA ----
+$('edAI').addEventListener('click', () => { sfx.click(); $('aiMsg').textContent = ''; openModal('mAI'); setTimeout(() => $('aiText').focus(), 250); });
+document.querySelectorAll('#aiEx button').forEach((b) => b.addEventListener('click', () => { sfx.click(); $('aiText').value = b.textContent; }));
+$('aiText').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('aiGo').click(); } });
+$('aiGo').addEventListener('click', async () => {
+  const text = $('aiText').value.trim();
+  const msg = $('aiMsg'), go = $('aiGo');
+  if (text.length < 3) { msg.textContent = 'Escribe cómo quieres el circuito.'; return; }
+  sfx.click();
+  go.disabled = true;
+  msg.textContent = 'Leyendo tu descripción…';
+  let spec, note = '';
+  try { spec = normSpec((await apiPost('/api/ai/track', { prompt: text })).spec); }
+  catch (e) {
+    // Sin IA en el servidor (o sin conexión): lo interpreta el propio juego
+    spec = parsePrompt(text);
+    if (e.message !== 'sin-ia' && e.message !== 'Sin conexión') note = e.message;
+  }
+  msg.textContent = 'Montando el circuito…';
+  const r = await generateTrack(spec, { ms: 1600 });
+  go.disabled = false;
+  if (!r) { msg.textContent = 'No he podido montar ese circuito. Prueba a describirlo de otra forma.'; return; }
+  draft = { ...newDraft(), name: spec.name || '', laps: spec.laps, scenery: spec.scenery, radius: radiusKey(spec), pieces: r.pieces };
+  draft.lanes = 4;
+  closeModal('mAI');
+  renderEditor();
+  const extra = spec.bridge && !r.bridge ? ' · sin puente (no cabía)' : '';
+  toast(`«${spec.name || 'Circuito nuevo'}» · ${r.length.toFixed(1).replace('.', ',')} m${extra}${note ? ` · ${note}` : ''}`);
+});
+
 function showEditor() {
   state = 'editor';
   clearCars(); race = null;
