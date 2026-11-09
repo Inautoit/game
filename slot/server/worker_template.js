@@ -35,70 +35,6 @@ function newId(n = 7, a = 'abcdefghijkmnpqrstuvwxyz23456789') {
   const r = crypto.getRandomValues(new Uint8Array(n));
   return [...r].map((b) => a[b % a.length]).join('');
 }
-// ---- Crear circuito con IA: Claude convierte la descripción en una ficha; el juego monta el trazado ----
-const AI_PER_DAY = 25;
-const SPEC_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['name', 'lengthM', 'style', 'curves', 'hairpins', 'chicanes', 'longStraights', 'bridge', 'scenery', 'laps', 'direction'],
-  properties: {
-    name: { type: 'string', description: 'Nombre corto y original del circuito, en español (máx. 28 caracteres)' },
-    lengthM: { type: 'integer', description: 'Largo de la cuerda en metros reales de la pista 1:32, de 8 a 55. Corto≈12, mediano≈22, largo≈38, muy largo≈50' },
-    style: { type: 'string', enum: ['rapido', 'tecnico', 'mixto'] },
-    curves: { type: 'string', enum: ['abiertas', 'medias', 'cerradas'] },
-    hairpins: { type: 'integer', description: 'Horquillas (curvas de 180°), 0 a 3' },
-    chicanes: { type: 'integer', description: 'Chicanes (eses), 0 a 3' },
-    longStraights: { type: 'integer', description: 'Rectas largas, 0 a 3' },
-    bridge: { type: 'boolean', description: 'true si tiene un puente: el circuito se cruza a sí mismo en forma de ocho' },
-    scenery: { type: 'string', enum: ['verde', 'arena', 'noche'] },
-    laps: { type: 'integer', description: 'Vueltas de la carrera, 1 a 20 (normal 5)' },
-    direction: { type: 'string', enum: ['izquierda', 'derecha', 'mixto'], description: 'Hacia dónde gira sobre todo' },
-  },
-};
-const AI_SYSTEM = `Eres el diseñador de circuitos de Turbo Slot, un simulador de pistas de slot a escala 1:32 con 4 carriles.
-El jugador describe el circuito que quiere y tú lo traduces a una ficha. Un generador monta luego el trazado con piezas de pista.
-- Respeta todo lo que pida. Lo que no diga, elígelo tú para que el circuito sea divertido y coherente con la descripción.
-- "Rápido" = pocas curvas, abiertas, rectas largas. "Técnico" = muchas curvas cerradas, horquillas o chicanes.
-- Si pide un ocho, un cruce o un paso elevado, bridge = true.
-- Si menciona un circuito real o un lugar, inspírate en su carácter (rápido, revirado, con horquilla…), pero el nombre debe ser original y sin marcas.
-- Si la descripción no tiene que ver con un circuito, haz un circuito mediano y equilibrado.`;
-async function aiTrack(req, env) {
-  if (!env.ANTHROPIC_API_KEY) return fail('sin-ia', 503);
-  const body = await req.json().catch(() => null);
-  const prompt = clean(body && body.prompt, 400);
-  if (prompt.length < 3) return fail('Describe el circuito que quieres');
-  const db = env.DB;
-  const ipHash = await sha((req.headers.get('cf-connecting-ip') || '') + ':ai');
-  const day = Math.floor(Date.now() / 864e5);
-  const row = await db.prepare('SELECT n FROM ai_uses WHERE ip_hash = ? AND day = ?').bind(ipHash, day).first();
-  if (row && row.n >= AI_PER_DAY) return fail('Has creado muchos circuitos con IA hoy. Vuelve mañana', 429);
-  await db.prepare('INSERT INTO ai_uses (ip_hash, day, n) VALUES (?, ?, 1) ON CONFLICT(ip_hash, day) DO UPDATE SET n = n + 1').bind(ipHash, day).run();
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2026-10-21',
-      'anthropic-beta': 'server-side-fallback-2026-07-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-opus-5-5',
-      max_tokens: 4000,
-      fallbacks: 'default',
-      system: AI_SYSTEM,
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: SPEC_SCHEMA } },
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!r.ok) return fail('La IA no está disponible ahora mismo', 502);
-  const msg = await r.json();
-  if (msg.stop_reason === 'refusal') return fail('La IA no ha querido hacer ese circuito: prueba con otra descripción', 422);
-  const text = (msg.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  let spec;
-  try { spec = JSON.parse(text); } catch { return fail('La IA no ha devuelto una ficha válida', 502); }
-  return json({ spec, ai: true });
-}
-
 const PUBLIC = 'id, name, author, lanes, laps, scenery, pieces, length, plays, likes, best_time, best_name, created';
 const rowOut = (r) => ({ ...r, pieces: JSON.parse(r.pieces) });
 
@@ -262,9 +198,6 @@ export default {
         if (req.headers.get('Upgrade') !== 'websocket') return fail('Se necesita WebSocket', 426);
         const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
         return stub.fetch(req);
-      }
-      if (parts[1] === 'ai' && parts[2] === 'track' && req.method === 'POST') {
-        try { return await aiTrack(req, env); } catch (e) { return fail('Error del servidor', 500); }
       }
       if (parts[1] === 'laps') {
         try { return await lapsApi(req, env, url, parts); } catch (e) { return fail('Error del servidor', 500); }

@@ -4,7 +4,6 @@ import { TRACKS, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } from './editor.js';
 import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
 import { replay } from './verify.js';
-import { parsePrompt, normSpec, generateTrack, radiusKey } from './aitrack.js';
 import { createMusic } from './music.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
@@ -2342,36 +2341,6 @@ function saveDraft() {
   if (i >= 0) l[i] = draft; else l.unshift(draft);
   saveMyTracks(l.slice(0, 40));
 }
-// ---- Crear circuito con IA ----
-$('edAI').addEventListener('click', () => { sfx.click(); $('aiMsg').textContent = ''; openModal('mAI'); setTimeout(() => $('aiText').focus(), 250); });
-document.querySelectorAll('#aiEx button').forEach((b) => b.addEventListener('click', () => { sfx.click(); $('aiText').value = b.textContent; }));
-$('aiText').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('aiGo').click(); } });
-$('aiGo').addEventListener('click', async () => {
-  const text = $('aiText').value.trim();
-  const msg = $('aiMsg'), go = $('aiGo');
-  if (text.length < 3) { msg.textContent = 'Escribe cómo quieres el circuito.'; return; }
-  sfx.click();
-  go.disabled = true;
-  msg.textContent = 'Leyendo tu descripción…';
-  let spec, note = '';
-  try { spec = normSpec((await apiPost('/api/ai/track', { prompt: text })).spec); }
-  catch (e) {
-    // Sin IA en el servidor (o sin conexión): lo interpreta el propio juego
-    spec = parsePrompt(text);
-    if (e.message !== 'sin-ia' && e.message !== 'Sin conexión') note = e.message;
-  }
-  msg.textContent = 'Montando el circuito…';
-  const r = await generateTrack(spec, { ms: 1600 });
-  go.disabled = false;
-  if (!r) { msg.textContent = 'No he podido montar ese circuito. Prueba a describirlo de otra forma.'; return; }
-  draft = { ...newDraft(), name: spec.name || '', laps: spec.laps, scenery: spec.scenery, radius: radiusKey(spec), pieces: r.pieces };
-  draft.lanes = 4;
-  closeModal('mAI');
-  renderEditor();
-  const extra = spec.bridge && !r.bridge ? ' · sin puente (no cabía)' : '';
-  toast(`«${spec.name || 'Circuito nuevo'}» · ${r.length.toFixed(1).replace('.', ',')} m${extra}${note ? ` · ${note}` : ''}`);
-});
-
 function showEditor() {
   state = 'editor';
   clearCars(); race = null;

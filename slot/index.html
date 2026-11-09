@@ -128,7 +128,6 @@
     <div class="ed-body">
       <canvas id="edCanvas" class="ed-canvas" aria-label="Vista del circuito"></canvas>
       <div class="ed-tools">
-        <button id="edAI" class="btn small primary ed-finish"><span class="btn-main">Crear con IA</span><span class="btn-sub">Describe el circuito y se monta solo</span></button>
         <div id="edPalette" class="ed-palette"></div>
         <div class="ed-row">
           <span class="lbl">Curvas</span><div id="edRadius" class="seg"></div>
@@ -286,24 +285,6 @@
       <button id="pubGo" class="btn primary"><span class="btn-main">Publicar para todos</span></button>
       <p id="pubMsg" class="small center"></p>
       <button id="pubWeb" class="btn secondary" hidden><span class="btn-main">Abrir en la web y publicar</span><span class="btn-sub">Tu circuito se abre ya cargado</span></button>
-    </div>
-  </div>
-
-  <!-- Crear circuito con IA -->
-  <div id="mAI" class="modal center" role="dialog" aria-modal="true" aria-labelledby="hAI">
-    <div class="sheet">
-      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
-      <h3 id="hAI">Crear con IA</h3>
-      <p class="muted small">Cuenta cómo quieres el circuito: largo o corto, rápido o técnico, con horquillas, chicanes, rectas largas, un puente, de noche… Después puedes retocarlo pieza a pieza.</p>
-      <textarea id="aiText" class="ai-text" rows="3" maxlength="400" placeholder="Por ejemplo: un circuito largo y rápido, con una recta enorme, una horquilla al final y un puente. De noche."></textarea>
-      <div id="aiEx" class="ai-ex">
-        <button>Largo y rápido, con una recta enorme</button>
-        <button>Corto y muy técnico, con dos horquillas</button>
-        <button>Un ocho con puente, en el desierto</button>
-        <button>Mediano, con chicanes y curvas cerradas, de noche</button>
-      </div>
-      <button id="aiGo" class="btn primary"><span class="btn-main">Crear circuito</span></button>
-      <p id="aiMsg" class="muted small center" aria-live="polite"></p>
     </div>
   </div>
 

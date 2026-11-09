@@ -37,11 +37,3 @@ CREATE TABLE IF NOT EXISTS laps (
   PRIMARY KEY (track_key, cls, device)
 );
 CREATE INDEX IF NOT EXISTS laps_rank ON laps(track_key, cls, time);
-
--- Crear circuito con IA: usos por día (IP en hash) para limitar el gasto
-CREATE TABLE IF NOT EXISTS ai_uses (
-  ip_hash TEXT NOT NULL,
-  day INTEGER NOT NULL,
-  n INTEGER NOT NULL,
-  PRIMARY KEY (ip_hash, day)
-);
