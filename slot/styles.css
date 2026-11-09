@@ -662,7 +662,8 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .intro-card small { font-family: var(--font-d); font-style: italic; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--yellow); font-size: 14px; }
 .intro-card b { font-family: var(--font-d); font-style: italic; font-weight: 700; text-transform: uppercase; font-size: clamp(30px, 6vw, 52px); line-height: 1; }
 .intro-card span { font-size: 15px; color: var(--ink-2); }
-.intro-card em { margin-top: 6px; font-style: normal; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); animation: hintPulse 2s ease-in-out infinite; }
+.intro-card em { margin-top: 6px; font-style: normal; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); }
+#hud.intro .intro-card em { animation: hintPulse 2s ease-in-out infinite; }
 #hud.intro .intro-card { opacity: 1; transform: translate(-50%, 0); }
 #hud.intro > *:not(.intro-card) { opacity: 0; pointer-events: none; }
 #hud > * { transition: opacity 0.4s; }
@@ -684,7 +685,8 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .load-veil > div { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .load-veil small { font-family: var(--font-d); font-style: italic; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--yellow); }
 .load-veil b { font-family: var(--font-d); font-style: italic; font-weight: 700; font-size: clamp(28px, 6vw, 46px); text-transform: uppercase; }
-.load-veil i { width: 160px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--yellow), transparent); background-size: 200% 100%; animation: veilBar 1s linear infinite; }
+.load-veil i { width: 160px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--yellow), transparent); background-size: 200% 100%; }
+.load-veil.on i { animation: veilBar 1s linear infinite; }   /* solo se anima cuando se ve: no gasta batería */
 @keyframes veilBar { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
 .btn.danger { background: linear-gradient(180deg, #ff5a4e, #d32f2f); color: #fff; }

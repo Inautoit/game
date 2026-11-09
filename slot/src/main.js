@@ -2614,8 +2614,9 @@ function applyProfile(p) {
 }
 function setSyncState(s) { syncState = s; if (s === 'ok') syncAt = Date.now(); renderAccountChip(); if ($('mAccount').classList.contains('open') && acctView === 'me') renderAccount(); }
 // pull = traer primero lo del servidor (al entrar, al abrir el juego, al volver a la pestaña)
+let resetting = false;   // mientras se borra el progreso no se sincroniza (si no, la nube lo devolvería)
 async function syncNow(pull = false, prefer = 'local') {
-  if (!acct) return;
+  if (!acct || resetting) return;
   if (syncBusy) { syncAgain = true; return; }
   syncBusy = true; setSyncState('busy');
   try {
@@ -3853,19 +3854,24 @@ $('optBrakes').addEventListener('change', (e) => { settings.brakes = e.target.ch
 $('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; });
 $('resetNo').addEventListener('click', () => { $('resetConfirm').hidden = true; });
 $('resetYes').addEventListener('click', async () => {
-  // Se borra el progreso, pero no la sesión, los ajustes ni el identificador del dispositivo
+  // Se borra el progreso, pero no la sesión, los ajustes ni el identificador del dispositivo.
+  // Con cuenta, primero se espera a que acabe cualquier sincronización en marcha y se bloquean las nuevas.
+  resetting = true;
+  clearTimeout(syncTimer);
+  for (let i = 0; i < 100 && syncBusy; i++) await new Promise((r) => setTimeout(r, 100));
   const KEEP = ['slot.settings', 'slot.account', 'slot.device', 'slot.syncVer', 'slot.seenHelp2', 'slot.quality', 'slot.premiumCfg'];
   try { Object.keys(localStorage).filter((k) => k.startsWith('slot.') && !KEEP.includes(k)).forEach((k) => localStorage.removeItem(k)); } catch { /* nada */ }
   closeModal('mSettings'); showMenu();
-  if (!acct) { toast('Progreso borrado'); return; }
-  // Con cuenta: también el progreso guardado en la nube (si no, volvería con la siguiente sincronización)
-  clearTimeout(syncTimer);
+  if (!acct) { resetting = false; toast('Progreso borrado'); return; }
   try {
-    const cur = await apiGet('/api/profile');
-    const r = await apiReq('PUT', '/api/profile', { data: { keys: {}, statsBy: {} }, ver: cur.ver }, { allow: [409] });
-    if (r.ok) { syncVer = r.ver; store.set('syncVer', syncVer); }
-    toast('Progreso borrado, también en tu cuenta');
+    let ver = (await apiGet('/api/profile')).ver, done = false;
+    for (let i = 0; i < 4 && !done; i++) {
+      const r = await apiReq('PUT', '/api/profile', { data: { keys: {}, statsBy: {} }, ver }, { allow: [409] });
+      if (r.ok) { syncVer = r.ver; store.set('syncVer', syncVer); done = true; } else ver = r.ver;
+    }
+    toast(done ? 'Progreso borrado, también en tu cuenta' : 'Progreso borrado aquí. La cuenta estaba ocupada: inténtalo otra vez');
   } catch (e) { toast('Progreso borrado aquí. No se pudo borrar el de la cuenta: ' + e.message); }
+  resetting = false;
 });
 function fillStats() {
   // Las de este dispositivo más las de los demás donde se ha jugado con la misma cuenta

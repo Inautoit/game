@@ -36,7 +36,8 @@ const close = async (p) => { await p.context().close(); };
 const noErrors = (p) => assert(!p.errors.length, 'errores en la página:\n    ' + p.errors.join('\n    '));
 const state = (p) => p.evaluate(() => window.__slot.state);
 const click = (p, sel) => p.evaluate((s) => { const e = document.querySelector(s); if (!e) throw new Error('no existe ' + s); e.click(); }, sel);
-const visible = (p, sel) => p.evaluate((s) => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && +cs.opacity > 0.05; }, sel);
+// ¿Se ve? Espera hasta 3 s (las ventanas aparecen con un fundido y este navegador de pruebas va lento)
+const visible = (p, sel, wait = 3000) => p.waitForFunction((s) => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && +cs.opacity > 0.05; }, sel, { timeout: wait }).then(() => true, () => false);
 async function startRace(p, id, mode = '1p', extra = {}) {
   await p.evaluate(async ([id, mode, extra]) => {
     const S = window.__slot; const m = await import('./src/tracks.js');
@@ -230,7 +231,7 @@ T('comunidad: ocultar un circuito, verlo en Ajustes y volver a mostrarlo', async
   await click(p, '#menu [data-open="mSettings"]'); await sleep(300);
   assert(await visible(p, '#hiddenRow'), 'Ajustes no muestra lo oculto');
   await click(p, '#unhideBtn'); await sleep(200);
-  assert(!(await visible(p, '#hiddenRow')), 'no se vuelve a mostrar');
+  assert(!(await visible(p, '#hiddenRow', 300)), 'no se vuelve a mostrar');
   noErrors(p); await close(p);
 });
 
