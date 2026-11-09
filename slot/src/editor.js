@@ -20,7 +20,7 @@ export function newDraft() {
   return {
     lid: Math.random().toString(36).slice(2, 9),
     name: '', lanes: 4, laps: 5, scenery: 'verde', radius: 'media',
-    pieces: [['S', STRAIGHT * 2], ['C', 90, 3.2], ['S', STRAIGHT], ['C', 90, 3.2]],
+    pieces: [['S', STRAIGHT]],   // solo la recta de meta: el resto lo pone el jugador
     published: null,
   };
 }

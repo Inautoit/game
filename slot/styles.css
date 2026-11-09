@@ -656,3 +656,14 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
   .gar-preview img { max-height: 260px; }
   .garage-body { max-width: 720px; width: 100%; margin-left: auto; margin-right: auto; }
 }
+
+/* ---- Presentación del circuito ---- */
+.intro-card { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 9vh); transform: translate(-50%, 12px); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 28px 12px; border-radius: 6px; background: linear-gradient(180deg, rgba(10, 12, 18, 0.88), rgba(10, 12, 18, 0.7)); border-bottom: 4px solid var(--red); text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.4s, transform 0.4s; max-width: calc(100vw - 32px); }
+.intro-card small { font-family: var(--font-d); font-style: italic; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--yellow); font-size: 14px; }
+.intro-card b { font-family: var(--font-d); font-style: italic; font-weight: 700; text-transform: uppercase; font-size: clamp(30px, 6vw, 52px); line-height: 1; }
+.intro-card span { font-size: 15px; color: var(--ink-2); }
+.intro-card em { margin-top: 6px; font-style: normal; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); animation: hintPulse 2s ease-in-out infinite; }
+#hud.intro .intro-card { opacity: 1; transform: translate(-50%, 0); }
+#hud.intro > *:not(.intro-card) { opacity: 0; pointer-events: none; }
+#hud > * { transition: opacity 0.4s; }
+#hud.intro ~ #tele, body:has(#hud.intro) #tele { opacity: 0; }

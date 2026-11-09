@@ -1537,6 +1537,8 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
   camMode = DEFAULT_CAM;
   setupSliders();
   setScreen('hud');
+  // Presentación del circuito antes de la salida (no en el online: allí la salida va sincronizada)
+  if (!online) startIntro();
   T.lights.forEach((m) => { m.material.emissive.setHex(0x000000); m.material.color.setHex(0x331111); });
   ui.count.textContent = '';
   updateHud(true);
@@ -1927,7 +1929,11 @@ function loop(now) {
   requestAnimationFrame(loop);
   updateMusic();
   if (!T) return;
-  if (state === 'countdown' || state === 'race' || state === 'results') {
+  if (state === 'intro') {
+    race.intro.t += dt;
+    for (const c of cars) if (!c.crash) placeCar(c.mesh, c.st.s, c.d, c.st.th);
+    if (race.intro.t >= race.intro.d1 + race.intro.d2 + 0.4) endIntro();
+  } else if (state === 'countdown' || state === 'race' || state === 'results') {
     stepRace(dt);
     updateHud();
     updateTele();
@@ -1961,7 +1967,9 @@ function loop(now) {
   const racing = state === 'race' || state === 'countdown' || state === 'pause' || state === 'results';
   for (const c of cars) if (c.human && c.mesh.userData.ring) c.mesh.userData.ring.visible = camMode === 'tv';
   const me = racing ? cars.find((c) => c.human) : null;
-  if (me && camMode !== 'tv') {
+  if (state === 'intro') {
+    introCamera(dt);
+  } else if (me && camMode !== 'tv') {
     const p = at(me.st.s, me.d);
     const psi = p.h + (me.crash ? 0 : me.st.th * 0.5);
     const fx = Math.cos(psi), fz = Math.sin(psi);
@@ -2021,7 +2029,7 @@ function loop(now) {
   viewOffX += (wantOffX - viewOffX) * Math.min(1, dt * 4);
   if (Math.abs(viewOff) > 0.001 || Math.abs(viewOffX) > 0.001) camera.setViewOffset(innerWidth, innerHeight, innerWidth * viewOffX, innerHeight * viewOff, innerWidth, innerHeight);
   else camera.clearViewOffset();
-  camera.fov = inMenu ? shot.fov : racing && camMode === 'bordo' ? 52 : racing && camMode === 'heli' ? 50 : 34;
+  camera.fov = state === 'intro' ? 38 : inMenu ? shot.fov : racing && camMode === 'bordo' ? 52 : racing && camMode === 'heli' ? 50 : 34;
   camera.updateProjectionMatrix();
   camera.position.copy(camPos);
   if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
@@ -3376,7 +3384,51 @@ $('garGo').addEventListener('click', () => {
 $('garBack').addEventListener('click', () => { sfx.click(); if (mode === 'online') { showOnline(); return; } if (champ && !champ.entries && !entries.length) { champ = null; showChamp(); return; } if (entries.length) { entries.pop(); beginEntry(); } else showCircuits(); });
 
 // ---- Carrera: pausa, cámara y resultados ----
+// ---- Presentación del circuito: helicóptero sobre la mesa y una pasada de TV por toda la vuelta ----
+const MODE_NAME = { practica: 'Práctica', '1p': 'Carrera', '2p': '2 Jugadores' };
+function startIntro() {
+  state = 'intro';
+  const meters = T.L * SCALE;
+  race.intro = { t: 0, d1: 3.6, d2: clamp(2.6 + meters / 6, 3.6, 8.5), a0: Math.random() * Math.PI * 2, snap: false };
+  $('introMode').textContent = champ && champ.cup ? champ.cup.name : MODE_NAME[race.mode] || 'Carrera';
+  $('introName').textContent = race.def.name;
+  $('introInfo').textContent = `${meters.toFixed(1).replace('.', ',')} m · ${race.def.lanes} carriles · ${race.mode === 'practica' ? 'vueltas libres' : `${race.laps} ${race.laps === 1 ? 'vuelta' : 'vueltas'}`}`;
+  $('hud').classList.add('intro');
+}
+function endIntro() {
+  if (state !== 'intro') return;
+  state = 'countdown';
+  $('hud').classList.remove('intro');
+}
+function introCamera(dt) {
+  const it = race.intro, t = it.t;
+  const { tw, td } = T.table;
+  const R = Math.max(tw, td, 14);
+  if (t < it.d1) {
+    // Helicóptero girando alto sobre toda la mesa
+    const k = t / it.d1, a = it.a0 + k * 0.8;
+    camGoalPos.set(Math.sin(a) * R * 0.85, R * (0.8 - 0.12 * k), Math.cos(a) * R * 0.85);
+    camGoalTarget.set(0, 0, 0);
+    if (!it.snap) { camPos.copy(camGoalPos); camTarget.copy(camGoalTarget); it.snap = true; }
+  } else {
+    // Cámara de TV que recorre la vuelta entera para ver todas las curvas
+    const k = Math.min(1, (t - it.d1) / it.d2);
+    const e = k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
+    const s = e * T.L;
+    const p = at(s, 0), q = at(s + 5, 0);
+    let hx = q.x - p.x, hz = q.z - p.z; const hl = Math.hypot(hx, hz) || 1; hx /= hl; hz /= hl;
+    const ox = -T.center.x, oz = -T.center.z;
+    camGoalPos.set(p.x + ox - hx * 6.5, p.y + 7.5, p.z + oz - hz * 6.5);
+    camGoalTarget.set(q.x + ox, q.y, q.z + oz);
+  }
+  const kf = 1 - Math.exp(-dt * (t < it.d1 ? 5 : 3.2));
+  camPos.lerp(camGoalPos, kf); camTarget.lerp(camGoalTarget, kf);
+}
+// Se salta tocando la pantalla o con cualquier tecla
+for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, (e) => { if (state === 'intro') { e.preventDefault(); e.stopPropagation(); endIntro(); } }, { capture: true });
+
 function pause() {
+  if (state === 'intro') { endIntro(); return; }
   if (state !== 'race' && state !== 'countdown') return;
   if (race.mode === 'online') { $('quitBtn').querySelector('.btn-main').textContent = 'Abandonar carrera'; openModal('mPause'); return; }
   race.prevState = state;

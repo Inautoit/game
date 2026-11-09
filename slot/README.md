@@ -194,3 +194,11 @@ relacionado con ella.
   la mesa a 80 cm del suelo), con ropa, pelo y piel al azar. Respiran (animación «Idle») y giran el cuerpo para
   seguir al coche que va delante. Quien se pone entre la cámara y la pista se oculta para no tapar la carrera.
 - Suelo de la sala y patas de la mesa. Modelos: Quaternius (CC0), ver `assets/CREDITOS.md`.
+
+## Presentación del circuito
+
+- Antes de cada carrera, práctica o manga de campeonato (no en el online, donde la salida va sincronizada): un
+  helicóptero gira sobre toda la mesa (3,6 s) y una cámara de TV recorre la vuelta entera para ver todas las
+  curvas (de 3,6 a 8,5 s según el largo), con una tarjeta con el modo, el nombre, el largo y las vueltas.
+  Se salta tocando la pantalla o con cualquier tecla; después viene la cuenta atrás.
+- El editor empieza con solo la recta de meta.
