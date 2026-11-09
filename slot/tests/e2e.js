@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
 const BASE = process.env.BASE || 'http://localhost:8130/index.html';
 const API = 'https://turbo-slot.inautoit.workers.dev';
 const OUT = process.env.OUT || '/tmp';
-const only = process.argv[2] || '';
+const only = process.argv.slice(2);   // uno o varios filtros: se ejecutan las pruebas cuyo nombre contenga alguno
 
 const VIEWPORTS = {
   movil: { width: 390, height: 844, isMobile: true, hasTouch: true },
@@ -403,7 +403,7 @@ T('servidor: rutas y validaciones', async () => {
 (async () => {
   browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] });
   let ok = 0; const bad = [];
-  for (const t of tests.filter((x) => x.name.includes(only))) {
+  for (const t of tests.filter((x) => !only.length || only.some((o) => x.name.includes(o)))) {
     const t0 = Date.now();
     try { await t.fn(); ok++; console.log(`  ok    ${t.name} (${((Date.now() - t0) / 1000).toFixed(0)} s)`); }
     catch (e) { bad.push(t.name); console.log(`  FALLO ${t.name}\n        ${String(e.message).split('\n').join('\n        ')}`); }
