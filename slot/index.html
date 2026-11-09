@@ -57,12 +57,13 @@
       <button id="playPrac" class="btn primary"><span class="btn-main">Práctica</span><span class="btn-sub">Contrarreloj con tu fantasma</span></button>
       <div class="row2">
         <button id="play1" class="btn secondary"><span class="btn-main">Carrera</span><span class="btn-sub">Contra la CPU</span></button>
-        <button id="play2" class="btn ghost"><span class="btn-main">2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
+        <button id="playChamp" class="btn secondary"><span class="btn-main">Campeonato</span><span class="btn-sub">Copas con puntos</span></button>
       </div>
       <div class="row2">
-        <button id="playOnline" class="btn secondary"><span class="btn-main">Online</span><span class="btn-sub">Salas con amigos</span></button>
-        <button id="playEditor" class="btn ghost"><span class="btn-main">Crear circuito</span><span class="btn-sub">Y compártelo</span></button>
+        <button id="playOnline" class="btn secondary"><span class="btn-main">Online</span><span class="btn-sub">Rápida o con amigos</span></button>
+        <button id="play2" class="btn ghost"><span class="btn-main">2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
       </div>
+      <button id="playEditor" class="btn ghost"><span class="btn-main">Crear circuito</span><span class="btn-sub">Y compártelo con todos</span></button>
       <div class="footer">v3.0 · Editor de circuitos · Online con salas · Mando de consola</div>
     </div>
   </div>
@@ -85,6 +86,16 @@
       <button data-sort="new">Nuevos</button>
     </div>
     <div id="circList" class="circ-list"></div>
+  </div>
+
+  <!-- Campeonatos -->
+  <div id="champ" class="screen">
+    <div class="topbar">
+      <button id="chBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
+      <div><h2 class="title">Campeonato</h2><div class="subtitle">10 · 6 · 4 · 3 puntos por puesto, +1 a la vuelta rápida</div></div>
+    </div>
+    <div class="ed-row ch-players"><span class="lbl">Pilotos en este dispositivo</span><div id="chPlayers" class="seg"></div></div>
+    <div id="chList" class="circ-list"></div>
   </div>
 
   <!-- Editor de circuitos -->
@@ -221,6 +232,7 @@
       <div class="res-head"><span>Pos.</span><span></span><span>Piloto</span><span>Tiempo</span><span>Mejor v.</span></div>
       <div id="resTable" class="res-table"></div>
       <div id="resBest" class="muted center small"></div>
+      <div id="resChamp" class="res-champ" hidden></div>
       <button id="likeBtn" class="btn small ghost" hidden><span class="btn-main">Me gusta este circuito</span></button>
       <button id="nextBtn" class="btn primary"><span class="btn-main">Siguiente circuito ›</span></button>
       <div class="row2">

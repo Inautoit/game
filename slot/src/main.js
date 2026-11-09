@@ -1250,7 +1250,7 @@ function makeCar({ liv, lane, human, player, name, setupRaw, skill }) {
 function ghostKey(trackId, cls) { return `ghost.${trackId}.${cls}`; }
 
 // mode: 'practica' | '1p' | '2p'
-function startRace({ def, trackIdx, mode, entries, online }) {
+function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride }) {
   initAudio();
   def = def || TRACKS[trackIdx];
   trackIdx = TRACKS.indexOf(def);
@@ -1297,7 +1297,7 @@ function startRace({ def, trackIdx, mode, entries, online }) {
     }
   }
   race = {
-    trackIdx, def, mode, online, laps: mode === 'practica' ? Infinity : (online ? online.laps : def.laps), simT: 0, acc: 0,
+    trackIdx, def, mode, online, laps: mode === 'practica' ? Infinity : (online ? online.laps : lapsOverride || def.laps), simT: 0, acc: 0,
     goT: mode === 'practica' ? 1.2 : online ? Math.max(1, (online.startAt - room.serverNow()) / 1000) : 4.2 + Math.random() * 0.8, lightsOn: 0, started: false, finishedAt: null, humans, entries,
     cls: classOf(entries[0].setupRaw),
   };
@@ -1530,6 +1530,7 @@ function endRace() {
   $('resBest').textContent = best ? `Tu récord (${CLASS_NAME[race.cls].toLowerCase()}): ${fmt(best)}` : '';
   const nextIdx = race.trackIdx + 1;
   $('nextBtn').hidden = !(race.trackIdx >= 0 && nextIdx < TRACKS.length);
+  $('nextBtn').querySelector('.btn-main').textContent = 'Siguiente circuito ›';
   const unlockedNow = false;
   $('resUnlock').hidden = !unlockedNow;
   if (unlockedNow) $('resUnlock').textContent = `Desbloqueado: ${TRACKS[nextIdx].name}`;
@@ -1538,6 +1539,8 @@ function endRace() {
   $('likeBtn').disabled = liked.includes(race.def.cid);
   $('likeBtn').querySelector('.btn-main').textContent = liked.includes(race.def.cid) ? 'Te gusta' : 'Me gusta este circuito';
   if (race.mode === 'online') { $('nextBtn').hidden = true; setTimeout(() => openModal('mResults'), 300); return; }
+  $('resChamp').hidden = true;
+  if (race.champ) champAfterRace(order);
   setTimeout(() => openModal('mResults'), 300);
   const stats = store.get('stats', { races: 0, wins: 0, crashes: 0, laps: 0 });
   stats.races++; if (myPos === 1 && race.mode !== '2p') stats.wins++;
@@ -1748,7 +1751,7 @@ const ui = {
   splash: $('splash'), menu: $('menu'), circuits: $('circuits'), garage: $('garage'), hud: $('hud'),
   count: $('count'), toast: $('toast'), hudRows: $('hudRows'), timing: $('timing'),
 };
-const SCREENS = { menu: ui.menu, circuits: ui.circuits, garage: ui.garage, hud: ui.hud, editor: $('editor'), online: $('online') };
+const SCREENS = { menu: ui.menu, circuits: ui.circuits, garage: ui.garage, hud: ui.hud, editor: $('editor'), online: $('online'), champ: $('champ') };
 function setScreen(name) { for (const [k, el] of Object.entries(SCREENS)) el.classList.toggle('open', k === name); }
 function openModal(id) { if (id === 'mSettings') fillSettings(); if (id === 'mStats') fillStats(); $(id).classList.add('open'); }
 function closeModal(id) { $(id).classList.remove('open'); }
@@ -2436,6 +2439,96 @@ $('onShare').addEventListener('click', async () => {
   } catch { /* cancelado */ }
 });
 
+// ---- Campeonatos ----
+const CUPS = [
+  { id: 'club', name: 'Copa Club', sub: 'Circuitos cortos y rápidos', tracks: ['ovalo', 'rinon', 'horquilla', 'chicane'] },
+  { id: 'gp', name: 'Copa Grand Prix', sub: 'Circuitos largos de 4 carriles', tracks: ['gp', 'internacional', 'montana', 'autodromo'] },
+  { id: 'gran', name: 'Gran Campeonato', sub: 'Los 10 circuitos oficiales', tracks: TRACKS.map((t) => t.id) },
+  { id: 'comunidad', name: 'Copa Comunidad', sub: 'Los 4 circuitos más jugados de la comunidad', community: true },
+];
+const CHAMP_PTS = [10, 6, 4, 3];
+let champ = null;          // { cup, defs, idx, pts, entries, players, history }
+let champPlayers = 1;
+function showChamp() {
+  state = 'champ';
+  setScreen('champ');
+  segButtons($('chPlayers'), [[1, '1 piloto'], [2, '2 pilotos']], champPlayers, (n) => { champPlayers = n; showChamp(); });
+  const box = $('chList'); box.innerHTML = '';
+  const best = store.get('cups', {});
+  for (const cup of CUPS) {
+    const b = document.createElement('button'); b.className = 'cup';
+    const nm = document.createElement('b'); nm.textContent = cup.name;
+    const sub = document.createElement('small'); sub.textContent = cup.community ? cup.sub : `${cup.sub} · ${cup.tracks.length} carreras`;
+    const minis = document.createElement('div'); minis.className = 'minis';
+    if (!cup.community) for (const id of cup.tracks.slice(0, 5)) { try { minis.appendChild(miniTrack(TRACKS.find((t) => t.id === id))); } catch { /* nada */ } }
+    const rec = document.createElement('small'); rec.className = 'rec';
+    const r = best[`${cup.id}|${champPlayers}`];
+    rec.textContent = r ? (r === 1 ? 'Campeón' : `Mejor resultado: ${r}º`) : 'Sin jugar';
+    b.append(nm, sub, minis, rec);
+    b.addEventListener('click', () => { sfx.click(); startCup(cup); });
+    box.appendChild(b);
+  }
+}
+async function startCup(cup) {
+  let defs;
+  if (cup.community) {
+    try { defs = (await apiGet('/api/tracks?sort=top')).tracks.slice(0, 4).map(commDef); } catch (e) { toast(e.message); return; }
+    if (defs.length < 2) { toast('Aún no hay bastantes circuitos en la comunidad'); return; }
+  } else defs = cup.tracks.map((id) => TRACKS.find((t) => t.id === id));
+  champ = { cup, defs, idx: 0, pts: {}, players: champPlayers, entries: null, last: {} };
+  mode = champPlayers === 2 ? '2p' : '1p';
+  selDef = defs[0];
+  showGarage();
+}
+function startChampRace() {
+  const def = champ.defs[champ.idx];
+  selDef = def;
+  startRace({ def, mode: champ.players === 2 ? '2p' : '1p', entries: champ.entries, laps: Math.min(def.laps, 5) });
+  race.champ = champ;
+}
+function champAfterRace(order) {
+  if (race.champDone) return;
+  race.champDone = true;
+  const last = {};
+  order.forEach((c, i) => { last[c.name] = (c.finished ? CHAMP_PTS[i] || 0 : 0); });
+  const fast = cars.filter((c) => Number.isFinite(c.best)).sort((a, b) => a.best - b.best)[0];
+  if (fast) last[fast.name] = (last[fast.name] || 0) + 1;
+  for (const c of cars) { champ.pts[c.name] = (champ.pts[c.name] || 0) + (last[c.name] || 0); champ.last[c.name] = { liv: c.liv, human: c.human }; }
+  const table = Object.keys(champ.pts).sort((a, b) => champ.pts[b] - champ.pts[a]);
+  const box = $('resChamp'); box.innerHTML = ''; box.hidden = false;
+  const done = champ.idx >= champ.defs.length - 1;
+  const h = document.createElement('h4'); h.textContent = done ? `${champ.cup.name} · clasificación final` : `${champ.cup.name} · carrera ${champ.idx + 1} de ${champ.defs.length}`;
+  box.appendChild(h);
+  table.forEach((name, i) => {
+    const info = champ.last[name];
+    const row = document.createElement('div'); row.className = 'row' + (info.human ? ' me' : '');
+    const pos = document.createElement('b'); pos.textContent = `${i + 1}º`;
+    const dot = document.createElement('i'); dot.style.background = '#' + info.liv.color.toString(16).padStart(6, '0');
+    const nm = document.createElement('span'); nm.textContent = name + (fast && fast.name === name ? ' · v. rápida' : '');
+    const add = document.createElement('span'); add.className = 'add'; add.textContent = last[name] ? `+${last[name]}` : '';
+    const tot = document.createElement('span'); tot.className = 'tot'; tot.textContent = champ.pts[name];
+    row.append(pos, dot, nm, add, tot); box.appendChild(row);
+  });
+  $('againBtn').hidden = true;
+  $('resMenuBtn').querySelector('.btn-main').textContent = done ? 'Volver a las copas' : 'Abandonar';
+  if (done) {
+    $('nextBtn').hidden = true;
+    const meName = cars.find((c) => c.human && c.player === 0).name;
+    const myCup = table.indexOf(meName) + 1;
+    $('resTitle').textContent = champ.players === 2
+      ? `¡${table.find((n) => champ.last[n].human)} gana la copa!`
+      : myCup === 1 ? '¡Campeón!' : `${myCup}º en la copa`;
+    const best = store.get('cups', {}), key = `${champ.cup.id}|${champ.players}`;
+    if (!best[key] || myCup < best[key]) { best[key] = myCup; store.set('cups', best); }
+    if (myCup === 1) sfx.finish();
+  } else {
+    $('nextBtn').hidden = false;
+    $('nextBtn').querySelector('.btn-main').textContent = `Siguiente: ${champ.defs[champ.idx + 1].name} ›`;
+  }
+}
+$('playChamp').addEventListener('click', () => { initAudio(); sfx.click(); showChamp(); });
+$('chBack').addEventListener('click', () => { sfx.click(); champ = null; showMenu(); });
+
 // ---- Taller: decoración y reglaje ----
 let entries = [];
 let editing = null; // { liv, setupRaw }
@@ -2467,7 +2560,7 @@ function carIcon(liv) {
 function renderGarage() {
   const player = entries.length;
   $('garTitle').textContent = mode === '2p' ? `Jugador ${player + 1}: taller` : 'Taller';
-  $('garTrack').textContent = `${selDef.name} · ${mode === 'practica' ? 'Práctica' : mode === '2p' ? '2 jugadores' : mode === 'online' ? 'Online' : 'Carrera'}`;
+  $('garTrack').textContent = champ ? `${champ.cup.name} · ${champ.defs.length} carreras` : `${selDef.name} · ${mode === 'practica' ? 'Práctica' : mode === '2p' ? '2 jugadores' : mode === 'online' ? 'Online' : 'Carrera'}`;
   $('garPreview').innerHTML = carIcon(editing.liv);
   $('garName').textContent = editing.liv.name;
   const taken = entries.map((e) => e.liv.id);
@@ -2516,9 +2609,10 @@ $('garGo').addEventListener('click', () => {
   entries.push({ liv: editing.liv, setupRaw: { ...editing.setupRaw } });
   if (mode === '2p' && entries.length < 2) beginEntry();
   else if (mode === 'online') onlineCarChosen(entries[0]);
+  else if (champ && champ.idx === 0 && !champ.entries) { champ.entries = entries.slice(); startChampRace(); }
   else startRace({ def: selDef, mode, entries });
 });
-$('garBack').addEventListener('click', () => { sfx.click(); if (mode === 'online') { showOnline(); return; } if (entries.length) { entries.pop(); beginEntry(); } else showCircuits(); });
+$('garBack').addEventListener('click', () => { sfx.click(); if (mode === 'online') { showOnline(); return; } if (champ && !champ.entries && !entries.length) { champ = null; showChamp(); return; } if (entries.length) { entries.pop(); beginEntry(); } else showCircuits(); });
 
 // ---- Carrera: pausa, cámara y resultados ----
 function pause() {
@@ -2546,14 +2640,18 @@ function toggleCam() {
 $('pauseBtn').addEventListener('click', pause);
 $('camBtn').addEventListener('click', () => { sfx.click(); toggleCam(); });
 $('resumeBtn').addEventListener('click', resume);
-$('restartBtn').addEventListener('click', () => { closeModal('mPause'); if (race.mode === 'practica') endPractice(); startRace({ def: race.def, mode: race.mode, entries: race.entries }); });
+$('restartBtn').addEventListener('click', () => { closeModal('mPause'); if (race.champ) { startChampRace(); return; } if (race.mode === 'practica') endPractice(); startRace({ def: race.def, mode: race.mode, entries: race.entries }); });
 $('quitBtn').addEventListener('click', () => {
   closeModal('mPause');
   if (race.mode === 'online') { room && room.send({ t: 'fin', time: 9999, best: Infinity }); afterRace(); return; }
   if (race.mode === 'practica') endPractice(); mode = race.mode; clearCars(); afterRace();
 });
 $('againBtn').addEventListener('click', () => { closeModal('mResults'); startRace({ def: race.def, mode: race.mode, entries: race.entries }); });
-$('nextBtn').addEventListener('click', () => { closeModal('mResults'); selDef = TRACKS[race.trackIdx + 1]; startRace({ def: selDef, mode: race.mode, entries: race.entries }); });
+$('nextBtn').addEventListener('click', () => {
+  closeModal('mResults');
+  if (race.champ) { champ.idx++; startChampRace(); return; }
+  selDef = TRACKS[race.trackIdx + 1]; startRace({ def: selDef, mode: race.mode, entries: race.entries });
+});
 $('resMenuBtn').addEventListener('click', () => { closeModal('mResults'); mode = race.mode; afterRace(); });
 $('likeBtn').addEventListener('click', () => {
   const cid = race && race.def.cid; if (!cid) return;
@@ -2566,6 +2664,7 @@ $('likeBtn').addEventListener('click', () => {
 // Al salir de una carrera: volver al editor si era una prueba, si no a la lista de circuitos
 function afterRace() {
   if (race && race.editorTest) { showEditor(); return; }
+  if (race && race.champ) { champ = null; showChamp(); demoRace(); return; }
   if (race && race.mode === 'online') { clearCars(); race = null; showOnline(); demoRace(); return; }
   showCircuits(); demoRace();
 }

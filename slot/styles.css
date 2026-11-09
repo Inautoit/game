@@ -87,13 +87,13 @@ svg { width: 24px; height: 24px; }
 .row2 .btn-main { font-size: 18px; }
 
 /* Pantallas */
-#menu, #circuits, #garage, #editor, #online {
+#menu, #circuits, #garage, #editor, #online, #champ {
   position: fixed; inset: 0; display: flex; flex-direction: column;
   padding: calc(env(safe-area-inset-top) + 14px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 14px) calc(env(safe-area-inset-left) + 16px);
 }
-#menu.open, #circuits.open, #garage.open, #editor.open, #online.open { pointer-events: auto; }
+#menu.open, #circuits.open, #garage.open, #editor.open, #online.open, #champ.open { pointer-events: auto; }
 #menu { background: linear-gradient(180deg, rgba(10, 13, 22, 0.55), rgba(10, 13, 22, 0) 35%, rgba(10, 13, 22, 0) 55%, rgba(10, 13, 22, 0.85)); }
-#circuits, #garage, #editor, #online { background: rgba(10, 13, 22, 0.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+#circuits, #garage, #editor, #online, #champ { background: rgba(10, 13, 22, 0.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .topbar { display: flex; gap: 10px; align-items: center; }
 .spacer { flex: 1; }
 .brand { text-align: center; margin-top: 4vh; pointer-events: none; }
@@ -465,3 +465,20 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .chip .cup { width: 20px; height: 20px; color: var(--yellow); }
 .step-ico { font-family: var(--font-d); font-weight: 700; font-style: italic; font-size: 20px; color: #1b1300; background: var(--yellow) !important; }
 .ed-palette button:disabled { opacity: 0.35; }
+
+/* Campeonatos */
+.ch-players { margin-top: 12px; max-width: 420px; }
+.cup { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 14px 16px; border: 0; border-radius: 20px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35); }
+.cup b { font-family: var(--font-d); font-size: 26px; font-weight: 700; font-style: italic; text-transform: uppercase; }
+.cup small { color: var(--ink-2); font-size: 13px; }
+.cup .rec { color: var(--yellow); font-size: 14px; }
+.cup .minis { display: flex; gap: 6px; margin: 6px 0 4px; }
+.cup .minis canvas { width: 64px; height: 41px; border-radius: 8px; background: #2e5c3c; }
+.res-champ { margin: 4px 0 8px; }
+.res-champ h4 { margin: 8px 0 6px; font-family: var(--font-d); font-style: italic; text-transform: uppercase; letter-spacing: 0.04em; color: var(--yellow); font-size: 18px; }
+.res-champ .row { display: grid; grid-template-columns: 34px 14px 1fr 50px 50px; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); margin-bottom: 4px; font-family: var(--font-d); font-size: 17px; }
+.res-champ .row.me { background: rgba(255, 204, 0, 0.14); }
+.res-champ .row i { width: 14px; height: 14px; border-radius: 50%; }
+.res-champ .row .add { color: var(--green); text-align: right; }
+.res-champ .row .tot { text-align: right; font-weight: 700; font-size: 20px; }
+#playEditor { min-height: 54px; }
