@@ -22,3 +22,9 @@ Tipografía Fredoka, licencia SIL OFL.
 | `models/car_hi.glb`, `models/car_lo.glb` | "Generic Sport Coupé Car" (coche inventado, sin marca real). Modificado: piezas internas y multimedia quitadas, ruedas separadas, pintura para las decoraciones, texturas WebP | Márcio Meireles (mmcworks), adaptado por timo-hoen (sls-racing) | https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882 | **CC-BY 4.0** (hay que citar al autor) |
 
 Atribución que debe aparecer en el juego: *"Generic Sport Coupé Car" de Márcio Meireles (https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882), CC-BY 4.0 (http://creativecommons.org/licenses/by/4.0/), modificado.*
+
+## Sonido
+
+| Archivo | Recurso | Autor | Fuente | Licencia |
+|---|---|---|---|---|
+| `audio/slot_loop.wav` | Bucle del roce de un coche en una pista eléctrica de plástico (recortado, volumen igualado y en bucle) | Joseph Sardin | BigSoundBank, «Electric circuit, 1 car» (https://bigsoundbank.com/electric-circuit-1-car-s1608.html) | **CC0** (dominio público) |

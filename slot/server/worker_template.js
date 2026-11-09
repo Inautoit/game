@@ -13,7 +13,7 @@ function body(path, f) {
   if (!b) { b = Buffer.from(f[1], 'base64'); cache.set(path, b); }
   return b;
 }
-const TYPES = { glb: 'model/gltf-binary', hdr: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain; charset=utf-8' };
+const TYPES = { glb: 'model/gltf-binary', hdr: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain; charset=utf-8', wav: 'audio/wav' };
 const SCENERY = ['verde', 'arena', 'noche'];
 
 // La API se puede usar desde otras páginas (por ejemplo, la versión del juego dentro de Claude)

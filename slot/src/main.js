@@ -54,6 +54,22 @@ const RIVALS = ['M. Ortega', 'L. Ferrer', 'J. Sanz', 'A. Vidal', 'P. Navarro'];
 // Sonido sintetizado: motor eléctrico, engranajes, ruedas y salidas
 // ---------------------------------------------------------------------------
 let actx = null, master = null;
+// Sonido grabado de un coche de slot de verdad (BigSoundBank, CC0): se descarga al abrir el juego
+// y se decodifica cuando se activa el audio (hace falta un toque en la pantalla).
+let slotRaw = null, slotBuf = null;
+const slotRawP = fetch('assets/audio/slot_loop.wav').then((r) => (r.ok ? r.arrayBuffer() : Promise.reject()))
+  .catch(() => fetch('assets/audio/slot_loop.wav.txt').then((r) => (r.ok ? r.text() : Promise.reject())).then((b64) => {
+    const bin = atob(b64.trim()); const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u.buffer;
+  }))
+  .then((ab) => { slotRaw = ab; decodeSlot(); return ab; })
+  .catch(() => null);
+function decodeSlot() {
+  if (!actx || !slotRaw || slotBuf) return;
+  const ab = slotRaw.slice(0);
+  actx.decodeAudioData(ab, (b) => { slotBuf = b; }, () => {});
+}
 function initAudio() {
   if (!actx) {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -63,6 +79,7 @@ function initAudio() {
     master.gain.value = settings.sound ? 0.9 : 0;
     const comp = actx.createDynamicsCompressor();
     master.connect(comp).connect(actx.destination);
+    decodeSlot();
   }
   if (actx.state === 'suspended') actx.resume();
 }
@@ -186,8 +203,18 @@ function makeEngine(human) {
     vol: human ? 0.09 : 0.025, joint: null, spark: 0,
   };
 }
+// Bucle de la grabación real para un coche (empieza en un punto al azar para que no suenen iguales)
+function attachRecording(e) {
+  if (e.rec || !slotBuf) return;
+  const src = actx.createBufferSource(); src.buffer = slotBuf; src.loop = true;
+  const g = actx.createGain(); g.gain.value = 0;
+  src.connect(g).connect(master);
+  src.start(actx.currentTime, Math.random() * slotBuf.duration);
+  e.rec = src; e.recG = g; e.srcs.push(src);
+}
 function updateEngine(e, st, on) {
   if (!e || !actx) return;
+  attachRecording(e);
   const t = actx.currentTime;
   const rps = st.rpm / 60;                 // vueltas por segundo del motor (≈ 300 a tope)
   const v = Math.max(0, st.v);
@@ -202,15 +229,22 @@ function updateEngine(e, st, on) {
   e.body.frequency.setTargetAtTime(1900 + spin * 1400, t, 0.05);
   const live = on ? 1 : 0;
   const sp = clamp(v / 6, 0, 1);
-  // Roce de rodadura: lo que de verdad se oye en una pista de slot
-  e.rlf.frequency.setTargetAtTime(380 + sp * 1300, t, 0.04);
-  e.rlf2.frequency.setTargetAtTime(1800 + sp * 2200, t, 0.05);
-  e.wob.frequency.setTargetAtTime(6 + (v / (2 * Math.PI * 0.0105)) * 0.5, t, 0.03);   // ritmo del giro de rueda
-  e.rlg.gain.setTargetAtTime(live * e.vol * 1.6 * Math.pow(sp, 0.8) * (0.85 + 0.15 * load), t, 0.04);
-  // El motor apenas: un zumbido muy suave por debajo
-  e.mg.gain.setTargetAtTime(live * e.vol * 0.07 * Math.pow(spin, 0.8), t, 0.03);
-  e.gg.gain.setTargetAtTime(live * e.vol * 0.025 * spin, t, 0.04);
-  e.brg.gain.setTargetAtTime(live * e.vol * 0.35 * sp, t, 0.04);
+  if (e.rec) {
+    // Grabación real: la velocidad de reproducción y el volumen siguen a la velocidad del coche
+    // (la grabación es de un coche a unos 3 m/s en una pista pequeña)
+    e.rec.playbackRate.setTargetAtTime(clamp(0.42 + 0.58 * (v / 3), 0.42, 1.75), t, 0.05);
+    e.recG.gain.setTargetAtTime(live * e.vol * 2.4 * clamp(Math.pow(v / 3.2, 0.75), 0, 1.3), t, 0.05);
+    for (const g of [e.rlg, e.mg, e.gg, e.brg]) g.gain.setTargetAtTime(0, t, 0.05);
+  } else {
+    // Mientras se descarga la grabación: roce sintetizado
+    e.rlf.frequency.setTargetAtTime(380 + sp * 1300, t, 0.04);
+    e.rlf2.frequency.setTargetAtTime(1800 + sp * 2200, t, 0.05);
+    e.wob.frequency.setTargetAtTime(6 + (v / (2 * Math.PI * 0.0105)) * 0.5, t, 0.03);
+    e.rlg.gain.setTargetAtTime(live * e.vol * 1.6 * Math.pow(sp, 0.8) * (0.85 + 0.15 * load), t, 0.04);
+    e.mg.gain.setTargetAtTime(live * e.vol * 0.07 * Math.pow(spin, 0.8), t, 0.03);
+    e.gg.gain.setTargetAtTime(live * e.vol * 0.025 * spin, t, 0.04);
+    e.brg.gain.setTargetAtTime(live * e.vol * 0.35 * sp, t, 0.04);
+  }
   const slide = clamp((st.Fr - 0.9) * 6, 0, 1) * clamp(v - 0.6, 0, 1) + clamp((Math.abs(st.th) - 0.12) * 3, 0, 1) * clamp(v - 0.4, 0, 1);
   e.sqf.frequency.setTargetAtTime(1300 + v * 120, t, 0.05);
   e.sqg.gain.setTargetAtTime(live * e.vol * 1.1 * clamp(slide, 0, 1), t, 0.04);
@@ -219,7 +253,7 @@ function updateEngine(e, st, on) {
   const piece = 0.35 / SCALE;
   const j = Math.floor(st.s / piece);
   if (e.joint !== null && j !== e.joint && v > 0.25) {
-    const vol = e.vol * (e.human ? 0.9 : 0.6) * clamp(v / 4, 0.25, 1);
+    const vol = e.vol * (e.rec ? 0.35 : 0.9) * (e.human ? 1 : 0.7) * clamp(v / 4, 0.25, 1);
     const gap = 0.082 / Math.max(0.4, v);   // distancia entre ejes / velocidad
     click(vol, 2400, 2.5);
     if (gap < 0.25) click(vol * 0.7, 2100, 2.5, gap);
@@ -227,7 +261,7 @@ function updateEngine(e, st, on) {
   e.joint = j;
   // Chispazos de las trencillas al pedir mucha corriente
   e.spark -= 1 / 60;
-  if (load > 0.7 && v > 0.5 && e.spark <= 0 && Math.random() < 0.2) { click(e.vol * 0.25 * load, 6500, 4); e.spark = 0.05 + Math.random() * 0.1; }
+  if (!e.rec && load > 0.7 && v > 0.5 && e.spark <= 0 && Math.random() < 0.2) { click(e.vol * 0.25 * load, 6500, 4); e.spark = 0.05 + Math.random() * 0.1; }
 }
 function stopEngine(e) {
   if (!e) return;
@@ -2612,7 +2646,7 @@ Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, n
 // Gancho para pruebas automáticas
 window.__slot = {
   get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; },
-  get actx() { return actx; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
+  get actx() { return actx; }, get slotBuf() { return slotBuf; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },
 };
