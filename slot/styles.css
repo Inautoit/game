@@ -595,3 +595,23 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
   .mi.small { min-height: 42px; }
   .menu-main .logo-img { width: min(300px, 40vw); }
 }
+
+/* ---- Cuenta ---- */
+.acc-chip { display: inline-flex; align-items: center; gap: 7px; height: 46px; padding: 0 14px; border: 0; border-radius: 15px; background: var(--panel); color: var(--ink); font-weight: 700; font-size: 15px; max-width: 46vw; }
+.acc-chip svg { width: 20px; height: 20px; flex: none; color: var(--ink-2); }
+.acc-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-chip.on svg { color: var(--green); }
+.acc-chip.warn svg { color: var(--yellow); }
+.acc-tabs { margin: 12px 0 4px; }
+.acc-tabs[hidden] { display: none; }
+.acc-form[hidden] { display: none; }
+.acc-form .btn { margin-top: 16px; }
+.field input { user-select: text; -webkit-user-select: text; touch-action: auto; }
+.linkbtn { display: block; margin: 12px auto 0; background: none; border: 0; color: var(--ink-2); text-decoration: underline; font-size: 14px; }
+.acc-code { margin: 10px 0; padding: 14px; border-radius: 14px; background: rgba(255, 204, 0, 0.12); border: 2px dashed var(--yellow); text-align: center; font-family: var(--font-d); font-weight: 700; font-size: 30px; letter-spacing: 0.08em; user-select: text; -webkit-user-select: text; }
+.acc-hello { font-size: 18px; margin: 12px 0 4px; }
+.acc-sync { margin: 0 0 8px; font-weight: 600; color: var(--green); }
+.acc-sync.busy { color: var(--ink-2); }
+.acc-sync.offline { color: var(--yellow); }
+.acc-msg { min-height: 1.2em; margin: 10px 0 0; text-align: center; color: #ff8a80; font-weight: 600; }
+@media (max-width: 420px) { .acc-chip span { max-width: 22vw; } }

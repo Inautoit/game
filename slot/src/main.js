@@ -5,6 +5,7 @@ import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } 
 import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
 import { replay } from './verify.js';
 import { createMusic } from './music.js';
+import { isSynced, mergeProfile, otherStats, fitProfile } from './sync.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
 import { makeTelemetry, telStep, telLap, dangerColor, drawTrace, SECTORS } from './telemetry.js';
@@ -31,8 +32,9 @@ const fmt = (t) => {
 const fmtDelta = (d) => (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(3).replace('.', ',');
 const store = {
   get(k, d) { try { const v = localStorage.getItem('slot.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('slot.' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
+  set(k, v) { try { localStorage.setItem('slot.' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } if (syncHook && isSynced(k)) syncHook(); },
 };
+let syncHook = null;   // con sesión iniciada: avisa de que hay progreso nuevo que subir
 const settings = Object.assign({ sound: true, music: true, vibe: true, lefty: false, cam: 'tv', tele: true, brakes: true }, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
 const vibrate = (p) => { if (settings.vibe && navigator.vibrate) navigator.vibrate(p); };
@@ -2208,17 +2210,141 @@ const ON_WEB = API === '';
 const SITE = 'https://turbo-slot.inautoit.workers.dev/';
 class NetError extends Error {}
 const netFail = () => { throw new NetError(ON_WEB ? 'No hay conexión con el servidor. Comprueba Internet e inténtalo otra vez.' : 'Desde aquí no se puede conectar con el servidor del juego.'); };
-async function apiGet(path) {
-  const r = await fetch(API + path, { cache: 'no-store' }).catch(netFail);
+// Con sesión iniciada, cada petición lleva el token de la cuenta
+const authHeaders = () => (acct ? { authorization: 'Bearer ' + acct.token } : {});
+async function apiReq(method, path, data, { allow = [] } = {}) {
+  const opt = { method, cache: 'no-store', headers: { ...authHeaders() } };
+  if (data !== undefined) { opt.headers['content-type'] = 'application/json'; opt.body = JSON.stringify(data); }
+  const r = await fetch(API + path, opt).catch(netFail);
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || 'Sin conexión');
+  if (!r.ok && !allow.includes(r.status)) { const e = new Error(j.error || 'Sin conexión'); e.status = r.status; throw e; }
   return j;
 }
-function apiPost(path, data) {
-  return fetch(API + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data || {}) })
-    .catch(netFail)
-    .then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Sin conexión'); return j; });
+const apiGet = (path) => apiReq('GET', path);
+const apiPost = (path, data) => apiReq('POST', path, data || {});
+// ---- Cuenta de jugador: inicio de sesión y progreso sincronizado entre dispositivos ----
+let acct = store.get('account', null);   // { token, name, rid }
+let syncVer = store.get('syncVer', -1), syncTimer = null, syncBusy = false, syncAgain = false, syncState = 'idle', syncAt = 0;
+function localProfile() {
+  const keys = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const full = localStorage.key(i);
+      if (full && full.startsWith('slot.') && isSynced(full.slice(5))) keys[full.slice(5)] = store.get(full.slice(5));
+    }
+  } catch { /* sin almacenamiento */ }
+  return { keys, statsBy: { ...store.get('statsBy', {}), [deviceId]: store.get('stats', { races: 0, wins: 0, crashes: 0, laps: 0 }) } };
 }
+function applyProfile(p) {
+  try { for (const [k, v] of Object.entries(p.keys || {})) if (isSynced(k) && v !== undefined) localStorage.setItem('slot.' + k, JSON.stringify(v)); } catch { /* lleno */ }
+  store.set('statsBy', p.statsBy || {});
+  if (acct) { settings.pilot = acct.name; saveSettings(); }
+  if (state === 'menu') { const pos = store.get('pos', {}); $('trophies').textContent = `${TRACKS.filter((t) => pos[t.id] === 1).length}/${TRACKS.length}`; }
+}
+function setSyncState(s) { syncState = s; if (s === 'ok') syncAt = Date.now(); renderAccountChip(); if ($('mAccount').classList.contains('open') && acctView === 'me') renderAccount(); }
+// pull = traer primero lo del servidor (al entrar, al abrir el juego, al volver a la pestaña)
+async function syncNow(pull = false, prefer = 'local') {
+  if (!acct) return;
+  if (syncBusy) { syncAgain = true; return; }
+  syncBusy = true; setSyncState('busy');
+  try {
+    let remote = null;
+    if (pull || syncVer < 0) { remote = await apiGet('/api/profile'); applyProfile(mergeProfile(localProfile(), remote.data || {}, prefer)); syncVer = remote.ver; }
+    for (let i = 0; i < 4; i++) {
+      const r = await apiReq('PUT', '/api/profile', { data: fitProfile(localProfile(), 1400000), ver: syncVer }, { allow: [409] });
+      if (r.ok) { syncVer = r.ver; break; }
+      if (r.conflict) { applyProfile(mergeProfile(localProfile(), r.data || {}, 'local')); syncVer = r.ver; }
+    }
+    store.set('syncVer', syncVer);
+    setSyncState('ok');
+  } catch (e) {
+    if (e.status === 401) { acct = null; store.set('account', null); syncHook = null; setSyncState('idle'); toast('Tu sesión ha caducado: vuelve a entrar en tu cuenta'); }
+    else setSyncState('offline');
+  }
+  syncBusy = false;
+  if (syncAgain) { syncAgain = false; scheduleSync(); }
+}
+function scheduleSync() { clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(), 3000); }
+function startAccount(a, fresh) {
+  acct = a; store.set('account', a);
+  syncHook = scheduleSync;
+  settings.pilot = a.name; saveSettings();
+  syncVer = -1;
+  return syncNow(true, fresh ? 'remote' : 'local');
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && acct) syncNow(true); else if (acct && syncTimer) { clearTimeout(syncTimer); syncNow(); } });
+
+// Botón de la cuenta (arriba en el menú) y ventana
+function renderAccountChip() {
+  const b = $('accBtn');
+  b.querySelector('span').textContent = acct ? acct.name : 'Entrar';
+  b.classList.toggle('on', !!acct);
+  b.classList.toggle('warn', !!acct && syncState === 'offline');
+}
+let acctView = 'login';
+function showAcct(view) {
+  acctView = view;
+  for (const v of ['login', 'register', 'recover', 'code', 'me']) $('acc-' + v).hidden = v !== view;
+  document.querySelectorAll('#accTabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === view));
+  $('accTabs').hidden = !['login', 'register'].includes(view);
+  $('accMsg').textContent = '';
+  if (view === 'me') renderAccount();
+}
+function renderAccount() {
+  if (!acct) return;
+  $('accName').textContent = acct.name;
+  $('accSync').textContent = syncState === 'busy' ? 'Sincronizando…' : syncState === 'offline' ? 'Sin conexión: se sincronizará en cuanto vuelva Internet' : syncAt ? 'Todo guardado en tu cuenta' : 'Conectado';
+  $('accSync').className = 'acc-sync ' + syncState;
+  const best = store.get('best', {}), pos = store.get('pos', {});
+  const s = { ...store.get('stats', { races: 0, laps: 0 }) };
+  const o = otherStats(store.get('statsBy', {}), deviceId);
+  $('accStats').textContent = `${Object.keys(best).length} récords · ${Object.values(pos).filter((p) => p === 1).length} victorias en circuitos · ${(+s.laps || 0) + o.laps} vueltas · ${myTracks().length} circuitos propios`;
+}
+$('accBtn').addEventListener('click', () => { initAudio(); sfx.click(); showAcct(acct ? 'me' : 'login'); openModal('mAccount'); });
+document.querySelectorAll('#accTabs button').forEach((b) => b.addEventListener('click', () => { sfx.click(); showAcct(b.dataset.v); }));
+$('accForgot').addEventListener('click', () => { sfx.click(); showAcct('recover'); });
+$('accBackLogin').addEventListener('click', () => { sfx.click(); showAcct('login'); });
+document.querySelectorAll('#mAccount input').forEach((i) => i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { const f = i.closest('.acc-form'); if (f) f.querySelector('.btn.primary').click(); } }));
+async function accSubmit(btn, path, body, after) {
+  const msg = $('accMsg');
+  btn.disabled = true; msg.textContent = 'Un momento…';
+  try {
+    const j = await apiPost(path, body);
+    msg.textContent = '';
+    await after(j);
+  } catch (e) { msg.textContent = e.message; }
+  btn.disabled = false;
+}
+$('accLoginGo').addEventListener('click', (e) => accSubmit(e.currentTarget, '/api/auth/login', { name: $('accLU').value, password: $('accLP').value }, async (j) => {
+  $('accLP').value = '';
+  await startAccount({ token: j.token, name: j.user.name, rid: j.user.rid }, true);
+  showAcct('me'); toast(`Hola, ${j.user.name}: tu progreso está sincronizado`);
+}));
+$('accRegGo').addEventListener('click', (e) => {
+  if ($('accRP').value !== $('accRP2').value) { $('accMsg').textContent = 'Las contraseñas no coinciden'; return; }
+  accSubmit(e.currentTarget, '/api/auth/register', { name: $('accRU').value, password: $('accRP').value }, async (j) => {
+    $('accRP').value = ''; $('accRP2').value = '';
+    // La cuenta nueva se queda con todo lo que ya tenías en este dispositivo
+    await startAccount({ token: j.token, name: j.user.name, rid: j.user.rid }, false);
+    $('accCode').textContent = j.recovery; showAcct('code');
+  });
+});
+$('accRecGo').addEventListener('click', (e) => accSubmit(e.currentTarget, '/api/auth/recover', { name: $('accCU').value, recovery: $('accCC').value, password: $('accCP').value }, async (j) => {
+  $('accCP').value = ''; $('accCC').value = '';
+  await startAccount({ token: j.token, name: j.user.name, rid: j.user.rid }, true);
+  $('accCode').textContent = j.recovery; showAcct('code');
+}));
+$('accCodeOk').addEventListener('click', () => { sfx.click(); showAcct('me'); });
+$('accLogout').addEventListener('click', async () => {
+  sfx.click();
+  if (syncTimer) { clearTimeout(syncTimer); await syncNow(); }
+  apiPost('/api/auth/logout', {}).catch(() => {});
+  acct = null; store.set('account', null); syncHook = null; syncVer = -1; store.set('syncVer', -1);
+  renderAccountChip(); showAcct('login'); toast('Sesión cerrada. Tu progreso sigue guardado en la cuenta');
+});
+if (acct) { syncHook = scheduleSync; setTimeout(() => syncNow(true), 1500); }
+renderAccountChip();
+
 // Circuito de la comunidad → definición jugable
 const commDef = (t) => ({ id: 'c_' + t.id, cid: t.id, name: t.name, author: t.author, lanes: t.lanes, laps: t.laps, scenery: t.scenery, pieces: t.pieces, community: t });
 const myTracks = () => store.get('mytracks', []);
@@ -2859,6 +2985,7 @@ $('playChamp').addEventListener('click', () => { initAudio(); sfx.click(); showC
 $('chBack').addEventListener('click', () => { sfx.click(); champ = null; showMenu(); });
 
 // ---- Clasificación mundial (vueltas comprobadas por el servidor) y fantasma del récord ----
+const rankId = () => (acct ? acct.rid : deviceId);   // con cuenta, los tiempos van a la cuenta
 const deviceId = (() => { let d = store.get('device', null); if (!d) { d = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join(''); store.set('device', d); } return d; })();
 function rankKeyOf(def) {
   if (TRACKS.includes(def)) return 'o:' + def.id;
@@ -2869,7 +2996,7 @@ let wrGhost = null;   // { race, mesh, s, d, name, time }
 function loadWorldRecord(r) {
   const key = r.rankKey, cls = r.cls;
   r.wr = null;
-  apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${cls}&device=${deviceId}`).then((j) => {
+  apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${cls}&device=${rankId()}`).then((j) => {
     if (race !== r) return;
     r.wr = j.laps[0] || null; r.wrMine = j.mine; r.wrTotal = j.total;
     if (r.wr) flashText(0, `Récord mundial: ${fmt(r.wr.time)} · ${r.wr.name}`);
@@ -2920,7 +3047,7 @@ function openRanking(def) {
   $('rkMine').textContent = '';
   openModal('mRank');
   if (!key) { box.innerHTML = '<div class="circ-empty">Este circuito todavía no está publicado: publícalo para tener ranking.</div>'; return; }
-  apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${rankCls}&device=${deviceId}`).then((j) => {
+  apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${rankCls}&device=${rankId()}`).then((j) => {
     box.innerHTML = '';
     if (!j.laps.length) { box.innerHTML = '<div class="circ-empty">Nadie tiene tiempo todavía. ¡Sé el primero en Práctica!</div>'; return; }
     j.laps.slice(0, 30).forEach((l, i) => {
@@ -3174,7 +3301,9 @@ $('resetYes').addEventListener('click', () => {
   closeModal('mSettings'); showMenu(); toast('Progreso borrado');
 });
 function fillStats() {
-  const s = store.get('stats', { races: 0, wins: 0, crashes: 0, laps: 0 });
+  // Las de este dispositivo más las de los demás donde se ha jugado con la misma cuenta
+  const s = { ...store.get('stats', { races: 0, wins: 0, crashes: 0, laps: 0 }) };
+  if (acct) { const o = otherStats(store.get('statsBy', {}), deviceId); for (const f of Object.keys(o)) s[f] = (+s[f] || 0) + o[f]; }
   const pos = store.get('pos', {}), best = store.get('best', {});
   $('sRaces').textContent = s.races; $('sWins').textContent = s.wins; $('sLaps').textContent = s.laps || 0; $('sCrashes').textContent = s.crashes;
   const box = $('sTracks');

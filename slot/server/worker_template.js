@@ -18,7 +18,7 @@ const TYPES = { glb: 'model/gltf-binary', hdr: 'application/octet-stream', jpg: 
 const SCENERY = ['verde', 'arena', 'noche'];
 
 // La API se puede usar desde otras páginas (por ejemplo, la versión del juego dentro de Claude)
-const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' };
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, authorization', 'access-control-allow-methods': 'GET, POST, PUT, OPTIONS', 'access-control-max-age': '86400' };
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...CORS },
@@ -35,6 +35,114 @@ function newId(n = 7, a = 'abcdefghijkmnpqrstuvwxyz23456789') {
   const r = crypto.getRandomValues(new Uint8Array(n));
   return [...r].map((b) => a[b % a.length]).join('');
 }
+// ---- Cuentas: usuario + contraseña (PBKDF2), sesiones con token y perfil sincronizado ----
+const PROFILE_MAX = 1500000;   // bytes del perfil (récords, fantasmas, circuitos…)
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const randTok = (n) => b64u(crypto.getRandomValues(new Uint8Array(n)));
+async function passHash(pass, salt) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: new TextEncoder().encode(salt), iterations: 100000 }, key, 256);
+  return b64u(bits);
+}
+function sameStr(a, b) {   // comparación en tiempo constante
+  if (a.length !== b.length) return false;
+  let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+const normName = (s) => String(s || '').normalize('NFC').trim();
+const NAME_RE = /^[\p{L}\p{N}_. -]{3,16}$/u;
+const newRecovery = () => newId(12, 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789').replace(/(.{4})(?=.)/g, '$1-');
+// Límite de intentos (login fallidos, registros) por IP y día
+async function limited(db, req, what, max) {
+  const ip = await sha((req.headers.get('cf-connecting-ip') || '') + ':' + what);
+  const day = Math.floor(Date.now() / 864e5);
+  const row = await db.prepare('SELECT n FROM limits WHERE k = ? AND day = ?').bind(ip, day).first();
+  return { over: !!row && row.n >= max, hit: () => db.prepare('INSERT INTO limits (k, day, n) VALUES (?, ?, 1) ON CONFLICT(k, day) DO UPDATE SET n = n + 1').bind(ip, day).run() };
+}
+async function newSession(db, userId) {
+  const token = randTok(32);
+  await db.prepare('INSERT INTO sessions (token_hash, user_id, created) VALUES (?, ?, ?)').bind(await sha(token + ':ses'), userId, Date.now()).run();
+  return token;
+}
+// Usuario de la petición (cabecera Authorization: Bearer <token>) o null
+async function authUser(req, db) {
+  const h = req.headers.get('authorization') || '';
+  const m = h.match(/^Bearer ([A-Za-z0-9_-]{20,80})$/);
+  if (!m) return null;
+  return db.prepare('SELECT u.id, u.name, u.rid FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?').bind(await sha(m[1] + ':ses')).first();
+}
+const userOut = (u) => ({ name: u.name, rid: u.rid });
+async function authApi(req, env, parts) {
+  const db = env.DB;
+  const what = parts[2];
+  if (req.method !== 'POST') return fail('Método no permitido', 405);
+  const b = await req.json().catch(() => ({}));
+  if (what === 'logout') {
+    const h = (req.headers.get('authorization') || '').replace(/^Bearer /, '');
+    if (h) await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha(h + ':ses')).run();
+    return json({ ok: true });
+  }
+  const name = normName(b.name), pass = String(b.password || '');
+  if (what === 'register') {
+    if (!NAME_RE.test(name) || isBad(name)) return fail('Usuario no válido: de 3 a 16 letras, números, espacios, puntos o guiones');
+    if (pass.length < 6 || pass.length > 128) return fail('La contraseña debe tener al menos 6 caracteres');
+    const lim = await limited(db, req, 'reg', 10);
+    if (lim.over) return fail('Demasiadas cuentas nuevas desde aquí hoy. Prueba mañana', 429);
+    const exists = await db.prepare('SELECT 1 FROM users WHERE name = ? COLLATE NOCASE').bind(name).first();
+    if (exists) return fail('Ese usuario ya existe');
+    const id = newId(12), salt = randTok(16), recovery = newRecovery();
+    await db.prepare('INSERT INTO users (id, name, pass_hash, salt, rid, recovery_hash, data, ver, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)')
+      .bind(id, name, await passHash(pass, salt), salt, newId(16, 'abcdefghijkmnpqrstuvwxyz23456789'), await passHash(recovery, salt), '{}', Date.now(), Date.now()).run();
+    await lim.hit();
+    const u = await db.prepare('SELECT id, name, rid FROM users WHERE id = ?').bind(id).first();
+    return json({ token: await newSession(db, id), user: userOut(u), recovery });
+  }
+  if (what === 'login' || what === 'recover') {
+    const lim = await limited(db, req, 'fail', 30);
+    if (lim.over) return fail('Demasiados intentos fallidos hoy. Prueba mañana', 429);
+    const u = await db.prepare('SELECT * FROM users WHERE name = ? COLLATE NOCASE').bind(name).first();
+    if (what === 'login') {
+      const ok = u && sameStr(await passHash(pass, u.salt), u.pass_hash);
+      if (!ok) { await lim.hit(); return fail('Usuario o contraseña incorrectos', 401); }
+      return json({ token: await newSession(db, u.id), user: userOut(u) });
+    }
+    // Recuperar: código de recuperación + contraseña nueva; cierra las demás sesiones y da un código nuevo
+    const code = String(b.recovery || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/(.{4})(?=.)/g, '$1-');
+    const ok = u && sameStr(await passHash(code, u.salt), u.recovery_hash);
+    if (!ok) { await lim.hit(); return fail('Usuario o código de recuperación incorrectos', 401); }
+    if (pass.length < 6 || pass.length > 128) return fail('La contraseña nueva debe tener al menos 6 caracteres');
+    const salt = randTok(16), recovery = newRecovery();
+    await db.prepare('UPDATE users SET pass_hash = ?, salt = ?, recovery_hash = ? WHERE id = ?').bind(await passHash(pass, salt), salt, await passHash(recovery, salt), u.id).run();
+    await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(u.id).run();
+    return json({ token: await newSession(db, u.id), user: userOut(u), recovery });
+  }
+  return fail('No encontrado', 404);
+}
+// Perfil: GET devuelve { data, ver }; PUT guarda si «ver» coincide (si no, 409 con lo del servidor para fusionar)
+async function profileApi(req, env) {
+  const db = env.DB;
+  const u = await authUser(req, db);
+  if (!u) return fail('Inicia sesión', 401);
+  if (req.method === 'GET') {
+    const r = await db.prepare('SELECT data, ver FROM users WHERE id = ?').bind(u.id).first();
+    return json({ user: userOut(u), data: JSON.parse(r.data || '{}'), ver: r.ver });
+  }
+  if (req.method === 'PUT') {
+    const text = await req.text();
+    if (text.length > PROFILE_MAX + 200) return fail('Perfil demasiado grande', 413);
+    let b; try { b = JSON.parse(text); } catch { return fail('Datos no válidos'); }
+    if (!b || typeof b.data !== 'object' || !Number.isInteger(b.ver)) return fail('Datos no válidos');
+    const data = JSON.stringify(b.data);
+    const r = await db.prepare('UPDATE users SET data = ?, ver = ver + 1, updated = ? WHERE id = ? AND ver = ?').bind(data, Date.now(), u.id, b.ver).run();
+    if (!r.meta.changes) {
+      const cur = await db.prepare('SELECT data, ver FROM users WHERE id = ?').bind(u.id).first();
+      return json({ conflict: true, data: JSON.parse(cur.data || '{}'), ver: cur.ver }, 409);
+    }
+    return json({ ok: true, ver: b.ver + 1 });
+  }
+  return fail('Método no permitido', 405);
+}
+
 const PUBLIC = 'id, name, author, lanes, laps, scenery, pieces, length, plays, likes, best_time, best_name, created';
 const rowOut = (r) => ({ ...r, pieces: JSON.parse(r.pieces) });
 
@@ -145,9 +253,10 @@ async function lapsApi(req, env, url, parts) {
     try { b = await req.json(); } catch { return fail('Datos no válidos'); }
     const key = b.track;
     if (!keyOk(key)) return fail('Circuito no válido');
-    const device = String(b.device || '');
+    const acc = await authUser(req, db);
+    const device = acc ? acc.rid : String(b.device || '');
     if (!/^[a-z0-9]{12,32}$/.test(device)) return fail('Dispositivo no válido');
-    let name = clean(b.name, 16); if (name.length < 2 || isBad(name)) name = 'Piloto';
+    let name = acc ? acc.name : clean(b.name, 16); if (name.length < 2 || isBad(name)) name = 'Piloto';
     const def = await trackDefFor(db, key);
     if (!def) return fail('Ese circuito no existe', 404);
     const setup = { magnet: String(b.setup?.magnet || 'medio'), gear: String(b.setup?.gear || 'medio'), tire: String(b.setup?.tire || 'blando'), brake: Number(b.setup?.brake), curve: Number(b.setup?.curve) };
@@ -198,6 +307,12 @@ export default {
         if (req.headers.get('Upgrade') !== 'websocket') return fail('Se necesita WebSocket', 426);
         const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
         return stub.fetch(req);
+      }
+      if (parts[1] === 'auth') {
+        try { return await authApi(req, env, parts); } catch (e) { return fail('Error del servidor', 500); }
+      }
+      if (parts[1] === 'profile') {
+        try { return await profileApi(req, env); } catch (e) { return fail('Error del servidor', 500); }
       }
       if (parts[1] === 'laps') {
         try { return await lapsApi(req, env, url, parts); } catch (e) { return fail('Error del servidor', 500); }

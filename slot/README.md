@@ -172,3 +172,18 @@ relacionado con ella.
   Se quita en Ajustes → Música.
 - La exhibición va a cámara lenta (×0,5), los planos duran 7–10 s y se enlazan con fundidos a negro; siempre empieza
   con el plano aéreo del circuito.
+
+## Cuentas y progreso sincronizado
+
+- **Entrar / Crear cuenta** (botón arriba en el menú): usuario y contraseña. En el servidor la contraseña se guarda
+  con PBKDF2-SHA256 (100 000 iteraciones y sal propia), nunca en claro; las sesiones se guardan solo como hash.
+- Al crear la cuenta se da un **código de recuperación** (también guardado con PBKDF2): con él y el usuario se
+  pone una contraseña nueva. Límite de 10 cuentas nuevas y 30 intentos fallidos al día por IP (tabla `limits`).
+- **Sincronización** (`src/sync.js`): récords de todos los modos, posiciones, copas, monedas, circuitos propios,
+  «me gusta», fantasmas, coche, pintura y reglaje. Al juntar dos dispositivos se queda lo mejor de cada cosa (el
+  tiempo más bajo, la mejor posición, todos los circuitos…). Las estadísticas se guardan por dispositivo y se suman.
+  Se sube sola 3 s después de cada cambio y se trae al abrir el juego o volver a la pestaña; si dos dispositivos
+  guardan a la vez, el servidor responde 409 y se vuelve a juntar (control de versión optimista).
+- **Ranking mundial**: con sesión, las vueltas se guardan a nombre de la cuenta (su identificador de ranking), así
+  que tu mejor tiempo es el mismo en todos tus dispositivos.
+- API: `POST /api/auth/register|login|recover|logout`, `GET|PUT /api/profile` (cabecera `Authorization: Bearer`).

@@ -49,6 +49,7 @@
       <button class="icon-btn" data-open="mHelp" aria-label="Cómo jugar"><svg><use href="#i-help"/></svg></button>
       <div class="chip"><svg class="trophy-ico" viewBox="0 0 24 24" aria-label="Trofeos"><path d="M7 3h10v3h3v2a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V17h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V6h3Zm0 5H6a2 2 0 0 0 1 1.7Zm10 0v1.7A2 2 0 0 0 18 8Z" fill="currentColor"/></svg><span id="trophies">0/6</span></div>
       <div class="spacer"></div>
+      <button id="accBtn" class="acc-chip" aria-label="Tu cuenta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4Zm0 2c-4.4 0-8 2.2-8 5v1.4h16V19c0-2.8-3.6-5-8-5Z" fill="currentColor"/></svg><span>Entrar</span></button>
       <button class="icon-btn" data-open="mStats" aria-label="Estadísticas"><svg><use href="#i-stats"/></svg></button>
       <button class="icon-btn" data-open="mSettings" aria-label="Ajustes"><svg><use href="#i-gear"/></svg></button>
     </div>
@@ -285,6 +286,51 @@
       <button id="pubGo" class="btn primary"><span class="btn-main">Publicar para todos</span></button>
       <p id="pubMsg" class="small center"></p>
       <button id="pubWeb" class="btn secondary" hidden><span class="btn-main">Abrir en la web y publicar</span><span class="btn-sub">Tu circuito se abre ya cargado</span></button>
+    </div>
+  </div>
+
+  <!-- Cuenta -->
+  <div id="mAccount" class="modal center" role="dialog" aria-modal="true" aria-labelledby="hAcc">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hAcc">Tu cuenta</h3>
+      <div id="accTabs" class="seg acc-tabs"><button data-v="login">Entrar</button><button data-v="register">Crear cuenta</button></div>
+      <div id="acc-login" class="acc-form">
+        <p class="muted small">Entra para jugar con tu progreso en cualquier dispositivo: récords, fantasmas, circuitos, copas y ranking mundial.</p>
+        <label class="field"><span>Usuario</span><input id="accLU" autocomplete="username" maxlength="16" autocapitalize="off" spellcheck="false"></label>
+        <label class="field"><span>Contraseña</span><input id="accLP" type="password" autocomplete="current-password" maxlength="128"></label>
+        <button id="accLoginGo" class="btn primary"><span class="btn-main">Entrar</span></button>
+        <button id="accForgot" class="linkbtn">He olvidado la contraseña</button>
+      </div>
+      <div id="acc-register" class="acc-form" hidden>
+        <p class="muted small">Lo que ya tienes en este dispositivo pasa a tu cuenta. Tu usuario será tu nombre de piloto en el ranking y en el online.</p>
+        <label class="field"><span>Usuario</span><input id="accRU" autocomplete="username" maxlength="16" autocapitalize="off" spellcheck="false" placeholder="De 3 a 16 caracteres"></label>
+        <label class="field"><span>Contraseña</span><input id="accRP" type="password" autocomplete="new-password" maxlength="128" placeholder="Al menos 6 caracteres"></label>
+        <label class="field"><span>Repite la contraseña</span><input id="accRP2" type="password" autocomplete="new-password" maxlength="128"></label>
+        <button id="accRegGo" class="btn primary"><span class="btn-main">Crear cuenta</span></button>
+      </div>
+      <div id="acc-recover" class="acc-form" hidden>
+        <p class="muted small">Escribe tu usuario y el código de recuperación que te dimos al crear la cuenta, y elige una contraseña nueva.</p>
+        <label class="field"><span>Usuario</span><input id="accCU" autocomplete="username" maxlength="16" autocapitalize="off" spellcheck="false"></label>
+        <label class="field"><span>Código de recuperación</span><input id="accCC" maxlength="20" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX"></label>
+        <label class="field"><span>Contraseña nueva</span><input id="accCP" type="password" autocomplete="new-password" maxlength="128"></label>
+        <button id="accRecGo" class="btn primary"><span class="btn-main">Cambiar contraseña y entrar</span></button>
+        <button id="accBackLogin" class="linkbtn">Volver</button>
+      </div>
+      <div id="acc-code" class="acc-form" hidden>
+        <p><b>Tu código de recuperación</b></p>
+        <div id="accCode" class="acc-code"></div>
+        <p class="muted small">Apúntalo o haz una captura de pantalla. Es la única forma de recuperar la cuenta si olvidas la contraseña, y no lo volverás a ver.</p>
+        <button id="accCodeOk" class="btn primary"><span class="btn-main">Ya lo he guardado</span></button>
+      </div>
+      <div id="acc-me" class="acc-form" hidden>
+        <p class="acc-hello">Conectado como <b id="accName"></b></p>
+        <p id="accSync" class="acc-sync"></p>
+        <p id="accStats" class="muted small"></p>
+        <p class="muted small">Tus récords de todos los modos, fantasmas, circuitos, copas y estadísticas se guardan solos. Entra con este usuario en otro móvil, tablet u ordenador y lo tendrás todo.</p>
+        <button id="accLogout" class="btn ghost"><span class="btn-main">Cerrar sesión</span></button>
+      </div>
+      <p id="accMsg" class="acc-msg" aria-live="polite"></p>
     </div>
   </div>
 
