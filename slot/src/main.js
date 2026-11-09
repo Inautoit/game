@@ -1537,8 +1537,8 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
   camMode = DEFAULT_CAM;
   setupSliders();
   setScreen('hud');
-  // Presentación del circuito antes de la salida (no en el online: allí la salida va sincronizada)
-  if (!online) startIntro();
+  // Presentación del circuito antes de la salida. En el online dura lo mismo para todos (reloj del servidor)
+  startIntro(online);
   T.lights.forEach((m) => { m.material.emissive.setHex(0x000000); m.material.color.setHex(0x331111); });
   ui.count.textContent = '';
   updateHud(true);
@@ -1930,9 +1930,10 @@ function loop(now) {
   updateMusic();
   if (!T) return;
   if (state === 'intro') {
-    race.intro.t += dt;
+    if (race.intro.fixed && room) race.intro.t = ONLINE_INTRO - (race.intro.syncEnd - room.serverNow()) / 1000;
+    else race.intro.t += dt;
     for (const c of cars) if (!c.crash) placeCar(c.mesh, c.st.s, c.d, c.st.th);
-    if (race.intro.t >= race.intro.d1 + race.intro.d2 + 0.4) endIntro();
+    if (race.intro.fixed ? race.intro.t >= ONLINE_INTRO : race.intro.t >= race.intro.d1 + race.intro.d2 + 0.4) endIntro();
   } else if (state === 'countdown' || state === 'race' || state === 'results') {
     stepRace(dt);
     updateHud();
@@ -3386,10 +3387,18 @@ $('garBack').addEventListener('click', () => { sfx.click(); if (mode === 'online
 // ---- Carrera: pausa, cámara y resultados ----
 // ---- Presentación del circuito: helicóptero sobre la mesa y una pasada de TV por toda la vuelta ----
 const MODE_NAME = { practica: 'Práctica', '1p': 'Carrera', '2p': '2 Jugadores' };
-function startIntro() {
-  state = 'intro';
+const ONLINE_INTRO = 10;   // segundos (el servidor deja este margen antes del semáforo)
+function startIntro(online) {
   const meters = T.L * SCALE;
-  race.intro = { t: 0, d1: 3.6, d2: clamp(2.6 + meters / 6, 3.6, 8.5), a0: Math.random() * Math.PI * 2, snap: false };
+  if (online) {
+    // Termina cuando faltan 5,2 s para la salida, según el reloj del servidor; si ya no da tiempo, no hay
+    const syncEnd = online.startAt - 5200;
+    const left = (syncEnd - room.serverNow()) / 1000;
+    if (left < 2) return;
+    race.intro = { t: ONLINE_INTRO - left, d1: 3.6, d2: ONLINE_INTRO - 4, a0: (online.startAt % 628) / 100, snap: false, fixed: true, syncEnd };
+  } else race.intro = { t: 0, d1: 3.6, d2: clamp(2.6 + meters / 6, 3.6, 8.5), a0: Math.random() * Math.PI * 2, snap: false };
+  state = 'intro';
+  $('introHint').textContent = online ? 'La salida es a la vez para todos' : 'Toca para empezar';
   $('introMode').textContent = champ && champ.cup ? champ.cup.name : MODE_NAME[race.mode] || 'Carrera';
   $('introName').textContent = race.def.name;
   $('introInfo').textContent = `${meters.toFixed(1).replace('.', ',')} m · ${race.def.lanes} carriles · ${race.mode === 'practica' ? 'vueltas libres' : `${race.laps} ${race.laps === 1 ? 'vuelta' : 'vueltas'}`}`;
@@ -3425,11 +3434,16 @@ function introCamera(dt) {
   camPos.lerp(camGoalPos, kf); camTarget.lerp(camGoalTarget, kf);
 }
 // Se salta tocando la pantalla o con cualquier tecla
-for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, (e) => { if (state === 'intro') { e.preventDefault(); e.stopPropagation(); endIntro(); } }, { capture: true });
+// (en el online no: allí dura lo mismo para todos)
+for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, (e) => {
+  if (state !== 'intro' || race.intro.fixed) return;
+  if (e.target && e.target.closest && e.target.closest('#pauseBtn')) return;
+  e.preventDefault(); e.stopPropagation(); endIntro();
+}, { capture: true });
 
 function pause() {
-  if (state === 'intro') { endIntro(); return; }
-  if (state !== 'race' && state !== 'countdown') return;
+  if (state === 'intro' && !race.intro.fixed) { endIntro(); return; }
+  if (state !== 'race' && state !== 'countdown' && state !== 'intro') return;
   if (race.mode === 'online') { $('quitBtn').querySelector('.btn-main').textContent = 'Abandonar carrera'; openModal('mPause'); return; }
   race.prevState = state;
   state = 'pause';

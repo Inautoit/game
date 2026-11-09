@@ -439,7 +439,8 @@ export class Room {
     if (!this.track) return;
     clearTimeout(this.autoTimer); this.autoAt = 0;
     this.phase = 'race';
-    this.startAt = Date.now() + 5200;
+    // 10 s de presentación del circuito (igual para todos, no se puede saltar) + 5,2 s de semáforo
+    this.startAt = Date.now() + 10000 + 5200;
     for (const p of this.players.values()) p.fin = null;
     // CPU en los carriles libres (los conduce el móvil del anfitrión)
     this.bots = [];

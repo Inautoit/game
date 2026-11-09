@@ -197,8 +197,11 @@ relacionado con ella.
 
 ## Presentación del circuito
 
-- Antes de cada carrera, práctica o manga de campeonato (no en el online, donde la salida va sincronizada): un
+- Antes de cada carrera, práctica o manga de campeonato: un
   helicóptero gira sobre toda la mesa (3,6 s) y una cámara de TV recorre la vuelta entera para ver todas las
   curvas (de 3,6 a 8,5 s según el largo), con una tarjeta con el modo, el nombre, el largo y las vueltas.
   Se salta tocando la pantalla o con cualquier tecla; después viene la cuenta atrás.
+- En el online dura 10 s para todos y no se puede saltar: el servidor pone la salida 10 s más tarde
+  (`startAt = ahora + 10 s + 5,2 s`) y cada móvil calcula el momento de la presentación con el reloj del servidor,
+  así que empieza y acaba a la vez en todos.
 - El editor empieza con solo la recta de meta.
