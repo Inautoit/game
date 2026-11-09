@@ -112,12 +112,10 @@ const sfx = {
   },
   finish() { [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.22, 'square', 0.05, i * 0.12)); },
 };
-// Sonido de coche de slot (no de coche de verdad):
-// - motor eléctrico pequeño: zumbido agudo del colector (3 polos) que sube con las rpm,
-// - silbido del piñón contra la corona,
-// - roce de las trencillas sobre los raíles de metal (siseo con chispazos al acelerar),
-// - "tac-tac" de las ruedas al pasar por las juntas de las piezas de pista,
-// - goma de los neumáticos al deslizar.
+// Sonido de coche de slot (no de coche de verdad). Lo que más se oye es el ROCE del coche
+// rodando sobre la pista (un "shhh-rrrr" que sube con la velocidad); por debajo, muy suave,
+// el motor eléctrico y los engranajes, el siseo de las trencillas, el "tac" de las juntas
+// cada 35 cm y la goma al deslizar.
 let clickBuf = null;
 function getClick() {
   if (!clickBuf && actx) {
@@ -165,21 +163,27 @@ function makeEngine(human) {
   const brf = actx.createBiquadFilter(); brf.type = 'bandpass'; brf.frequency.value = 5200; brf.Q.value = 1.2;
   const brg = actx.createGain(); brg.gain.value = 0;
   br.connect(brf).connect(brg).connect(master);
-  // Rodadura de los neumáticos sobre el plástico de la pista
-  const rl = actx.createBufferSource(); rl.buffer = getNoise(); rl.loop = true; rl.playbackRate.value = 0.7;
-  const rlf = actx.createBiquadFilter(); rlf.type = 'bandpass'; rlf.frequency.value = 900; rlf.Q.value = 0.9;
+  // EL sonido principal: el roce del coche rodando sobre la pista de plástico.
+  // Ruido filtrado cuyo tono sube con la velocidad, con un "rrrr" al ritmo del giro de las ruedas.
+  const rl = actx.createBufferSource(); rl.buffer = getNoise(); rl.loop = true;
+  const rlf = actx.createBiquadFilter(); rlf.type = 'bandpass'; rlf.frequency.value = 500; rlf.Q.value = 0.7;
+  const rlf2 = actx.createBiquadFilter(); rlf2.type = 'peaking'; rlf2.frequency.value = 2500; rlf2.Q.value = 1; rlf2.gain.value = 5;
+  const rlam = actx.createGain(); rlam.gain.value = 0.75;          // modulación (rueda)
+  const wob = actx.createOscillator(); wob.type = 'sine'; wob.frequency.value = 20;
+  const wobG = actx.createGain(); wobG.gain.value = 0.25;
+  wob.connect(wobG).connect(rlam.gain);
   const rlg = actx.createGain(); rlg.gain.value = 0;
-  rl.connect(rlf).connect(rlg).connect(master);
+  rl.connect(rlf).connect(rlf2).connect(rlam).connect(rlg).connect(master);
   // Goma al deslizar
   const sq = actx.createBufferSource(); sq.buffer = getNoise(); sq.loop = true;
   const sqf = actx.createBiquadFilter(); sqf.type = 'bandpass'; sqf.frequency.value = 1700; sqf.Q.value = 2.5;
   const sqg = actx.createGain(); sqg.gain.value = 0;
   sq.connect(sqf).connect(sqg).connect(master);
-  for (const o of [comm, rot, gear, br, rl, sq]) o.start(now + Math.random() * 0.05);
+  for (const o of [comm, rot, gear, br, rl, sq, wob]) o.start(now + Math.random() * 0.05);
   return {
-    comm, rot, gear, pre, body, mg, gg, brg, rlg, sqf, sqg, human,
-    srcs: [comm, rot, gear, br, rl, sq],
-    vol: human ? 0.075 : 0.02, joint: null, spark: 0,
+    comm, rot, gear, pre, body, mg, gg, brg, rlg, rlf, rlf2, wob, sqf, sqg, human,
+    srcs: [comm, rot, gear, br, rl, sq, wob],
+    vol: human ? 0.09 : 0.025, joint: null, spark: 0,
   };
 }
 function updateEngine(e, st, on) {
@@ -194,13 +198,19 @@ function updateEngine(e, st, on) {
   e.comm.frequency.setTargetAtTime(fc, t, 0.012);
   e.rot.frequency.setTargetAtTime(Math.max(14, rps), t, 0.012);
   e.gear.frequency.setTargetAtTime(Math.max(120, rps * 9), t, 0.012);
-  e.pre.gain.setTargetAtTime(0.5 + load * 2.2, t, 0.03);          // más corriente = más "raspado"
+  e.pre.gain.setTargetAtTime(0.4 + load * 0.6, t, 0.03);
   e.body.frequency.setTargetAtTime(1900 + spin * 1400, t, 0.05);
   const live = on ? 1 : 0;
-  e.mg.gain.setTargetAtTime(live * e.vol * (0.18 + 0.82 * Math.pow(spin, 0.7)) * (0.55 + 0.45 * load), t, 0.02);
-  e.gg.gain.setTargetAtTime(live * e.vol * 0.12 * spin * (0.4 + 0.6 * load), t, 0.03);
-  e.brg.gain.setTargetAtTime(live * e.vol * 0.55 * clamp(v / 5, 0, 1), t, 0.04);
-  e.rlg.gain.setTargetAtTime(live * e.vol * 0.5 * clamp(v / 4, 0, 1), t, 0.05);
+  const sp = clamp(v / 6, 0, 1);
+  // Roce de rodadura: lo que de verdad se oye en una pista de slot
+  e.rlf.frequency.setTargetAtTime(380 + sp * 1300, t, 0.04);
+  e.rlf2.frequency.setTargetAtTime(1800 + sp * 2200, t, 0.05);
+  e.wob.frequency.setTargetAtTime(6 + (v / (2 * Math.PI * 0.0105)) * 0.5, t, 0.03);   // ritmo del giro de rueda
+  e.rlg.gain.setTargetAtTime(live * e.vol * 1.6 * Math.pow(sp, 0.8) * (0.85 + 0.15 * load), t, 0.04);
+  // El motor apenas: un zumbido muy suave por debajo
+  e.mg.gain.setTargetAtTime(live * e.vol * 0.07 * Math.pow(spin, 0.8), t, 0.03);
+  e.gg.gain.setTargetAtTime(live * e.vol * 0.025 * spin, t, 0.04);
+  e.brg.gain.setTargetAtTime(live * e.vol * 0.35 * sp, t, 0.04);
   const slide = clamp((st.Fr - 0.9) * 6, 0, 1) * clamp(v - 0.6, 0, 1) + clamp((Math.abs(st.th) - 0.12) * 3, 0, 1) * clamp(v - 0.4, 0, 1);
   e.sqf.frequency.setTargetAtTime(1300 + v * 120, t, 0.05);
   e.sqg.gain.setTargetAtTime(live * e.vol * 1.1 * clamp(slide, 0, 1), t, 0.04);
@@ -209,7 +219,7 @@ function updateEngine(e, st, on) {
   const piece = 0.35 / SCALE;
   const j = Math.floor(st.s / piece);
   if (e.joint !== null && j !== e.joint && v > 0.25) {
-    const vol = e.vol * (e.human ? 1.6 : 1.2) * clamp(v / 4, 0.25, 1);
+    const vol = e.vol * (e.human ? 0.9 : 0.6) * clamp(v / 4, 0.25, 1);
     const gap = 0.082 / Math.max(0.4, v);   // distancia entre ejes / velocidad
     click(vol, 2400, 2.5);
     if (gap < 0.25) click(vol * 0.7, 2100, 2.5, gap);
@@ -217,7 +227,7 @@ function updateEngine(e, st, on) {
   e.joint = j;
   // Chispazos de las trencillas al pedir mucha corriente
   e.spark -= 1 / 60;
-  if (load > 0.55 && v > 0.5 && e.spark <= 0 && Math.random() < 0.35) { click(e.vol * 0.5 * load, 6500, 4); e.spark = 0.03 + Math.random() * 0.08; }
+  if (load > 0.7 && v > 0.5 && e.spark <= 0 && Math.random() < 0.2) { click(e.vol * 0.25 * load, 6500, 4); e.spark = 0.05 + Math.random() * 0.1; }
 }
 function stopEngine(e) {
   if (!e) return;
