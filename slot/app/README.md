@@ -81,7 +81,7 @@ En [App Store Connect](https://appstoreconnect.apple.com) → **Apps → +**: no
 - **Ficha**: descripción, palabras clave, capturas (iPhone de 6,9" o 6,7" y iPad de 13"; hazlas en la propia app
   o en el simulador de Xcode), icono (ya va en la app), categoría **Juegos → Carreras**.
 - **URL de la política de privacidad**: `https://turbo-slot.inautoit.workers.dev/privacidad.html`
-- **URL de soporte**: `https://turbo-slot.inautoit.workers.dev/normas.html` (o una web tuya con un correo de contacto).
+- **URL de soporte**: `https://turbo-slot.inautoit.workers.dev/soporte.html` (correo soporte.turbosloot@outlook.es y preguntas frecuentes).
 - **Privacidad de la app** (las «etiquetas»): marca que recoges, *sin rastreo*:
   - *Identificadores → ID de usuario* (la cuenta) — vinculado a la identidad, para funcionalidad de la app.
   - *Contenido del usuario → Contenido de juego y Otro contenido* (récords, circuitos publicados) — vinculado, funcionalidad.

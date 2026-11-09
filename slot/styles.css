@@ -708,3 +708,4 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .credits li { margin: 3px 0; }
 .circ-act button.rep { color: #ff8a80; }
 .rk-row .rk-hide { grid-column: 1 / -1; justify-self: end; margin-top: 4px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: #ff8a80; font-size: 12px; font-weight: 700; }
+.set-links > :last-child:nth-child(odd) { grid-column: 1 / -1; }

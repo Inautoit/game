@@ -37,7 +37,7 @@ const noErrors = (p) => assert(!p.errors.length, 'errores en la página:\n    ' 
 const state = (p) => p.evaluate(() => window.__slot.state);
 const click = (p, sel) => p.evaluate((s) => { const e = document.querySelector(s); if (!e) throw new Error('no existe ' + s); e.click(); }, sel);
 // ¿Se ve? Espera hasta 3 s (las ventanas aparecen con un fundido y este navegador de pruebas va lento)
-const visible = (p, sel, wait = 3000) => p.waitForFunction((s) => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && +cs.opacity > 0.05; }, sel, { timeout: wait }).then(() => true, () => false);
+const visible = (p, sel, wait = 8000) => p.waitForFunction((s) => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && +cs.opacity > 0.05; }, sel, { timeout: wait }).then(() => true, () => false);
 async function startRace(p, id, mode = '1p', extra = {}) {
   await p.evaluate(async ([id, mode, extra]) => {
     const S = window.__slot; const m = await import('./src/tracks.js');
@@ -257,7 +257,7 @@ T('ajustes: se guardan al recargar; créditos y contacto', async () => {
 
 T('páginas de privacidad y normas: cargan y se pueden leer enteras', async () => {
   const p = await open('movil');
-  for (const page of ['privacidad.html', 'normas.html']) {
+  for (const page of ['privacidad.html', 'normas.html', 'soporte.html']) {
     await p.goto(BASE.replace('index.html', page));
     const r = await p.evaluate(() => ({ h: document.documentElement.scrollHeight, vh: innerHeight, over: getComputedStyle(document.body).overflow, sw: document.documentElement.scrollWidth, w: innerWidth, title: document.querySelector('h1').textContent }));
     assert(r.over !== 'hidden', page + ': no se puede desplazar');
