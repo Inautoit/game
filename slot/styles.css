@@ -1,9 +1,9 @@
-@font-face {
-  font-family: "Fredoka";
-  src: url("fonts/fredoka.woff2") format("woff2");
-  font-weight: 300 700;
-  font-display: swap;
-}
+/* Tipografía: Barlow (texto) y Barlow Condensed (títulos, botones, tiempos), ambas SIL OFL 1.1 */
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-500.woff2") format("woff2"); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-600.woff2") format("woff2"); font-weight: 600 900; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-600.woff2") format("woff2"); font-weight: 400 600; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-700.woff2") format("woff2"); font-weight: 700 900; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-700i.woff2") format("woff2"); font-weight: 400 900; font-style: italic; font-display: swap; }
 
 :root {
   --bg1: #2a3550;
@@ -15,7 +15,8 @@
   --red: #ff3b30;
   --yellow: #ffcc00;
   --green: #2fd17d;
-  --font: "Fredoka", ui-rounded, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-d: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --ease: cubic-bezier(0.2, 0.9, 0.25, 1.15);
 }
 
@@ -428,3 +429,38 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .ed-finish { width: 100%; min-height: 52px; }
 .ed-finish .btn-sub { font-size: 12px; }
 .ed-finish:disabled { opacity: 0.55; box-shadow: none; }
+
+/* ---- Tipografía de carreras ---- */
+.wordmark, .title, .sheet h3, .btn-main, .chip, .count, .flash, .circ .ci b, .gar-name b,
+.tabs button, .seg button, .pad-label, .tpos b, .tcur, .tkmh, .tl-speed b, .tl-kmh b, .tl-drift b,
+.res-table b, .res-table .tm, .res-table .bl, .res-head, .on-roomcode b, .on-p b, .lrow b, .tdelta,
+.tl-grip span, .tl-cause, .sec, .ed-palette button span, .stepper b, #onTrackName, .toast {
+  font-family: var(--font-d);
+}
+.wordmark { font-weight: 700; font-style: italic; letter-spacing: -0.01em; text-transform: uppercase; }
+.wordmark.big { font-size: clamp(68px, 19vw, 118px); line-height: 0.84; }
+.title, .sheet h3 { font-weight: 700; font-style: italic; text-transform: uppercase; letter-spacing: 0.01em; }
+.title { font-size: clamp(26px, 7.4vw, 34px); }
+.sheet h3 { font-size: 34px; }
+.btn-main { font-weight: 700; font-style: italic; text-transform: uppercase; letter-spacing: 0.03em; font-size: 24px; }
+.btn.ghost .btn-main, .row2 .btn-main { font-size: 20px; }
+.btn.small .btn-main { font-size: 16px; }
+.btn-sub { letter-spacing: 0.01em; }
+.tabs button, .seg button { font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 15px; }
+.circ .ci b { font-size: 22px; font-weight: 700; letter-spacing: 0.01em; }
+.tcur { font-size: 32px; font-weight: 700; letter-spacing: 0; }
+.tkmh { font-size: 26px; font-weight: 700; }
+.tpos b { font-size: 30px; font-weight: 700; font-style: italic; }
+.tl-speed b { font-size: 34px; font-weight: 700; }
+.tl-kmh b, .tl-drift b { font-size: 22px; font-weight: 700; }
+.res-table b { font-size: 24px; font-style: italic; }
+.res-table .tm, .res-table .bl { font-size: 17px; font-weight: 600; }
+.count { font-weight: 700; font-style: italic; }
+.flash { font-weight: 700; font-style: italic; text-transform: uppercase; letter-spacing: 0.02em; }
+.pad-label { font-weight: 700; letter-spacing: 0.14em; font-size: 16px; }
+.lbl { letter-spacing: 0.08em; font-weight: 600; }
+.on-roomcode b { font-size: 40px; font-weight: 700; }
+.chip { font-weight: 700; font-size: 20px; }
+.tag { font-family: var(--font-d); font-style: italic; text-transform: uppercase; letter-spacing: 0.08em; font-size: 18px; }
+.chip .cup { width: 20px; height: 20px; color: var(--yellow); }
+.step-ico { font-family: var(--font-d); font-weight: 700; font-style: italic; font-size: 20px; color: #1b1300; background: var(--yellow) !important; }

@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>Turbo Slot 🏎️</title>
+  <title>Turbo Slot</title>
   <meta name="description" content="Simulador de slot 1:32 con física real: motor eléctrico, imán, derrapes y reglajes. Contrarreloj con fantasma, carreras contra la CPU y 2 jugadores.">
   <meta name="theme-color" content="#121826">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Turbo Slot 🏎️ Carreras de slot en tu móvil">
+  <meta property="og:title" content="Turbo Slot · Carreras de slot en tu móvil">
   <meta property="og:description" content="Acelera, frena antes de la curva… ¡y que no se te salga el coche! 6 circuitos, CPU y 2 jugadores.">
   <meta property="og:image" content="https://turbo-slot.inautoit.workers.dev/og-image.png">
   <meta property="og:url" content="https://turbo-slot.inautoit.workers.dev/">
@@ -19,7 +19,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="preload" href="fonts/fredoka.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/barlow-condensed-700i.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/barlow-500.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="modulepreload" href="vendor/three.module.min.js">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -46,21 +47,21 @@
   <div id="menu" class="screen">
     <div class="topbar">
       <button class="icon-btn" data-open="mHelp" aria-label="Cómo jugar"><svg><use href="#i-help"/></svg></button>
-      <div class="chip">🏆 <span id="trophies">0/6</span></div>
+      <div class="chip"><svg class="cup" viewBox="0 0 24 24" aria-label="Trofeos"><path d="M7 3h10v3h3v2a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V17h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V6h3Zm0 5H6a2 2 0 0 0 1 1.7Zm10 0v1.7A2 2 0 0 0 18 8Z" fill="currentColor"/></svg><span id="trophies">0/6</span></div>
       <div class="spacer"></div>
       <button class="icon-btn" data-open="mStats" aria-label="Estadísticas"><svg><use href="#i-stats"/></svg></button>
       <button class="icon-btn" data-open="mSettings" aria-label="Ajustes"><svg><use href="#i-gear"/></svg></button>
     </div>
     <div class="brand"><div class="wordmark big">TURBO<br><span>SLOT</span></div><p class="tag">Simulador de slot 1:32 · <b>física real</b></p></div>
     <div class="menu-actions">
-      <button id="playPrac" class="btn primary"><span class="btn-main">⏱ Práctica</span><span class="btn-sub">Contrarreloj con tu fantasma</span></button>
+      <button id="playPrac" class="btn primary"><span class="btn-main">Práctica</span><span class="btn-sub">Contrarreloj con tu fantasma</span></button>
       <div class="row2">
-        <button id="play1" class="btn secondary"><span class="btn-main">🏁 Carrera</span><span class="btn-sub">Contra la CPU</span></button>
-        <button id="play2" class="btn ghost"><span class="btn-main">👥 2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
+        <button id="play1" class="btn secondary"><span class="btn-main">Carrera</span><span class="btn-sub">Contra la CPU</span></button>
+        <button id="play2" class="btn ghost"><span class="btn-main">2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
       </div>
       <div class="row2">
-        <button id="playOnline" class="btn secondary"><span class="btn-main">🌍 Online</span><span class="btn-sub">Salas con amigos</span></button>
-        <button id="playEditor" class="btn ghost"><span class="btn-main">✏️ Crear circuito</span><span class="btn-sub">Y compártelo</span></button>
+        <button id="playOnline" class="btn secondary"><span class="btn-main">Online</span><span class="btn-sub">Salas con amigos</span></button>
+        <button id="playEditor" class="btn ghost"><span class="btn-main">Crear circuito</span><span class="btn-sub">Y compártelo</span></button>
       </div>
       <div class="footer">v3.0 · Editor de circuitos · Online con salas · Mando de consola</div>
     </div>
@@ -93,7 +94,7 @@
       <div><h2 class="title">Crear circuito</h2><div id="edInfo" class="subtitle"></div></div>
       <div class="spacer"></div>
       <div class="ed-actions">
-        <button id="edSave" class="btn small ghost"><span class="btn-main">💾 Guardar</span></button>
+        <button id="edSave" class="btn small ghost"><span class="btn-main">Guardar</span></button>
         <button id="edTest" class="btn small secondary"><span class="btn-main">▶ Probar</span></button>
         <button id="edPublish" class="btn small primary"><span class="btn-main">Publicar</span></button>
       </div>
@@ -147,7 +148,7 @@
         </div>
         <div class="ed-row on-laps" id="onLapsRow"><span class="lbl">Vueltas de la carrera</span><div class="stepper"><button id="onLapsM" aria-label="Menos vueltas">−</button><b id="onLaps">5</b><button id="onLapsP" aria-label="Más vueltas">+</button></div></div>
         <div class="row2">
-          <button id="onCar" class="btn ghost"><span class="btn-main">🚗 Mi coche</span></button>
+          <button id="onCar" class="btn ghost"><span class="btn-main">Mi coche</span></button>
           <button id="onReady" class="btn primary"><span class="btn-main">Estoy listo</span></button>
         </div>
         <p id="onLobbyMsg" class="muted small center"></p>
@@ -220,7 +221,7 @@
       <div class="res-head"><span>Pos.</span><span></span><span>Piloto</span><span>Tiempo</span><span>Mejor v.</span></div>
       <div id="resTable" class="res-table"></div>
       <div id="resBest" class="muted center small"></div>
-      <button id="likeBtn" class="btn small ghost" hidden><span class="btn-main">♥ Me gusta este circuito</span></button>
+      <button id="likeBtn" class="btn small ghost" hidden><span class="btn-main">Me gusta este circuito</span></button>
       <button id="nextBtn" class="btn primary"><span class="btn-main">Siguiente circuito ›</span></button>
       <div class="row2">
         <button id="againBtn" class="btn secondary"><span class="btn-main">Revancha</span></button>
@@ -272,16 +273,16 @@
       <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
       <h3 id="hHelp">Cómo se pilota</h3>
       <ol class="steps">
-        <li><div class="step-ico">👍</div><div><b>El gatillo es analógico</b><br>Cuanto más subes el pulgar, más voltaje recibe el motor. Al soltar, el mando frena el motor.</div></li>
-        <li><div class="step-ico">↩️</div><div><b>Frena antes, acelera al salir</b><br>Como en un coche real: entra suave en la curva y pisa cuando el coche ya apunta a la recta.</div></li>
-        <li><div class="step-ico">🌀</div><div><b>Controla el derrape</b><br>La trasera desliza. Si se abre demasiado, levanta un poco el gatillo o el coche se sale.</div></li>
-        <li><div class="step-ico">📈</div><div><b>Telemetría</b><br>La barra de <b>agarre</b> mide lo cerca que estás de salirte: verde, ámbar y rojo. Pasa del 100 % y te sales. Te dice si debes <b>frenar</b> (vas demasiado rápido para lo que viene) o si el coche <b>derrapa</b>. También verás la deriva en grados, la velocidad, la punta, la trampa de velocidad en meta, los tres sectores (morado = tu mejor) y la gráfica de la vuelta contra tu mejor vuelta.</div></li>
-        <li><div class="step-ico">✏️</div><div><b>Crea tus circuitos</b><br>Pon rectas y curvas desde la salida: el juego cierra el circuito por ti. Pruébalo y publícalo para que lo juegue todo el mundo, en la pestaña <b>Comunidad</b>.</div></li>
-        <li><div class="step-ico">🌍</div><div><b>Online con amigos</b><br>Crea una sala, comparte el código de 4 letras y corred a la vez, hasta 4 pilotos (uno por carril). El anfitrión elige el circuito y las vueltas.</div></li>
-        <li><div class="step-ico">🔧</div><div><b>Ajusta el coche</b><br>Imán, desarrollo, neumáticos, freno y curva del gatillo. Sin imán es la clase más difícil.</div></li>
-        <li><div class="step-ico">⏱</div><div><b>Compite contra el reloj</b><br>Tiempos al milésimo y un fantasma de tu mejor vuelta en Práctica.</div></li>
+        <li><div class="step-ico">1</div><div><b>El gatillo es analógico</b><br>Cuanto más subes el pulgar, más voltaje recibe el motor. Al soltar, el mando frena el motor.</div></li>
+        <li><div class="step-ico">2</div><div><b>Frena antes, acelera al salir</b><br>Como en un coche real: entra suave en la curva y pisa cuando el coche ya apunta a la recta.</div></li>
+        <li><div class="step-ico">3</div><div><b>Controla el derrape</b><br>La trasera desliza. Si se abre demasiado, levanta un poco el gatillo o el coche se sale.</div></li>
+        <li><div class="step-ico">4</div><div><b>Telemetría</b><br>La barra de <b>agarre</b> mide lo cerca que estás de salirte: verde, ámbar y rojo. Pasa del 100 % y te sales. Te dice si debes <b>frenar</b> (vas demasiado rápido para lo que viene) o si el coche <b>derrapa</b>. También verás la deriva en grados, la velocidad, la punta, la trampa de velocidad en meta, los tres sectores (morado = tu mejor) y la gráfica de la vuelta contra tu mejor vuelta.</div></li>
+        <li><div class="step-ico">5</div><div><b>Crea tus circuitos</b><br>Pon rectas y curvas desde la salida: el juego cierra el circuito por ti. Pruébalo y publícalo para que lo juegue todo el mundo, en la pestaña <b>Comunidad</b>.</div></li>
+        <li><div class="step-ico">6</div><div><b>Online con amigos</b><br>Crea una sala, comparte el código de 4 letras y corred a la vez, hasta 4 pilotos (uno por carril). El anfitrión elige el circuito y las vueltas.</div></li>
+        <li><div class="step-ico">7</div><div><b>Ajusta el coche</b><br>Imán, desarrollo, neumáticos, freno y curva del gatillo. Sin imán es la clase más difícil.</div></li>
+        <li><div class="step-ico">8</div><div><b>Compite contra el reloj</b><br>Tiempos al milésimo y un fantasma de tu mejor vuelta en Práctica.</div></li>
       </ol>
-      <p class="muted small">🎮 Con mando de consola, usa el gatillo derecho (RT/R2). En el ordenador: <b>↑</b> o <b>espacio</b> (jugador 1) y <b>W</b> (jugador 2). <b>C</b> cambia la cámara (TV, helicóptero, persecución, a bordo). La de <b>helicóptero</b> es la mejor para ver las curvas que vienen..</p>
+      <p class="muted small">Con mando de consola, usa el gatillo derecho (RT/R2). En el ordenador: <b>↑</b> o <b>espacio</b> (jugador 1) y <b>W</b> (jugador 2). <b>C</b> cambia la cámara (TV, helicóptero, persecución, a bordo). La de <b>helicóptero</b> es la mejor para ver las curvas que vienen..</p>
       <button class="btn primary" data-close><span class="btn-main">¡A correr!</span></button>
     </div>
   </div>
@@ -317,7 +318,7 @@
       <div id="resetConfirm" class="confirm" hidden><span>¿Borrar récords, fantasmas y circuitos desbloqueados?</span>
         <div class="row2"><button id="resetYes" class="btn secondary"><span class="btn-main">Sí, borrar</span></button><button id="resetNo" class="btn ghost"><span class="btn-main">Cancelar</span></button></div></div>
       <p class="muted small">Turbo Slot no usa cuentas, anuncios ni rastreadores. Tu progreso se guarda solo en este dispositivo.</p>
-      <p class="muted small center">Turbo Slot v2.2 · three.js (MIT) · Fredoka (OFL)<br>Coche: «Generic Sport Coupé Car» de Márcio Meireles (Sketchfab), CC-BY 4.0, modificado.<br>Iluminación: Poly Haven (CC0) · Texturas: ambientCG (CC0) · Sonido de pista: BigSoundBank (CC0)</p>
+      <p class="muted small center">Turbo Slot v3.1 · three.js (MIT) · Barlow y Barlow Condensed de Jeremy Tribby (OFL)<br>Coche: «Generic Sport Coupé Car» de Márcio Meireles (Sketchfab), CC-BY 4.0, modificado.<br>Iluminación: Poly Haven (CC0) · Texturas: ambientCG (CC0) · Sonido de pista: BigSoundBank (CC0)</p>
     </div>
   </div>
 

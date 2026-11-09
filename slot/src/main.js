@@ -622,7 +622,7 @@ function buildTrack(def) {
     gantry.add(m);
     lightsArr.push(m);
   }
-  const banner = canvasTex(512, 64, (g, w, h) => { g.fillStyle = '#ff3b30'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.font = '700 44px Fredoka, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('TURBO SLOT', w / 2, h / 2 + 2); }, false);
+  const banner = canvasTex(512, 64, (g, w, h) => { g.fillStyle = '#ff3b30'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.font = 'italic 700 48px "Barlow Condensed", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('TURBO SLOT', w / 2, h / 2 + 2); }, false);
   const bn = new THREE.Mesh(new THREE.PlaneGeometry(half * 2 + 0.8, 0.22), new THREE.MeshBasicMaterial({ map: banner }));
   bn.position.set(-0.085, 1.58, 0);
   bn.rotation.y = -Math.PI / 2;
@@ -784,7 +784,7 @@ function numberTex(num, accent, base) {
   g.fillStyle = '#' + base.toString(16).padStart(6, '0'); g.fillRect(0, 0, 128, 128);
   g.fillStyle = '#ffffff'; g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.fill();
   g.strokeStyle = '#' + accent.toString(16).padStart(6, '0'); g.lineWidth = 8; g.stroke();
-  g.fillStyle = '#111'; g.font = '700 64px Fredoka, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#111'; g.font = '700 70px "Barlow Condensed", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(String(num), 64, 68);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -1383,7 +1383,7 @@ function crossLine(c, now) {
     if (!rec || lt < rec) {
       recs[key] = lt; store.set('best', recs);
       sfx.best();
-      flashText(c.player, rec ? '🏆 ¡Récord personal!' : '¡Primera vuelta!');
+      flashText(c.player, rec ? '¡Récord personal!' : '¡Primera vuelta!');
       if (race.mode === 'practica') store.set(ghostKey(race.def.id, race.cls), { t: lt, d: c.d, s: c.rec });
     } else if (lt < prevBest) { sfx.best(); flashText(c.player, '¡Mejor vuelta!'); } else sfx.lap();
     // Récord del circuito de la comunidad (el servidor guarda solo el mejor)
@@ -1400,7 +1400,7 @@ function crossLine(c, now) {
   if (c.lap >= race.laps) {
     c.finished = true;
     c.finishTime = now;
-    if (c.human) { sfx.finish(); vibrate([30, 30, 30, 30, 100]); flashText(c.player, '🏁 ¡Meta!'); }
+    if (c.human) { sfx.finish(); vibrate([30, 30, 30, 30, 100]); flashText(c.player, '¡Meta!'); }
   } else c.lap++;
 }
 
@@ -1508,7 +1508,7 @@ function endRace() {
     const p1 = order.findIndex((c) => c.human && c.player === 0), p2 = order.findIndex((c) => c.human && c.player === 1);
     title = p1 < p2 ? '¡Gana el Jugador 1!' : '¡Gana el Jugador 2!';
   } else {
-    title = myPos === 1 ? '¡Victoria! 🏆' : myPos === 2 ? '¡Segundo puesto!' : myPos === 3 ? 'Tercer puesto' : `${myPos}º puesto`;
+    title = myPos === 1 ? '¡Victoria! ' : myPos === 2 ? '¡Segundo puesto!' : myPos === 3 ? 'Tercer puesto' : `${myPos}º puesto`;
     const pos = store.get('pos', {});
     if (!pos[race.def.id] || myPos < pos[race.def.id]) { pos[race.def.id] = myPos; store.set('pos', pos); }
   }
@@ -1524,11 +1524,11 @@ function endRace() {
   $('nextBtn').hidden = !(race.trackIdx >= 0 && nextIdx < TRACKS.length);
   const unlockedNow = false;
   $('resUnlock').hidden = !unlockedNow;
-  if (unlockedNow) $('resUnlock').textContent = `🔓 Desbloqueado: ${TRACKS[nextIdx].name}`;
+  if (unlockedNow) $('resUnlock').textContent = `Desbloqueado: ${TRACKS[nextIdx].name}`;
   const liked = store.get('liked', []);
   $('likeBtn').hidden = !race.def.cid || race.mode === 'online';
   $('likeBtn').disabled = liked.includes(race.def.cid);
-  $('likeBtn').querySelector('.btn-main').textContent = liked.includes(race.def.cid) ? '♥ Te gusta' : '♥ Me gusta este circuito';
+  $('likeBtn').querySelector('.btn-main').textContent = liked.includes(race.def.cid) ? 'Te gusta' : 'Me gusta este circuito';
   if (race.mode === 'online') { $('nextBtn').hidden = true; setTimeout(() => openModal('mResults'), 300); return; }
   setTimeout(() => openModal('mResults'), 300);
   const stats = store.get('stats', { races: 0, wins: 0, crashes: 0, laps: 0 });
@@ -1780,7 +1780,7 @@ function updateHud(force) {
     card.style.setProperty('--car', '#' + c.liv.color.toString(16).padStart(6, '0'));
     const cur = c.lap > 0 && !c.finished ? nowT - c.lapStart : null;
     const ref = race.mode === 'practica' ? recBest : c.best;
-    const lapTxt = race.mode === 'practica' ? `Vuelta ${Math.max(1, c.lap)}` : c.finished ? '🏁 Terminado' : `Vuelta ${Math.max(1, c.lap)}/${race.laps}`;
+    const lapTxt = race.mode === 'practica' ? `Vuelta ${Math.max(1, c.lap)}` : c.finished ? 'Terminado' : `Vuelta ${Math.max(1, c.lap)}/${race.laps}`;
     const pos = race.mode === 'practica' ? '' : `<div class="tpos"><b>${order.indexOf(c) + 1}º</b><small>/${cars.length}</small></div>`;
     const kmh = Math.round(Math.max(0, c.st.v) * 3.6 * 32);
     const delta = Number.isFinite(c.last) && Number.isFinite(ref) && c.laps.length ? c.last - ref : null;
@@ -1967,7 +1967,7 @@ function showCircuits() {
   box.innerHTML = '';
   const pos = store.get('pos', {}), best = store.get('best', {});
   const recTxt = (def) => {
-    const medal = pos[def.id] === 1 ? '🥇 ' : pos[def.id] === 2 ? '🥈 ' : pos[def.id] === 3 ? '🥉 ' : '';
+    const medal = pos[def.id] ? `${pos[def.id]}º puesto · ` : '';
     const bi = best[`${def.id}|iman`], bp = best[`${def.id}|pro`];
     return `${medal}${bi ? 'Imán ' + fmt(bi) : ''}${bi && bp ? ' · ' : ''}${bp ? 'Sin imán ' + fmt(bp) : ''}${!bi && !bp ? 'Sin récord' : ''}`;
   };
@@ -1985,7 +1985,7 @@ function showCircuits() {
         const def = commDef(t);
         box.appendChild(circButton(def, [
           ['', t.name], ['by', `de ${t.author} · ${t.length.toFixed(1).replace('.', ',')} m · ${t.lanes} carriles`],
-          ['', `▶ ${t.plays}  ·  ♥ ${t.likes}${t.best_time ? `  ·  🏆 ${fmt(t.best_time)} (${t.best_name || 'Anónimo'})` : ''}`],
+          ['', `${t.plays} partidas  ·  ${t.likes} me gusta${t.best_time ? `  ·  Récord ${fmt(t.best_time)} (${t.best_name || 'Anónimo'})` : ''}`],
           ['rec', recTxt(def)],
         ], () => chooseTrack(def)));
       }
@@ -2006,7 +2006,7 @@ function showCircuits() {
         const b = document.createElement('button'); b.className = 'circ';
         const info = document.createElement('div'); info.className = 'ci';
         const nm = document.createElement('b'); nm.textContent = d.name || 'Sin nombre';
-        const st = document.createElement('small'); st.textContent = `✏️ Sin terminar · ${d.pieces.length} piezas`;
+        const st = document.createElement('small'); st.textContent = `Sin terminar · ${d.pieces.length} piezas`;
         const hint = document.createElement('small'); hint.className = 'rec'; hint.textContent = 'Toca para seguir editándolo';
         info.append(nm, st, hint); b.appendChild(info);
         b.addEventListener('click', () => { sfx.click(); openEditor(d); });
@@ -2015,7 +2015,7 @@ function showCircuits() {
         const def = draftDef(d, closed);
         wrap.appendChild(circButton(def, [
           ['', d.name || 'Sin nombre'], ['', `${lenTxt(def)} · ${d.lanes} carriles · ${d.laps} ${d.laps === 1 ? 'vuelta' : 'vueltas'}`],
-          ['by', d.published ? '🌍 Publicado' : '📝 Solo en este dispositivo'], ['rec', recTxt(def)],
+          ['by', d.published ? 'Publicado' : 'Solo en este dispositivo'], ['rec', recTxt(def)],
         ], () => chooseTrack(def)));
       }
       if (!pickForOnline) {
@@ -2124,7 +2124,7 @@ $('saveGo').addEventListener('click', () => {
   const name = $('saveName').value.trim();
   draft.name = name || draft.name || `Mi circuito ${myTracks().length + 1}`;
   saveDraft();
-  closeModal('mSave'); sfx.best(); toast('💾 Guardado en «Mis circuitos»');
+  closeModal('mSave'); sfx.best(); toast('Guardado en «Mis circuitos»');
   renderEditor();
 });
 $('saveName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveGo').click(); });
@@ -2185,7 +2185,7 @@ $('pubGo').addEventListener('click', async () => {
     const r = await apiPost('/api/tracks', { name, author, lanes: draft.lanes, laps: draft.laps, scenery: draft.scenery, pieces: closed.pieces });
     draft.name = name; draft.published = r.id; draft.pubKey = draftKey(draft); settings.pilot = author; saveSettings(); saveDraft();
     commCache = { top: null, new: null };
-    closeModal('mPublish'); sfx.best(); toast('🌍 ¡Circuito publicado!');
+    closeModal('mPublish'); sfx.best(); toast('¡Circuito publicado!');
     circTab = 'comunidad'; commSort = 'new'; showCircuits(); demoRace();
   } catch (e) {
     $('pubMsg').textContent = e.message; $('pubGo').disabled = false;
@@ -2242,7 +2242,7 @@ function connectRoom(code) {
   onMsg('Conectando…');
   room = new RoomClient(API, code, {
     open: () => { const e = onlineEntry(); room.send({ t: 'join', name, liv: e.liv.id, cls: classOf(e.setupRaw) }); },
-    close: (why) => { room = null; roomState = null; if (state === 'online') { renderLobby(); onMsg(why); } else toast('📡 ' + why); },
+    close: (why) => { room = null; roomState = null; if (state === 'online') { renderLobby(); onMsg(why); } else toast('' + why); },
     message: onRoomMessage,
   });
   room.codeShown = code;
@@ -2269,7 +2269,7 @@ function onRoomMessage(m) {
   } else if (m.t === 'fin' && c) {
     c.finished = true; c.finishTime = m.time; c.best = m.best || c.best;
     c.lap = race.laps;
-    if (m.time < 9000) flashText(0, `🏁 ${c.name} termina`);
+    if (m.time < 9000) flashText(0, `${c.name} termina`);
     if (state === 'results') endRace();
   } else if (m.t === 'lap' && c) {
     c.laps.push(m.time); c.last = m.time; if (m.time < c.best) c.best = m.time;
@@ -2301,7 +2301,7 @@ function renderLobby() {
     const nm = document.createElement('b'); nm.textContent = p ? p.name + (p.id === myId ? ' (tú)' : '') : 'Libre';
     const sm = document.createElement('small'); sm.textContent = `Carril ${l + 1}${p ? ' · ' + CLASS_NAME[p.cls] : ''}`;
     const st = document.createElement('span'); st.className = 'st' + (p && (p.ready || p.host) ? ' ok' : '');
-    st.textContent = !p ? '' : p.host ? '👑 Anfitrión' : p.ready ? '✓ Listo' : 'Esperando';
+    st.textContent = !p ? '' : p.host ? 'Anfitrión' : p.ready ? '✓ Listo' : 'Esperando';
     row.append(dot, nm, sm, st);
     box.appendChild(row);
   }
@@ -2317,7 +2317,7 @@ function renderLobby() {
   if (host) {
     const others = rs.players.filter((p) => !p.host);
     const allReady = others.every((p) => p.ready);
-    rb.querySelector('.btn-main').textContent = '🏁 ¡Empezar carrera!';
+    rb.querySelector('.btn-main').textContent = '¡Empezar carrera!';
     rb.disabled = !def || !allReady || extra > 0;
     rb.className = 'btn primary';
     $('onLobbyMsg').textContent = !def ? 'Elige un circuito.' : extra ? 'Hay más pilotos que carriles: elige un circuito de 4 carriles.' : !allReady ? 'Esperando a que todos estén listos…' : rs.players.length === 1 ? 'Estás solo: invita a tus amigos con el código o empieza igualmente.' : '¡Todos listos!';
@@ -2423,7 +2423,7 @@ $('onShare').addEventListener('click', async () => {
   const text = `¡Únete a mi carrera de Turbo Slot! Sala ${code}`;
   try {
     if (navigator.share) await navigator.share({ title: 'Turbo Slot', text, url });
-    else { await navigator.clipboard.writeText(`${text}: ${url}`); toast('📋 Enlace copiado'); }
+    else { await navigator.clipboard.writeText(`${text}: ${url}`); toast('Enlace copiado'); }
   } catch { /* cancelado */ }
 });
 
@@ -2532,7 +2532,7 @@ function resume() {
 function toggleCam() {
   camMode = CAMS[(CAMS.indexOf(camMode) + 1) % CAMS.length];
   settings.cam = camMode; saveSettings();
-  toast('📷 ' + CAM_NAME[camMode]);
+  toast('' + CAM_NAME[camMode]);
 }
 $('pauseBtn').addEventListener('click', pause);
 $('camBtn').addEventListener('click', () => { sfx.click(); toggleCam(); });
@@ -2551,7 +2551,7 @@ $('likeBtn').addEventListener('click', () => {
   const liked = store.get('liked', []); if (liked.includes(cid)) return;
   liked.push(cid); store.set('liked', liked.slice(-500));
   apiPost(`/api/tracks/${cid}/like`).catch(() => {});
-  sfx.best(); $('likeBtn').disabled = true; $('likeBtn').querySelector('.btn-main').textContent = '♥ Te gusta';
+  sfx.best(); $('likeBtn').disabled = true; $('likeBtn').querySelector('.btn-main').textContent = 'Te gusta';
   commCache = { top: null, new: null };
 });
 // Al salir de una carrera: volver al editor si era una prueba, si no a la lista de circuitos
@@ -2591,7 +2591,7 @@ function fillStats() {
   TRACKS.forEach((t) => {
     const r = document.createElement('div');
     r.className = 'trow';
-    const medal = pos[t.id] === 1 ? '🥇' : pos[t.id] === 2 ? '🥈' : pos[t.id] === 3 ? '🥉' : (pos[t.id] ? `${pos[t.id]}º` : '–');
+    const medal = pos[t.id] === 1 ? '1º' : pos[t.id] === 2 ? '2º' : pos[t.id] === 3 ? '3º' : (pos[t.id] ? `${pos[t.id]}º` : '–');
     r.innerHTML = '<span></span><b></b><em></em><em></em>';
     r.querySelector('span').textContent = t.name;
     r.querySelector('b').textContent = medal;
@@ -2604,7 +2604,7 @@ function fillStats() {
 
 window.addEventListener('resize', fitCamera);
 window.addEventListener('orientationchange', () => setTimeout(fitCamera, 250));
-window.addEventListener('gamepadconnected', () => toast('🎮 Mando conectado: usa el gatillo derecho'));
+window.addEventListener('gamepadconnected', () => toast('Mando conectado: usa el gatillo derecho'));
 
 // ---------------------------------------------------------------------------
 // Arranque
@@ -2636,7 +2636,7 @@ overviewCamera(camPos, camTarget);
   if (/^[A-Z]{4}$/.test(sala)) { showOnline(); $('onCode').value = sala; onMsg(settings.pilot ? 'Pulsa «Entrar» para unirte' : 'Pon tu nombre y pulsa «Entrar»'); }
 }
 requestAnimationFrame(loop);
-Promise.race([document.fonts ? document.fonts.load('700 20px Fredoka') : null, new Promise((r) => setTimeout(r, 1500))])
+Promise.race([document.fonts ? Promise.all([document.fonts.load('italic 700 20px "Barlow Condensed"'), document.fonts.load('500 16px Barlow')]) : null, new Promise((r) => setTimeout(r, 1500))])
   .catch(() => {})
   .then(() => setTimeout(() => {
     ui.splash.classList.add('done');
