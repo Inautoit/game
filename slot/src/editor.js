@@ -1,6 +1,6 @@
 // Editor de circuitos: se monta pieza a pieza (como una pista de verdad) y el juego
 // propone cómo cerrarlo. Vista cenital en un canvas.
-import { walkOpen, autoClose, EDITOR, LANE_W, sample } from './tracks.js';
+import { walkOpen, autoClose, EDITOR, LANE_W, sample, heightAtEnd } from './tracks.js';
 
 const STRAIGHT = 0.35 / 0.126;   // una recta estándar de 35 cm, en unidades
 export const PALETTE = [
@@ -10,6 +10,9 @@ export const PALETTE = [
   { id: 'l90', label: '↰ 90°', sub: 'Izquierda', make: (r) => ['C', -90, r] },
   { id: 'r45', label: '↱ 45°', sub: 'Derecha', make: (r) => ['C', 45, r] },
   { id: 'r90', label: '↱ 90°', sub: 'Derecha', make: (r) => ['C', 90, r] },
+  // Rampas: suben a la altura de un puente (para cruzar por encima) o bajan al suelo
+  { id: 'up', label: 'Subir', sub: 'Rampa a puente', make: () => ['S', EDITOR.ramp, EDITOR.bridge], when: (d) => heightAtEnd(d.pieces) < 0.5 },
+  { id: 'down', label: 'Bajar', sub: 'Rampa al suelo', make: () => ['S', EDITOR.ramp, 0], when: (d) => heightAtEnd(d.pieces) > 0.5 },
 ];
 export const RADII = [['cerrada', 'Cerrada'], ['media', 'Media'], ['abierta', 'Abierta']];
 
@@ -86,13 +89,26 @@ export function drawEditor(cv, draft, closed) {
     stroke(all, 'rgba(79,195,247,0.35)', tw + 2);
     stroke(all, 'rgba(79,195,247,0.9)', 2, [6, 6]);
   }
-  stroke(open.pts, '#15171c', tw + 4);
-  stroke(open.pts, '#3a3d45', tw);
-  // Carriles
-  for (let l = 0; l < draft.lanes; l++) {
-    const off = (l - (draft.lanes - 1) / 2) * LANE_W;
-    const lane = open.pts.map((p) => ({ x: p.x - Math.sin(p.h) * off, z: p.z + Math.cos(p.h) * off }));
-    stroke(lane, '#0b0c0e', Math.max(1, sc * 0.05));
+  // Primero el suelo y luego lo que va en alto (puentes), con sombra para que se vea encima
+  const runs = [];
+  let cur = null;
+  for (const p of open.pts) {
+    const hi = (p.y || 0) > 0.3;
+    if (!cur || cur.hi !== hi) { cur = { hi, pts: cur ? [cur.pts[cur.pts.length - 1]] : [] }; runs.push(cur); }
+    cur.pts.push(p);
+  }
+  const lanesOf = (pts) => {
+    for (let l = 0; l < draft.lanes; l++) {
+      const off = (l - (draft.lanes - 1) / 2) * LANE_W;
+      stroke(pts.map((p) => ({ x: p.x - Math.sin(p.h) * off, z: p.z + Math.cos(p.h) * off })), '#0b0c0e', Math.max(1, sc * 0.05));
+    }
+  };
+  for (const r of runs.filter((q) => !q.hi)) { stroke(r.pts, '#15171c', tw + 4); stroke(r.pts, '#3a3d45', tw); lanesOf(r.pts); }
+  for (const r of runs.filter((q) => q.hi)) {
+    stroke(r.pts.map((p) => ({ x: p.x + 0.35, z: p.z + 0.5 })), 'rgba(0,0,0,0.35)', tw + 8);
+    stroke(r.pts, '#c9ced6', tw + 6);
+    stroke(r.pts, '#4a4e58', tw);
+    lanesOf(r.pts);
   }
   // Salida (cuadros) y final con flecha
   const s0 = open.pts[0], n0 = [-Math.sin(s0.h) * half, Math.cos(s0.h) * half];

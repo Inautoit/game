@@ -464,3 +464,4 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .tag { font-family: var(--font-d); font-style: italic; text-transform: uppercase; letter-spacing: 0.08em; font-size: 18px; }
 .chip .cup { width: 20px; height: 20px; color: var(--yellow); }
 .step-ico { font-family: var(--font-d); font-weight: 700; font-style: italic; font-size: 20px; color: #1b1300; background: var(--yellow) !important; }
+.ed-palette button:disabled { opacity: 0.35; }

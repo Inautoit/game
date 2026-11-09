@@ -48,6 +48,8 @@ export const LIVERIES = [
   { id: 'negro', name: 'Negro GT', color: 0x1b1d22, accent: 0xff6a00, num: 1 },
   { id: 'blanco', name: 'Blanco Resistencia', color: 0xeeeeee, accent: 0xd32f2f, num: 88 },
 ];
+// Frecuencia (por segundo) y tamaño de los errores de la CPU según el imán
+const AI_ERR = { sin: { rate: 0.16, lo: 1.10, hi: 1.24 }, bajo: { rate: 0.12, lo: 1.08, hi: 1.2 }, medio: { rate: 0.11, lo: 1.07, hi: 1.2 }, alto: { rate: 0.09, lo: 1.06, hi: 1.17 } };
 const RIVALS = ['M. Ortega', 'L. Ferrer', 'J. Sanz', 'A. Vidal', 'P. Navarro'];
 
 // ---------------------------------------------------------------------------
@@ -1278,7 +1280,8 @@ function startRace({ def, trackIdx, mode, entries, online }) {
     const free = [...Array(lanes).keys()].filter((l) => !cars.some((c) => c.lane === l));
     const base = trackIdx >= 0 ? 0.86 + trackIdx * 0.018 : 0.93;
     free.forEach((l, i) => {
-      const setupRaw = { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet === 'sin' ? 'sin' : 'medio' };
+      // La CPU corre con el mismo imán que tú: si vas sin imán, ellos también
+      const setupRaw = { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet };
       const skill = clamp(base + (i - (free.length - 1) / 2) * 0.025, 0.82, 0.97);
       makeCar({ liv: others[i % others.length], lane: l, human: false, name: RIVALS[i % RIVALS.length], setupRaw, skill });
     });
@@ -1345,7 +1348,7 @@ function animateCrash(c, dt) {
 function physStep(c) {
   if (c.crash || c.remote) return;
   const hold = !race.started;
-  let thr = c.human ? c.thrIn : aiThrottle(c.st, c.prof, physTrack, c.skill * (c.mistake > 0 ? 1.06 : 1), c.setup);
+  let thr = c.human ? c.thrIn : aiThrottle(c.st, c.prof, physTrack, c.skill * (c.mistake > 0 ? c.mistakeMul : 1), c.setup);
   if (c.finished && !c.human) thr = Math.min(thr, 0.35);
   if (hold) { thr = 0; c.st.v = 0; c.st.w = 0; c.st.th = 0; }
   c.thr = thr;
@@ -1445,7 +1448,12 @@ function stepRace(dt) {
     for (const c of cars) physStep(c);
   }
   for (const c of cars) {
-    if (!c.human && race.started && !c.crash && Math.random() < dt * 0.02) c.mistake = 0.8;
+    // Errores de la CPU: a veces entra pasada en una curva (y puede salirse). Sin imán se equivoca
+    // más y el error castiga más, como a un piloto de verdad.
+    if (!c.human && !c.remote && race.started && !c.crash && c.mistake <= 0) {
+      const M = AI_ERR[c.setupRaw.magnet] || AI_ERR.medio;
+      if (Math.random() < dt * M.rate) { c.mistake = 0.7; c.mistakeMul = M.lo + Math.random() * (M.hi - M.lo); }
+    }
     if (c.mistake > 0) c.mistake -= dt;
     if (c.remote) updateRemote(c);
     if (c.crash) animateCrash(c, dt);
@@ -2091,6 +2099,7 @@ function renderEditor() {
   $('edFinish').querySelector('.btn-sub').textContent = done ? 'Ya puedes probarlo o publicarlo' : closed.pieces ? 'Pone las piezas azules por ti' : 'Así no se puede cerrar: cambia alguna pieza';
   $('edPublish').querySelector('.btn-main').textContent = draft.published ? 'Publicado ✓' : 'Publicar';
   if (draft.published) $('edPublish').disabled = true;
+  PALETTE.forEach((it, i) => { const b = $('edPalette').children[i]; if (b) b.disabled = !!it.when && !it.when(draft); });
   segButtons($('edRadius'), RADII, draft.radius, (id) => { draft.radius = id; renderEditor(); });
   segButtons($('edLanes'), [[2, '2'], [4, '4']], draft.lanes, (id) => { draft.lanes = id; renderEditor(); });
   segButtons($('edScenery'), [['verde', 'Césped'], ['arena', 'Arena'], ['noche', 'Noche']], draft.scenery, (id) => { draft.scenery = id; renderEditor(); });

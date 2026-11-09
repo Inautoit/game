@@ -133,27 +133,39 @@ export const EDITOR = {
   radii: { cerrada: 2.2, media: 3.2, abierta: 4.6 },   // radio de la línea central (unidades), 2 carriles
   radius4: 0.6,   // con 4 carriles las curvas son más abiertas
   scenery: ['verde', 'arena', 'noche'],
+  bridge: 0.95,   // altura de un puente (unidades): pasa por encima de otro tramo
+  ramp: 0.35 / 0.126 * 3,   // una rampa son 3 rectas (1,05 m)
 };
+// Altura final de una pieza (o undefined si sigue a la misma altura)
+const endH = (p) => (p[0] === 'S' ? p[2] : p[3]);
+export function heightAtEnd(pieces) {
+  let y = 0;
+  for (const p of pieces) { const h = endH(p); if (Number.isFinite(h)) y = h; }
+  return y;
+}
 const SCALE_M = 0.126;
 
 // Recorre piezas sin cerrar (rectas con largo fijo) y devuelve el final y los puntos
 export function walkOpen(pieces, step = 0.2) {
-  let x = 0, z = 0, h = 0;
-  const pts = [{ x, z, h }];
+  let x = 0, z = 0, h = 0, y = 0;
+  const pts = [{ x, z, h, y }];
   for (const p of pieces) {
     const isS = p[0] === 'S';
     const len = isS ? p[1] : (Math.abs(p[1]) * Math.PI / 180) * p[2];
     const k = isS ? 0 : Math.sign(p[1]) / p[2];
     const n = Math.max(1, Math.ceil(len / step));
     const st = len / n;
+    const y0 = y, h1 = endH(p), y1 = Number.isFinite(h1) ? h1 : y;
     for (let i = 0; i < n; i++) {
       x += Math.cos(h + (k * st) / 2) * st;
       z += Math.sin(h + (k * st) / 2) * st;
       h += k * st;
-      pts.push({ x, z, h });
+      const t = (i + 1) / n, sm = t * t * (3 - 2 * t);
+      pts.push({ x, z, h, y: y0 + (y1 - y0) * sm });
     }
+    y = y1;
   }
-  return { x, z, h, pts };
+  return { x, z, h, y, pts };
 }
 
 // ¿Se cruza o se pisa el circuito? (ignora tramos con más de 0,6 de diferencia de altura)
@@ -199,14 +211,28 @@ export function validateTrack(def) {
   for (const p of def.pieces) {
     if (!Array.isArray(p)) return { ok: false, error: 'Pieza no válida' };
     if (p[0] === 'S') {
-      if (!(Number.isFinite(p[1]) && p[1] >= 0 && p[1] <= 80) || p.length > 2) return { ok: false, error: 'Recta no válida' };
+      if (!(Number.isFinite(p[1]) && p[1] >= 0 && p[1] <= 80) || p.length > 3) return { ok: false, error: 'Recta no válida' };
     } else if (p[0] === 'C') {
-      if (!(Number.isFinite(p[1]) && Math.abs(p[1]) >= 5 && Math.abs(p[1]) <= 360) || !(Number.isFinite(p[2]) && p[2] >= minR && p[2] <= 12) || p.length > 3) return { ok: false, error: 'Curva no válida' };
+      if (!(Number.isFinite(p[1]) && Math.abs(p[1]) >= 5 && Math.abs(p[1]) <= 360) || !(Number.isFinite(p[2]) && p[2] >= minR && p[2] <= 12) || p.length > 4) return { ok: false, error: 'Curva no válida' };
     } else return { ok: false, error: 'Pieza no válida' };
+    const hh = endH(p);
+    if (hh !== undefined && hh !== null && !(Number.isFinite(hh) && hh >= 0 && hh <= 1.2)) return { ok: false, error: 'Altura no válida' };
+  }
+  // Rampas: que no sean un muro (pendiente máxima ~17 %)
+  {
+    let y = 0;
+    for (const p of def.pieces) {
+      const len = p[0] === 'S' ? p[1] : (Math.abs(p[1]) * Math.PI / 180) * p[2];
+      const hh = endH(p);
+      if (Number.isFinite(hh)) { if (Math.abs(hh - y) > 0.01 && Math.abs(hh - y) / Math.max(1e-6, len) > 0.17) return { ok: false, error: 'Hay una rampa demasiado empinada' }; y = hh; }
+    }
+    if (Math.abs(y) > 0.01) return { ok: false, error: 'El circuito tiene que volver a bajar al suelo' };
   }
   const end = walkOpen(def.pieces, 0.05);
   const turn = def.pieces.reduce((a, p) => a + (p[0] === 'C' ? p[1] : 0), 0);
-  if (Math.hypot(end.x, end.z) > 0.05 || Math.abs(Math.abs(turn) - 360) > 0.5) return { ok: false, error: 'El circuito no está cerrado' };
+  // Una vuelta completa (360°) o un ocho con puente (0°)
+  const okTurn = Math.abs(Math.abs(turn) - 360) < 0.5 || (Math.abs(turn) < 0.5 && def.pieces.some((p) => endH(p) > 0.5));
+  if (Math.hypot(end.x, end.z) > 0.05 || !okTurn) return { ok: false, error: 'El circuito no está cerrado' };
   let S;
   try { S = sample(def); } catch { return { ok: false, error: 'Circuito no válido' }; }
   const length = S.length * SCALE_M;
@@ -223,8 +249,9 @@ export function validateTrack(def) {
 export function autoClose(pieces, lanes, radius) {
   if (!pieces.length) return { error: 'Pon alguna pieza primero' };
   const turn = pieces.reduce((a, p) => a + (p[0] === 'C' ? p[1] : 0), 0);
+  const bridge = pieces.some((p) => endH(p) > 0.5);
   let target = Math.round(turn / 360) * 360;
-  if (target === 0) target = turn >= 0 ? 360 : -360;
+  if (target === 0 && !bridge) target = turn >= 0 ? 360 : -360;   // sin puente no puede haber un ocho
   const missing = target - turn;
   // Las curvas se parten en trozos de 45° para tener más sitios donde meter rectas
   const base = [];
@@ -236,7 +263,10 @@ export function autoClose(pieces, lanes, radius) {
       if (!first) inside.add(base.length);
       const a = Math.sign(r) * Math.min(45, Math.abs(r)); base.push(['C', a, p[2]]); r -= a; first = false;
     }
+    if (Number.isFinite(p[3])) base[base.length - 1][3] = p[3];   // la altura, en el último trozo
   }
+  // Si acaba en alto, una rampa de bajada antes de cerrar
+  if (heightAtEnd(base) > 0.01) base.push(['S', EDITOR.ramp, 0]);
   if (Math.abs(target) > 360) return { error: 'Has girado más de una vuelta completa: quita alguna curva' };
   // La curva que falta, en trozos de 90° como mucho
   let rest = missing;
@@ -280,8 +310,9 @@ export function autoClose(pieces, lanes, radius) {
     const merged = [];
     for (const p of out) {
       const last = merged[merged.length - 1];
-      if (p[0] === 'S' && last && last[0] === 'S') last[1] = +(last[1] + p[1]).toFixed(4);
-      else if (p[0] === 'C' && last && last[0] === 'C' && last[2] === p[2] && Math.sign(last[1]) === Math.sign(p[1])) last[1] += p[1];
+      // Se juntan piezas iguales seguidas (si no cambian de altura)
+      if (p[0] === 'S' && last && last[0] === 'S' && last.length === 2 && p.length === 2) last[1] = +(last[1] + p[1]).toFixed(4);
+      else if (p[0] === 'C' && last && last[0] === 'C' && last.length === 3 && p.length <= 4 && last[2] === p[2] && Math.sign(last[1]) === Math.sign(p[1])) { last[1] += p[1]; if (p.length === 4) last[3] = p[3]; }
       else merged.push(p.slice());
     }
     // Corrige el pequeño error de redondeo con la última recta
