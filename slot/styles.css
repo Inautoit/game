@@ -425,3 +425,6 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
   .ed-actions .btn { flex: 1; }
   #editor .title { font-size: 24px; }
 }
+.ed-finish { width: 100%; min-height: 52px; }
+.ed-finish .btn-sub { font-size: 12px; }
+.ed-finish:disabled { opacity: 0.55; box-shadow: none; }

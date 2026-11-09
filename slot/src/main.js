@@ -2050,6 +2050,11 @@ function renderEditor() {
     info.className = 'subtitle bad';
   }
   $('edTest').disabled = $('edPublish').disabled = !closed.pieces;
+  // ¿Ya llega a la meta? (el cierre no añade nada)
+  const done = closed.pieces && closed.pieces.length === draft.pieces.length && JSON.stringify(closed.pieces) === JSON.stringify(draft.pieces);
+  $('edFinish').disabled = !closed.pieces || done;
+  $('edFinish').querySelector('.btn-main').textContent = done ? '✓ El circuito ya llega a la meta' : '✓ Completar hasta la meta';
+  $('edFinish').querySelector('.btn-sub').textContent = done ? 'Ya puedes probarlo o publicarlo' : closed.pieces ? 'Pone las piezas azules por ti' : 'Así no se puede cerrar: cambia alguna pieza';
   $('edPublish').querySelector('.btn-main').textContent = draft.published ? 'Publicado ✓' : 'Publicar';
   if (draft.published) $('edPublish').disabled = true;
   segButtons($('edRadius'), RADII, draft.radius, (id) => { draft.radius = id; renderEditor(); });
@@ -2068,6 +2073,7 @@ for (const it of PALETTE) {
     if (draft.pieces.length >= 70) { toast('Máximo de piezas alcanzado'); return; }
     sfx.click();
     if (draft.published) draft = { ...draft, lid: Math.random().toString(36).slice(2, 9), published: null };
+    draft.before = null;
     draft.pieces.push(it.make(radiusOf(draft)));
     renderEditor();
   });
@@ -2088,7 +2094,22 @@ $('saveGo').addEventListener('click', () => {
   renderEditor();
 });
 $('saveName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveGo').click(); });
-$('edUndo').addEventListener('click', () => { if (draft && draft.pieces.length) { sfx.click(); draft.pieces.pop(); renderEditor(); } });
+$('edFinish').addEventListener('click', () => {
+  const closed = closeDraft(draft);
+  if (!closed.pieces) return;
+  sfx.best();
+  draft.before = draft.pieces.map((p) => p.slice());   // para poder deshacerlo de una vez
+  draft.pieces = closed.pieces.map((p) => p.slice());
+  renderEditor();
+  toast('✓ Circuito cerrado hasta la meta');
+});
+$('edUndo').addEventListener('click', () => {
+  if (!draft) return;
+  sfx.click();
+  if (draft.before) { draft.pieces = draft.before; draft.before = null; }
+  else if (draft.pieces.length) draft.pieces.pop();
+  renderEditor();
+});
 $('edClear').addEventListener('click', (e) => {
   const b = e.currentTarget;
   if (!b.dataset.sure) { b.dataset.sure = '1'; b.querySelector('.btn-main').textContent = '¿Seguro? Pulsa otra vez'; setTimeout(() => { delete b.dataset.sure; b.querySelector('.btn-main').textContent = 'Empezar de nuevo'; }, 2500); return; }
