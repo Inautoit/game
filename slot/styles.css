@@ -482,3 +482,6 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .res-champ .row .add { color: var(--green); text-align: right; }
 .res-champ .row .tot { text-align: right; font-weight: 700; font-size: 20px; }
 #playEditor { min-height: 54px; }
+.on-mode { margin-top: 10px; }
+#onCpuRow[hidden], #onModeRow[hidden] { display: none; }
+.on-p.cpu b { color: var(--ink-2); }

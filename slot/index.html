@@ -141,7 +141,8 @@
     <div class="on-body">
       <div id="onJoin" class="on-card">
         <label class="field"><span>Tu nombre de piloto</span><input id="onName" maxlength="16" autocomplete="nickname" placeholder="Piloto"></label>
-        <button id="onCreate" class="btn primary"><span class="btn-main">Crear sala</span><span class="btn-sub">Invita a tus amigos con el código</span></button>
+        <button id="onQuick" class="btn primary"><span class="btn-main">Partida rápida</span><span class="btn-sub">Contra quien esté conectado; los huecos, con la CPU</span></button>
+        <button id="onCreate" class="btn secondary"><span class="btn-main">Crear sala</span><span class="btn-sub">Invita a tus amigos con el código</span></button>
         <div class="on-or">o entra en una</div>
         <div class="on-code">
           <input id="onCode" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="CÓDIGO" aria-label="Código de sala">
@@ -157,6 +158,9 @@
           <div class="ci"><b id="onTrackName">Sin circuito</b><small id="onTrackMeta"></small></div>
           <button id="onPickTrack" class="btn small ghost"><span class="btn-main">Cambiar</span></button>
         </div>
+        <div class="ed-row on-mode" id="onModeRow"><span class="lbl">Modo</span><div id="onMode" class="seg"></div></div>
+        <label class="toggle" id="onCpuRow"><span>Rellenar con CPU<small>Coches de la CPU en los carriles libres</small></span><input type="checkbox" id="onCpu"><i></i></label>
+        <div id="onChamp" class="res-champ" hidden></div>
         <div class="ed-row on-laps" id="onLapsRow"><span class="lbl">Vueltas de la carrera</span><div class="stepper"><button id="onLapsM" aria-label="Menos vueltas">−</button><b id="onLaps">5</b><button id="onLapsP" aria-label="Más vueltas">+</button></div></div>
         <div class="row2">
           <button id="onCar" class="btn ghost"><span class="btn-main">Mi coche</span></button>

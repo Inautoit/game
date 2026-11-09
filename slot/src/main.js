@@ -1275,6 +1275,17 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
       const c = makeCar({ liv, lane: p.lane, human: false, name: p.name, setupRaw: DEFAULT_SETUP });
       c.remote = p.id; c.net = [];
     }
+    // CPU de la sala: el anfitrión los conduce (IA normal) y manda su estado; los demás los ven por la red
+    for (const bt of online.bots || []) {
+      const liv = LIVERIES.find((l) => l.id === bt.liv) || LIVERIES[(bt.lane + 2) % LIVERIES.length];
+      if (online.amHost) {
+        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet }, skill: 0.9 + Math.random() * 0.05 });
+        c.botId = bt.id;
+      } else {
+        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: DEFAULT_SETUP });
+        c.remote = bt.id; c.net = [];
+      }
+    }
   }
   if (mode !== 'practica' && mode !== 'online') {
     const free = [...Array(lanes).keys()].filter((l) => !cars.some((c) => c.lane === l));
@@ -1396,9 +1407,10 @@ function crossLine(c, now) {
     }
     c.rec = []; c.recT = 0;
   }
-  if (race.mode === 'online' && c.human) {
-    if (c.lap >= race.laps) room && room.send({ t: 'fin', time: now, best: c.best });
-    else room && room.send({ t: 'lap', lap: c.lap, time: lt });
+  if (race.mode === 'online' && (c.human || c.botId)) {
+    const bot = c.botId ? { bot: c.botId } : {};
+    if (c.lap >= race.laps) room && room.send({ t: 'fin', time: now, best: c.best, ...bot });
+    else room && room.send({ t: 'lap', lap: c.lap, time: lt, ...bot });
   }
   if (c.lap >= race.laps) {
     c.finished = true;
@@ -1538,7 +1550,7 @@ function endRace() {
   $('likeBtn').hidden = !race.def.cid || race.mode === 'online';
   $('likeBtn').disabled = liked.includes(race.def.cid);
   $('likeBtn').querySelector('.btn-main').textContent = liked.includes(race.def.cid) ? 'Te gusta' : 'Me gusta este circuito';
-  if (race.mode === 'online') { $('nextBtn').hidden = true; setTimeout(() => openModal('mResults'), 300); return; }
+  if (race.mode === 'online') { $('nextBtn').hidden = true; $('resChamp').hidden = true; setTimeout(() => openModal('mResults'), 300); return; }
   $('resChamp').hidden = true;
   if (race.champ) champAfterRace(order);
   setTimeout(() => openModal('mResults'), 300);
@@ -2246,14 +2258,14 @@ function showOnline() {
   renderLobby();
 }
 function onMsg(text) { $('onMsg').textContent = text || ''; }
-function connectRoom(code) {
+function connectRoom(code, quick = false) {
   const name = $('onName').value.trim() || settings.pilot || 'Piloto';
   settings.pilot = name; saveSettings();
   if (room) room.close();
   roomState = null; myId = null;
   onMsg('Conectando…');
   room = new RoomClient(API, code, {
-    open: () => { const e = onlineEntry(); room.send({ t: 'join', name, liv: e.liv.id, cls: classOf(e.setupRaw) }); },
+    open: () => { const e = onlineEntry(); room.send({ t: 'join', name, liv: e.liv.id, cls: classOf(e.setupRaw), quick }); },
     close: (why) => { room = null; roomState = null; if (state === 'online') { renderLobby(); onMsg(why); } else toast('' + why); },
     message: onRoomMessage,
   });
@@ -2271,6 +2283,7 @@ function onRoomMessage(m) {
       if (state === 'race' || state === 'countdown' || state === 'pause') endRace();
     }
     if (state === 'online') renderLobby();
+    if (state === 'results' && race && race.mode === 'online' && m.phase === 'lobby' && m.champ) renderOnlineChamp($('resChamp'), m.champ);
     return;
   }
   if (!race || race.mode !== 'online') return;
@@ -2289,7 +2302,27 @@ function onRoomMessage(m) {
     c.finished = true; c.finishTime = 9999; c.mesh.visible = false;
   }
 }
+function renderOnlineChamp(box, champ) {
+  box.innerHTML = '';
+  if (!champ) { box.hidden = true; return; }
+  box.hidden = false;
+  const h = document.createElement('h4');
+  const rows = Object.entries(champ.pts).sort((a, b) => b[1].pts - a[1].pts);
+  h.textContent = champ.final ? `${champ.name} · final${rows[0] ? ': gana ' + rows[0][1].name : ''}` : `${champ.name} · carrera ${champ.idx + 1} de ${champ.tracks.length}`;
+  box.appendChild(h);
+  rows.forEach(([id, e], i) => {
+    const row = document.createElement('div'); row.className = 'row' + (id === myId ? ' me' : '');
+    const pos = document.createElement('b'); pos.textContent = `${i + 1}º`;
+    const dot = document.createElement('i'); const liv = LIVERIES.find((l) => l.id === e.liv); dot.style.background = liv ? '#' + liv.color.toString(16).padStart(6, '0') : '#888';
+    const nm = document.createElement('span'); nm.textContent = e.name;
+    const add = document.createElement('span'); add.className = 'add'; add.textContent = e.last ? `+${e.last}` : '';
+    const tot = document.createElement('span'); tot.className = 'tot'; tot.textContent = e.pts;
+    row.append(pos, dot, nm, add, tot); box.appendChild(row);
+  });
+}
+let lobbyTimer = null;
 function renderLobby() {
+  clearInterval(lobbyTimer);
   const inRoom = !!(room && roomState && myId);
   $('onJoin').hidden = inRoom;
   $('onLobby').hidden = !inRoom;
@@ -2310,7 +2343,7 @@ function renderLobby() {
     const dot = document.createElement('i');
     const liv = p && LIVERIES.find((x) => x.id === p.liv);
     dot.style.background = liv ? '#' + liv.color.toString(16).padStart(6, '0') : 'rgba(255,255,255,0.15)';
-    const nm = document.createElement('b'); nm.textContent = p ? p.name + (p.id === myId ? ' (tú)' : '') : 'Libre';
+    const nm = document.createElement('b'); nm.textContent = p ? p.name + (p.id === myId ? ' (tú)' : '') : rs.cpu ? 'CPU (si no entra nadie)' : 'Libre';
     const sm = document.createElement('small'); sm.textContent = `Carril ${l + 1}${p ? ' · ' + CLASS_NAME[p.cls] : ''}`;
     const st = document.createElement('span'); st.className = 'st' + (p && (p.ready || p.host) ? ' ok' : '');
     st.textContent = !p ? '' : p.host ? 'Anfitrión' : p.ready ? '✓ Listo' : 'Esperando';
@@ -2322,15 +2355,37 @@ function renderLobby() {
   if (def) { try { mini.appendChild(miniTrack(def)); } catch { /* sin miniatura */ } }
   $('onTrackName').textContent = def ? def.name : 'Sin circuito';
   $('onTrackMeta').textContent = def ? `${lenTxt(def)} · ${def.lanes} carriles · ${rs.track.laps} ${rs.track.laps === 1 ? 'vuelta' : 'vueltas'}` : (host ? 'Elige un circuito para la carrera' : 'El anfitrión elegirá el circuito');
-  $('onPickTrack').hidden = !host;
-  $('onLapsRow').hidden = !host || !def;
+  $('onPickTrack').hidden = !host || rs.quick || !!rs.champ;
+  // Modo (carrera suelta o copa) y CPU: solo el anfitrión, y no en partida rápida
+  $('onModeRow').hidden = !host || rs.quick;
+  $('onCpuRow').hidden = !host || rs.quick;
+  $('onCpu').checked = !!rs.cpu;
+  segButtons($('onMode'), [['race', 'Carrera'], ['club', 'Copa Club'], ['gp', 'Copa GP']], rs.champ && !rs.champ.final ? rs.champ.cup : 'race', (id) => {
+    room.send({ t: 'champ', cup: id === 'race' ? null : id, laps: rs.track ? rs.track.laps : 3 });
+    if (id === 'race' && !rs.track) { pickForOnline = true; showCircuits(); }
+  });
+  renderOnlineChamp($('onChamp'), rs.champ);
+  $('onLapsRow').hidden = !host || !def || rs.quick;
   if (def) $('onLaps').textContent = rs.track.laps;
   const rb = $('onReady');
+  if (rs.quick) {
+    rb.hidden = true;
+    const tick = () => {
+      if (!roomState || roomState.phase !== 'lobby') return;
+      const left = Math.max(0, Math.ceil((roomState.autoAt - room.serverNow()) / 1000));
+      const free = (def ? def.lanes : 4) - roomState.players.length;
+      $('onLobbyMsg').textContent = roomState.autoAt ? `Buscando pilotos… la carrera empieza en ${left} s${free > 0 ? ` · ${free} ${free === 1 ? 'hueco' : 'huecos'} con la CPU` : ''}` : 'Preparando la carrera…';
+    };
+    tick(); lobbyTimer = setInterval(tick, 500);
+    $('onTitle').textContent = 'Partida rápida';
+    return;
+  }
+  rb.hidden = false;
   if (host) {
     const others = rs.players.filter((p) => !p.host);
     const allReady = others.every((p) => p.ready);
     rb.querySelector('.btn-main').textContent = '¡Empezar carrera!';
-    rb.disabled = !def || !allReady || extra > 0;
+    rb.disabled = !def || !allReady || extra > 0 || !!(rs.champ && rs.champ.final);
     rb.className = 'btn primary';
     $('onLobbyMsg').textContent = !def ? 'Elige un circuito.' : extra ? 'Hay más pilotos que carriles: elige un circuito de 4 carriles.' : !allReady ? 'Esperando a que todos estén listos…' : rs.players.length === 1 ? 'Estás solo: invita a tus amigos con el código o empieza igualmente.' : '¡Todos listos!';
   } else {
@@ -2350,7 +2405,7 @@ function startOnlineRace(rs) {
   // El color que me ha dado la sala (si el mío lo tenía otro)
   const liv = LIVERIES.find((l) => l.id === me.liv);
   if (liv) onlineEntry().liv = liv;
-  startRace({ def, mode: 'online', entries: [onlineEntry()], online: { lane: me.lane, players: rs.players, me: myId, startAt: rs.startAt, laps: rs.track.laps } });
+  startRace({ def, mode: 'online', entries: [onlineEntry()], online: { lane: me.lane, players: rs.players, bots: rs.bots || [], amHost: !!me.host, me: myId, startAt: rs.startAt, laps: rs.track.laps } });
 }
 let sendT = 0;
 function onlineTick() {
@@ -2359,9 +2414,10 @@ function onlineTick() {
   const now = performance.now();
   if (now - sendT < 50 || !room) return;
   sendT = now;
-  const me = cars.find((c) => c.human);
-  if (!me) return;
-  room.send({ t: 'st', s: +me.st.s.toFixed(4), v: +me.st.v.toFixed(3), th: +me.st.th.toFixed(3), lap: me.lap, out: !!me.crash });
+  for (const c of cars) {
+    if (!c.human && !c.botId) continue;
+    room.send({ t: 'st', s: +c.st.s.toFixed(4), v: +c.st.v.toFixed(3), th: +c.st.th.toFixed(3), lap: c.lap, out: !!c.crash, ...(c.botId ? { bot: c.botId } : {}) });
+  }
 }
 function updateRemote(c) {
   const r = sampleRemote(c.net, performance.now() - NET_DELAY, T.L);
@@ -2385,7 +2441,7 @@ for (const [id, d] of [['onLapsM', -1], ['onLapsP', 1]]) {
     const def = roomState && roomDef(roomState.track);
     if (!def || !room) return;
     sfx.click();
-    sendRoomTrack(def, Math.max(1, Math.min(20, roomState.track.laps + d)));
+    room.send({ t: 'laps', laps: Math.max(1, Math.min(20, roomState.track.laps + d)) });
   });
 }
 function onlineCarChosen(entry) {
@@ -2398,6 +2454,13 @@ $('onBack').addEventListener('click', () => {
   sfx.click();
   if (room && roomState) { room.close(); room = null; roomState = null; renderLobby(); return; }
   showMenu();
+});
+$('onCpu').addEventListener('change', (e) => { if (room) room.send({ t: 'cpu', v: e.target.checked }); });
+$('onQuick').addEventListener('click', async () => {
+  sfx.click();
+  if (!$('onName').value.trim()) { onMsg('Pon tu nombre de piloto'); $('onName').focus(); return; }
+  onMsg('Buscando partida…');
+  try { const r = await apiPost('/api/quick'); connectRoom(r.code, true); } catch (e) { onMsg(e.message); }
 });
 $('onCreate').addEventListener('click', async () => {
   sfx.click();

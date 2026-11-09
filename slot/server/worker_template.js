@@ -3,7 +3,7 @@
 // - API de circuitos de la comunidad (D1),
 // - salas online en tiempo real (un Durable Object por sala, con WebSockets).
 import { Buffer } from 'node:buffer';
-import { validateTrack } from './tracks.js';
+import { validateTrack, TRACKS } from './tracks.js';
 
 const FILES = __FILES__;
 const cache = new Map();
@@ -105,6 +105,12 @@ export default {
     if (parts[0] === 'api') {
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
       // Salas online: /api/room/new  ·  /api/room/<CODE> (WebSocket)
+      // Partida rápida: el emparejador (una sala especial) reparte el mismo código a quien llegue a la vez
+      if (parts[1] === 'quick' && req.method === 'POST') {
+        const mm = env.ROOMS.get(env.ROOMS.idFromName('__EMPAREJADOR__'));
+        const r = await mm.fetch(new Request('https://sala/match', { method: 'POST' }));
+        return json(await r.json());
+      }
       if (parts[1] === 'room') {
         if (parts[2] === 'new' && req.method === 'POST') {
           const code = newId(4, 'ABCDEFGHJKLMNPQRSTUVWXYZ');
@@ -143,6 +149,17 @@ export default {
 // ---------------------------------------------------------------------------
 const MAX = 4;
 const LIVS = ['rojo', 'azul', 'verde', 'amarillo', 'negro', 'blanco'];
+const CPU_NAMES = ['Ortega', 'Ferrer', 'Sanz', 'Vidal'];
+const CHAMP_PTS = [10, 6, 4, 3];
+// Copas online (circuitos oficiales)
+const CUPS = {
+  club: { name: 'Copa Club', tracks: ['ovalo', 'rinon', 'horquilla', 'chicane'] },
+  gp: { name: 'Copa Grand Prix', tracks: ['gp', 'internacional', 'montana', 'autodromo'] },
+};
+// Circuitos de 4 carriles para la partida rápida
+const QUICK = ['chicane', 'gp', 'internacional', 'autodromo'];
+const offTrack = (id, laps) => { const t = TRACKS.find((x) => x.id === id); return t ? { kind: 'oficial', id: t.id, name: t.name, lanes: t.lanes, laps: laps || Math.min(t.laps, 5) } : null; };
+
 export class Room {
   constructor(state) {
     this.state = state;
@@ -150,16 +167,22 @@ export class Room {
     this.track = null;         // { kind: 'oficial'|'comunidad', id, name, lanes, laps, def? }
     this.phase = 'lobby';      // lobby | race
     this.startAt = 0;
+    this.cpu = false;          // rellenar carriles libres con coches de la CPU
+    this.bots = [];            // [{ id, lane, name, liv, fin }]
+    this.quick = false;        // partida rápida (empieza sola)
+    this.autoAt = 0;
+    this.champ = null;         // { cup, name, tracks, idx, pts: { id: { name, liv, pts, cpu } }, final }
+    this.mm = null;            // solo en el emparejador
   }
   send(ws, m) { try { ws.send(JSON.stringify(m)); } catch { /* cerrada */ } }
   all(m, except) { const s = JSON.stringify(m); for (const [id, p] of this.players) if (id !== except) { try { p.ws.send(s); } catch { /* cerrada */ } } }
   snapshot() {
     return {
-      t: 'room', phase: this.phase, track: this.track, startAt: this.startAt,
+      t: 'room', phase: this.phase, track: this.track, startAt: this.startAt, cpu: this.cpu, quick: this.quick, autoAt: this.autoAt,
+      bots: this.bots, champ: this.champ,
       players: [...this.players.entries()].map(([id, p]) => ({ id, name: p.name, liv: p.liv, cls: p.cls, lane: p.lane, ready: p.ready, host: p.host, fin: p.fin })),
     };
   }
-  // Cada piloto con un color distinto: si el que pide está cogido, el primero libre
   pickLiv(want, exceptId) {
     const used = new Set([...this.players.entries()].filter(([id]) => id !== exceptId).map(([, p]) => p.liv));
     if (LIVS.includes(want) && !used.has(want)) return want;
@@ -171,7 +194,16 @@ export class Room {
     for (let l = 0; l < lanes; l++) if (!used.has(l)) return l;
     return -1;
   }
+  host() { for (const p of this.players.values()) if (p.host) return p; return null; }
   async fetch(req) {
+    const url = new URL(req.url);
+    // Emparejador de la partida rápida: el mismo código para los que lleguen en los próximos segundos
+    if (url.pathname === '/match') {
+      const now = Date.now();
+      if (!this.mm || now > this.mm.until || this.mm.n >= MAX) this.mm = { code: newId(4, 'ABCDEFGHJKLMNPQRSTUVWXYZ'), until: now + 11000, n: 0 };
+      this.mm.n++;
+      return new Response(JSON.stringify({ code: this.mm.code }), { headers: { 'content-type': 'application/json' } });
+    }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     server.accept();
@@ -187,8 +219,65 @@ export class Room {
     if (!p) return;
     this.players.delete(id);
     if (p.host && this.players.size) { const first = this.players.values().next().value; first.host = true; }
-    if (!this.players.size) { this.phase = 'lobby'; this.track = null; }
+    if (!this.players.size) { this.phase = 'lobby'; this.track = null; this.champ = null; this.bots = []; this.quick = false; clearTimeout(this.autoTimer); clearTimeout(this.timer); }
     this.all({ t: 'left', id });
+    if (this.phase === 'race') this.checkEnd();
+    this.all(this.snapshot());
+  }
+  // Partida rápida: empieza sola a los 15 s de entrar el primero, o a los 4 s si se llena
+  scheduleAuto(ms) {
+    clearTimeout(this.autoTimer);
+    this.autoAt = Date.now() + ms;
+    this.autoTimer = setTimeout(() => { if (this.phase === 'lobby' && this.players.size) this.startRace(); }, ms);
+  }
+  startRace() {
+    if (!this.track) return;
+    clearTimeout(this.autoTimer); this.autoAt = 0;
+    this.phase = 'race';
+    this.startAt = Date.now() + 5200;
+    for (const p of this.players.values()) p.fin = null;
+    // CPU en los carriles libres (los conduce el móvil del anfitrión)
+    this.bots = [];
+    if (this.cpu) {
+      const used = new Set([...this.players.values()].map((p) => p.lane));
+      const livUsed = new Set([...this.players.values()].map((p) => p.liv));
+      let k = 0;
+      for (let l = 0; l < this.track.lanes; l++) {
+        if (used.has(l)) continue;
+        const liv = LIVS.find((x) => !livUsed.has(x)) || 'blanco'; livUsed.add(liv);
+        this.bots.push({ id: 'cpu' + l, lane: l, name: `${CPU_NAMES[k++ % CPU_NAMES.length]} · CPU`, liv, fin: null });
+      }
+    }
+    this.all(this.snapshot());
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.endRace(), 15 * 60 * 1000);
+  }
+  checkEnd() {
+    const players = [...this.players.values()];
+    if (players.length && players.every((p) => p.fin) && this.bots.every((b) => b.fin || !this.host())) setTimeout(() => this.endRace(), 2500);
+  }
+  endRace() {
+    if (this.phase !== 'race') return;
+    clearTimeout(this.timer);
+    this.phase = 'lobby';
+    // Campeonato: puntos según el tiempo de llegada (+1 a la vuelta rápida)
+    if (this.champ && !this.champ.final) {
+      const all = [...[...this.players.entries()].map(([id, p]) => ({ id, name: p.name, liv: p.liv, fin: p.fin, cpu: false })), ...this.bots.map((b) => ({ ...b, cpu: true }))];
+      const T = (x) => (x.fin && x.fin.time < 9000 ? x.fin.time : Infinity);
+      all.sort((a, b) => T(a) - T(b));
+      const best = all.filter((x) => x.fin && Number.isFinite(x.fin.best)).sort((a, b) => a.fin.best - b.fin.best)[0];
+      all.forEach((x, i) => {
+        const e = this.champ.pts[x.id] || (this.champ.pts[x.id] = { name: x.name, liv: x.liv, pts: 0, cpu: x.cpu });
+        e.last = Number.isFinite(T(x)) ? (CHAMP_PTS[i] || 0) : 0;
+        if (best && best.id === x.id) e.last += 1;
+        e.pts += e.last; e.name = x.name; e.liv = x.liv;
+      });
+      this.champ.idx++;
+      if (this.champ.idx >= this.champ.tracks.length) this.champ.final = true;
+      else this.track = offTrack(this.champ.tracks[this.champ.idx], this.track.laps);
+    }
+    for (const p of this.players.values()) p.ready = false;
+    if (this.quick) this.scheduleAuto(25000);   // otra carrera rápida si se quedan
     this.all(this.snapshot());
   }
   onMessage(id, ws, raw) {
@@ -202,11 +291,18 @@ export class Room {
         if (me) return;
         if (this.players.size >= MAX) { this.send(ws, { t: 'error', msg: 'La sala está llena' }); return; }
         if (this.phase === 'race') { this.send(ws, { t: 'error', msg: 'La carrera ya ha empezado. Espera a que termine' }); return; }
+        // Primera persona en una sala de partida rápida: circuito al azar y salida automática
+        if (m.quick && this.players.size === 0) {
+          this.quick = true; this.cpu = true; this.champ = null;
+          this.track = offTrack(QUICK[Math.floor(Math.random() * QUICK.length)], 3);
+          this.scheduleAuto(15000);
+        }
         const lane = this.freeLane();
         if (lane < 0) { this.send(ws, { t: 'error', msg: 'No quedan carriles libres en este circuito' }); return; }
         let name = clean(m.name, 16); if (name.length < 2 || isBad(name)) name = 'Piloto';
-        const p = { ws, name, liv: this.pickLiv(clean(m.liv, 12)), cls: m.cls === 'pro' ? 'pro' : 'iman', lane, ready: false, host: this.players.size === 0, fin: null };
+        const p = { ws, name, liv: this.pickLiv(clean(m.liv, 12)), cls: m.cls === 'pro' ? 'pro' : 'iman', lane, ready: this.quick, host: this.players.size === 0, fin: null };
         this.players.set(id, p);
+        if (this.quick && this.players.size >= Math.min(MAX, this.track.lanes)) this.scheduleAuto(4000);
         this.send(ws, { t: 'welcome', id });
         this.all(this.snapshot());
         return;
@@ -215,7 +311,7 @@ export class Room {
     if (!me) return;
     switch (m.t) {
       case 'track': {
-        if (!me.host || this.phase !== 'lobby' || !m.track) return;
+        if (!me.host || this.phase !== 'lobby' || !m.track || this.quick) return;
         const tr = m.track;
         const lanes = tr.lanes === 4 ? 4 : 2;
         if (this.players.size > lanes) { this.send(ws, { t: 'error', msg: `Ese circuito tiene ${lanes} carriles y sois ${this.players.size}` }); return; }
@@ -226,13 +322,33 @@ export class Room {
           def = { pieces, lanes, scenery: SCENERY.includes(tr.def.scenery) ? tr.def.scenery : 'verde' };
         }
         this.track = { kind: tr.kind === 'oficial' ? 'oficial' : 'comunidad', id: clean(tr.id, 20), name: clean(tr.name, 28), lanes, laps: Math.max(1, Math.min(20, Math.round(Number(tr.laps) || 3))), def };
-        // Recolocar carriles si el nuevo circuito tiene menos
+        if (!m.keepChamp) this.champ = null;
         let l = 0; for (const p of this.players.values()) p.lane = l++;
         for (const p of this.players.values()) p.ready = false;
         this.all(this.snapshot());
         return;
       }
-      case 'me': { // cambiar coche o clase
+      case 'laps': {
+        if (!me.host || this.phase !== 'lobby' || !this.track || this.quick) return;
+        this.track.laps = Math.max(1, Math.min(20, Math.round(Number(m.laps) || 3)));
+        for (const p of this.players.values()) p.ready = false;
+        this.all(this.snapshot());
+        return;
+      }
+      case 'champ': { // el anfitrión empieza (o quita) una copa
+        if (!me.host || this.phase !== 'lobby' || this.quick) return;
+        const cup = CUPS[m.cup];
+        if (!cup) { this.champ = null; this.all(this.snapshot()); return; }
+        if (this.players.size > 2 && cup.tracks.some((id) => offTrack(id).lanes < this.players.size)) { this.send(ws, { t: 'error', msg: 'Esa copa tiene circuitos de 2 carriles: sois demasiados' }); return; }
+        this.champ = { cup: m.cup, name: cup.name, tracks: cup.tracks, idx: 0, pts: {}, final: false };
+        this.track = offTrack(cup.tracks[0], Math.max(1, Math.min(10, Math.round(Number(m.laps) || 3))));
+        let l = 0; for (const p of this.players.values()) p.lane = l++;
+        for (const p of this.players.values()) p.ready = false;
+        this.all(this.snapshot());
+        return;
+      }
+      case 'cpu': if (me.host && this.phase === 'lobby' && !this.quick) { this.cpu = !!m.v; this.all(this.snapshot()); } return;
+      case 'me': {
         if (this.phase !== 'lobby') return;
         me.liv = this.pickLiv(clean(m.liv, 12), id); me.cls = m.cls === 'pro' ? 'pro' : 'iman';
         this.all(this.snapshot());
@@ -241,35 +357,40 @@ export class Room {
       case 'ready': me.ready = !!m.v; this.all(this.snapshot()); return;
       case 'start': {
         if (!me.host || this.phase !== 'lobby' || !this.track) return;
+        if (this.champ && this.champ.final) { this.send(ws, { t: 'error', msg: 'La copa ha terminado: elige otra o un circuito' }); return; }
         if ([...this.players.values()].some((p) => !p.ready && !p.host)) { this.send(ws, { t: 'error', msg: 'Faltan pilotos por estar listos' }); return; }
-        this.phase = 'race';
-        this.startAt = Date.now() + 5200;
-        for (const p of this.players.values()) p.fin = null;
-        this.all(this.snapshot());
-        // Si alguien se cuelga, la carrera se cierra sola a los 15 min
-        this.timer && clearTimeout(this.timer);
-        this.timer = setTimeout(() => this.endRace(), 15 * 60 * 1000);
+        this.startRace();
         return;
       }
-      case 'st': // estado del coche, a los demás tal cual (muy frecuente: sin copiar la sala)
+      case 'st': { // estado de un coche (el suyo, o los de la CPU si es el anfitrión)
         if (this.phase !== 'race') return;
-        this.all({ t: 'st', id, s: +m.s, v: +m.v, th: +m.th, lap: m.lap | 0, out: !!m.out, k: m.k | 0 }, id);
+        let from = id;
+        if (m.bot) { if (!me.host || !this.bots.some((b) => b.id === m.bot)) return; from = m.bot; }
+        this.all({ t: 'st', id: from, s: +m.s, v: +m.v, th: +m.th, lap: m.lap | 0, out: !!m.out }, id);
         return;
-      case 'lap': this.all({ t: 'lap', id, lap: m.lap | 0, time: +m.time }, id); return;
+      }
+      case 'lap': {
+        let from = id;
+        if (m.bot) { if (!me.host) return; from = m.bot; }
+        this.all({ t: 'lap', id: from, lap: m.lap | 0, time: +m.time }, id);
+        return;
+      }
       case 'fin': {
-        if (this.phase !== 'race' || me.fin) return;
-        me.fin = { time: +m.time, best: +m.best };
-        this.all({ t: 'fin', id, time: me.fin.time, best: me.fin.best });
-        if ([...this.players.values()].every((p) => p.fin)) setTimeout(() => this.endRace(), 2500);
+        if (this.phase !== 'race') return;
+        if (m.bot) {
+          const b = this.bots.find((x) => x.id === m.bot);
+          if (!me.host || !b || b.fin) return;
+          b.fin = { time: +m.time, best: +m.best };
+          this.all({ t: 'fin', id: b.id, time: b.fin.time, best: b.fin.best });
+        } else {
+          if (me.fin) return;
+          me.fin = { time: +m.time, best: +m.best };
+          this.all({ t: 'fin', id, time: me.fin.time, best: me.fin.best });
+        }
+        this.checkEnd();
         return;
       }
       case 'lobby': if (me.host && this.phase === 'race') this.endRace(); return;
     }
-  }
-  endRace() {
-    if (this.phase !== 'race') return;
-    this.phase = 'lobby';
-    for (const p of this.players.values()) p.ready = false;
-    this.all(this.snapshot());
   }
 }
