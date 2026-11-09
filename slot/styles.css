@@ -258,7 +258,9 @@ button:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
 
 /* Taller */
 .garage-body { flex: 1; overflow-y: auto; touch-action: pan-y; display: grid; gap: 14px; margin-top: 12px; align-content: start; grid-template-columns: 1fr; }
-@media (min-width: 760px) { .garage-body { grid-template-columns: 1fr 1.2fr; } }
+/* Dos columnas solo en horizontal; en vertical (móvil o iPad) el coche arriba y el reglaje debajo */
+@media (min-width: 640px) and (orientation: landscape) { .garage-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); } }
+.gar-car, .gar-setup { min-width: 0; }
 .gar-car, .gar-setup { background: var(--panel); border-radius: 20px; padding: 14px; }
 .gar-preview .caricon { width: 100%; height: auto; max-height: 150px; }
 .gar-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 10px; }
@@ -615,3 +617,42 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .acc-sync.offline { color: var(--yellow); }
 .acc-msg { min-height: 1.2em; margin: 10px 0 0; text-align: center; color: #ff8a80; font-weight: 600; }
 @media (max-width: 420px) { .acc-chip span { max-width: 22vw; } }
+
+/* ---- Móvil en horizontal (poca altura) ---- */
+@media (max-height: 500px) and (orientation: landscape) {
+  .menu-main { width: min(540px, 60vw); }
+  .menu-main .brand { margin-top: 0; }
+  .menu-main .logo-img { width: min(210px, 30vw); }
+  .menu-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: auto; }
+  .menu-list .mi.hero, .menu-list .mi-row { grid-column: 1 / -1; }
+  .mi { min-height: 42px; padding: 6px 12px 6px 14px; }
+  .mi.hero { min-height: 50px; } .mi.hero .mi-t { font-size: 24px; }
+  .mi .mi-t { font-size: 17px; } .mi.small .mi-t { font-size: 15px; }
+  .mi .mi-s, .mi .mi-go { display: none; } .mi.hero .mi-s { display: block; font-size: 11px; }
+  .mi.small { min-height: 38px; }
+  .menu-main .footer { display: none; }
+  .live-tag { bottom: calc(env(safe-area-inset-bottom) + 10px); right: calc(env(safe-area-inset-right) + 12px); font-size: 12px; }
+  /* Taller: coche más pequeño para que quepa el reglaje */
+  .garage-body { margin-top: 8px; gap: 10px; }
+  .gar-car, .gar-setup { padding: 10px; border-radius: 16px; }
+  .gar-preview img { max-height: 110px; }
+  .car-pick button { width: 92px; }
+  .seg button { font-size: 13px; padding: 7px 2px; letter-spacing: 0.02em; }
+  .setrow { margin-bottom: 8px; }
+  /* Carrera: la telemetría más pequeña para no tapar la pista */
+  .tele { transform: scale(0.74); transform-origin: left bottom; }
+  .tele.lefty { transform-origin: right bottom; }
+  .tl-trace { display: none; }
+}
+/* ---- iPad (y tablets) en vertical ---- */
+@media (max-aspect-ratio: 1/1) and (min-width: 600px) {
+  .menu-main .logo-img { width: min(440px, 60vw); }
+  .menu-list { width: min(560px, 100%); align-self: center; }
+  .menu-main .brand { align-self: center; }
+  .mi:not(.hero) .mi-s { display: block; }
+  .mi { min-height: 60px; } .mi.hero { min-height: 74px; } .mi.hero .mi-t { font-size: 34px; } .mi .mi-t { font-size: 24px; }
+  .mi.small { min-height: 56px; } .mi.small .mi-t { font-size: 18px; }
+  .live-tag { font-size: 14px; }
+  .gar-preview img { max-height: 260px; }
+  .garage-body { max-width: 720px; width: 100%; margin-left: auto; margin-right: auto; }
+}
