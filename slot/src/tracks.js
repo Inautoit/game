@@ -6,20 +6,20 @@
 
 export const TRACKS = [
   {
-    id: 'ovalo', name: 'Óvalo', lanes: 2, laps: 8, scenery: 'verde',
+    id: 'ovalo', name: 'Óvalo', lanes: 4, laps: 8, scenery: 'verde',
     pieces: [['S', 6], ['C', 180, 2.4], ['S', 6], ['C', 180, 2.4]],
   },
   {
-    id: 'rinon', name: 'Riñón', lanes: 2, laps: 6, scenery: 'verde',
+    id: 'rinon', name: 'Riñón', lanes: 4, laps: 6, scenery: 'verde',
     pieces: [['S', null], ['C', 90, 2.2], ['S', 2], ['C', 90, 2.2], ['S', 3], ['C', 45, 2.2], ['C', -90, 2.6], ['C', 45, 2.2], ['S', 1], ['C', 90, 2.2], ['S', null], ['C', 90, 2.2]],
   },
   {
-    id: 'ocho', name: 'El Ocho', lanes: 2, laps: 6, scenery: 'noche',
+    id: 'ocho', name: 'El Ocho', lanes: 4, laps: 6, scenery: 'noche',
     pieces: [['S', 2.5, 0], ['C', 270, 2.6, 0.95], ['S', null, 0.95], ['C', -270, 2.6, 0], ['S', null, 0]],
   },
   {
-    id: 'horquilla', name: 'La Horquilla', lanes: 2, laps: 5, scenery: 'arena',
-    pieces: [['S', null], ['C', 90, 2.4], ['S', 4], ['C', 90, 2.4], ['S', 2], ['C', 90, 1.6], ['S', 2.5], ['C', -180, 1.5], ['S', 2.5], ['C', 90, 1.6], ['S', 2], ['C', 90, 2.4], ['S', null], ['C', 90, 2.4]],
+    id: 'horquilla', name: 'La Horquilla', lanes: 4, laps: 5, scenery: 'arena',
+    pieces: [['S', null], ['C', 90, 2.6], ['S', 5.6], ['C', 90, 2.6], ['S', 2], ['C', 90, 2.0], ['S', 2.5], ['C', -180, 2.1], ['S', 2.5], ['C', 90, 2.0], ['S', 2], ['C', 90, 2.6], ['S', null], ['C', 90, 2.6]],
   },
   {
     id: 'chicane', name: 'Chicane', lanes: 4, laps: 5, scenery: 'arena',
@@ -31,7 +31,7 @@ export const TRACKS = [
   },
   // --- Circuitos largos de club (de 16 a 36 metros de cuerda) ---
   {
-    id: 'montana', name: 'Montaña', lanes: 2, laps: 5, scenery: 'verde', long: true,
+    id: 'montana', name: 'Montaña', lanes: 4, laps: 5, scenery: 'verde', long: true,
     pieces: [['S', 6, 0], ['C', -90, 4, 0], ['S', null, 0], ['S', 8, 0], ['C', 90, 4], ['S', 6], ['C', 45, 3], ['C', -45, 3], ['S', 4], ['C', 90, 3.5], ['S', 6], ['C', 90, 4, 0.95], ['S', null, 0.95], ['C', -90, 4, 0.6], ['S', 6, 0.3], ['C', -90, 3.5, 0], ['S', 4, 0], ['C', -45, 3], ['C', 45, 3]],
   },
   {

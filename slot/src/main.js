@@ -564,6 +564,16 @@ function buildTrack(def) {
   }
 
   // Puente: pilares y barandillas
+  const clear = half + 0.32;   // pista + pianos + un margen
+  const onLowerTrack = (x, z, y) => {
+    for (let j = 0; j < n; j++) {
+      const q = P[j];
+      if (q.y > y - 0.3) continue;
+      const dx = q.x - x, dz = q.z - z;
+      if (dx * dx + dz * dz < clear * clear) return true;
+    }
+    return false;
+  };
   const pillarMat = new THREE.MeshStandardMaterial({ color: 0xd9d9de, roughness: 0.6 });
   const railMat = new THREE.MeshStandardMaterial({ color: 0xff5252, roughness: 0.5 });
   for (let i = 0; i < n; i += Math.round(1.1 / DS)) {
@@ -571,8 +581,11 @@ function buildTrack(def) {
     if (p.y < 0.25) continue;
     const nx = -Math.sin(p.h), nz = Math.cos(p.h);
     for (const sgn of [1, -1]) {
+      const px = p.x + nx * (half - 0.1) * sgn, pz = p.z + nz * (half - 0.1) * sgn;
+      // Si debajo pasa otro tramo de pista (con sus pianos), ahí no va pilar: el puente salva el hueco
+      if (onLowerTrack(px, pz, p.y)) continue;
       const pil = new THREE.Mesh(new THREE.BoxGeometry(0.12, p.y - 0.09, 0.12), pillarMat);
-      pil.position.set(p.x + nx * (half - 0.1) * sgn, (p.y - 0.09) / 2, p.z + nz * (half - 0.1) * sgn);
+      pil.position.set(px, (p.y - 0.09) / 2, pz);
       pil.castShadow = true;
       trackGroup.add(pil);
     }
@@ -819,10 +832,9 @@ const carLoading = {};      // id → promesa
 function prepareModel(scene) {
   const box = new THREE.Box3().setFromObject(scene);
   const c = box.getCenter(new THREE.Vector3());
-  // ¿Hacia dónde mira? Los faros marcan el morro (si no hay, los modelos vienen mirando a +z)
-  const head = new THREE.Box3();
-  scene.traverse((o) => { if (o.isMesh && /headlight/i.test(o.material.name || '')) head.expandByObject(o); });
-  const hc = head.isEmpty() ? new THREE.Vector3(0, 0, 1) : head.getCenter(new THREE.Vector3()).sub(c);
+  // Todos los modelos vienen con el morro hacia +z (adivinarlo por los faros fallaba con el
+  // Turismo, que tiene material de faro delante y detrás y salía al revés)
+  const hc = new THREE.Vector3(0, 0, 1);
   const pivot = new THREE.Group();
   const inner = new THREE.Group();
   inner.add(scene);
@@ -1713,7 +1725,7 @@ window.addEventListener('keyup', (e) => keys.delete(e.key));
 // ---------------------------------------------------------------------------
 let last = performance.now();
 let shake = 0;
-let viewOff = 0;
+let viewOff = 0, viewOffX = 0;
 // Calidad gráfica automática: si el dispositivo no mantiene la fluidez, baja resolución y sombras
 const QUALITY = [
   { pr: Math.min(window.devicePixelRatio || 1, 2), shadows: true, map: 2048 },
@@ -1817,16 +1829,22 @@ function loop(now) {
     const kf = 1 - Math.exp(-dt * 12);
     camPos.lerp(camGoalPos, kf);
     camTarget.lerp(camGoalTarget, kf);
+  } else if (state === 'menu' && race && race.demo && cars.length) {
+    menuCamera(dt);
   } else {
     overviewCamera(camGoalPos, camGoalTarget);
     camPos.lerp(camGoalPos, Math.min(1, dt * 3));
     camTarget.lerp(camGoalTarget, Math.min(1, dt * 3));
   }
-  const wantOffset = racing && camMode === 'tv' && camera.aspect < 1 ? 0.09 : 0;
+  const inMenu = state === 'menu' && !!shot;
+  const wantOffset = racing && camMode === 'tv' && camera.aspect < 1 ? 0.09 : inMenu && camera.aspect < 1 ? 0.2 : 0;
+  // En el menú horizontal el vídeo se centra en la mitad derecha (la izquierda es el menú)
+  const wantOffX = inMenu && camera.aspect >= 1 && innerWidth >= 700 ? -0.17 : 0;
   viewOff += (wantOffset - viewOff) * Math.min(1, dt * 4);
-  if (Math.abs(viewOff) > 0.001) camera.setViewOffset(innerWidth, innerHeight, 0, innerHeight * viewOff, innerWidth, innerHeight);
+  viewOffX += (wantOffX - viewOffX) * Math.min(1, dt * 4);
+  if (Math.abs(viewOff) > 0.001 || Math.abs(viewOffX) > 0.001) camera.setViewOffset(innerWidth, innerHeight, innerWidth * viewOffX, innerHeight * viewOff, innerWidth, innerHeight);
   else camera.clearViewOffset();
-  camera.fov = racing && camMode === 'bordo' ? 52 : racing && camMode === 'heli' ? 50 : 34;
+  camera.fov = inMenu ? shot.fov : racing && camMode === 'bordo' ? 52 : racing && camMode === 'heli' ? 50 : 34;
   camera.updateProjectionMatrix();
   camera.position.copy(camPos);
   if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
@@ -1983,14 +2001,115 @@ function showMenu() {
   $('trophies').textContent = `${TRACKS.filter((t) => pos[t.id] === 1).length}/${TRACKS.length}`;
   setScreen('menu');
 }
+// Fondo del menú: una carrera de exhibición retransmitida como en la tele (4 coches, circuitos largos)
+const DEMO_TRACKS = ['autodromo', 'internacional', 'gp', 'resistencia', 'montana', 'chicane'];
+let demoIdx = Math.floor(Math.random() * DEMO_TRACKS.length);
 function demoRace() {
-  const def = TRACKS[2];
+  const def = TRACKS.find((t) => t.id === DEMO_TRACKS[demoIdx++ % DEMO_TRACKS.length]) || TRACKS[2];
   buildTrack(def);
   physTrack = { L: T.L, DSU: DS, pts: T.pts };
   clearCars();
-  [0, 1].forEach((l) => makeCar({ liv: LIVERIES[l], lane: l, human: false, name: 'demo', setupRaw: DEFAULT_SETUP, skill: 0.97 - l * 0.03, carId: l ? 'gt22' : (store.get('car0', 'muscle')) }));
-  cars.forEach((c, i) => { c.st.s = i * 6; });
+  const mine = store.get('car0', 'muscle');
+  const order = [mine, ...CARS.map((c) => c.id).filter((id) => id !== mine)];
+  for (let l = 0; l < T.offsets.length; l++) {
+    makeCar({ liv: LIVERIES[l % LIVERIES.length], lane: l, human: false, name: 'demo', setupRaw: DEFAULT_SETUP, skill: 0.985 - l * 0.012, carId: order[l % order.length] });
+  }
+  // Salen en pelotón, escalonados
+  cars.forEach((c, i) => { c.st.s = (T.L - i * 1.6) % T.L; });
   race = { demo: true, simT: 0, acc: 0, goT: 0, started: true, laps: Infinity, def, humans: 0, finishedAt: null, mode: 'demo', cls: 'iman' };
+  shot = null;
+  $('liveTrack').textContent = def.name;
+}
+// Realizador: cambia de plano cada pocos segundos, como en una retransmisión
+let shot = null, lastShot = '';
+const SHOTS = ['pista', 'lateral', 'persecucion', 'frontal', 'grua', 'aereo', 'pista', 'lateral'];
+const tmpV = new THREE.Vector3();
+function newShot() {
+  const live = cars.map((c, i) => i).filter((i) => !cars[i].crash);
+  if (!live.length) return false;
+  let type;
+  do type = SHOTS[Math.floor(Math.random() * SHOTS.length)]; while (type === lastShot);
+  lastShot = type;
+  const ci = shot && live.length > 1 && Math.random() < 0.6 ? live.filter((i) => i !== shot.ci)[Math.floor(Math.random() * (live.length - 1))] : live[Math.floor(Math.random() * live.length)];
+  const c = cars[ci];
+  shot = { type, ci, t: 0, dur: 4 + Math.random() * 2.5, side: Math.random() < 0.5 ? 1 : -1, a0: Math.random() * Math.PI * 2, fov: 30 };
+  shot.fov = { pista: 22, lateral: 28, persecucion: 34, frontal: 26, grua: 36, aereo: 40 }[type];
+  if (type === 'pista') {
+    // Cámara fija junto a la pista, por delante del coche: lo ve llegar y pasar.
+    // Se prueba a cada lado y a dos distancias hasta encontrar un sitio sin vallas ni gradas delante.
+    const ahead = Math.max(2, c.st.v / SCALE) * shot.dur * 0.4;
+    const half = (T.offsets.length * LANE_W) / 2;
+    let found = null;
+    for (const dist of [0.95, 1.6]) for (const sgn of [shot.side, -shot.side]) {
+      if (found) break;
+      const q = at(c.st.s + ahead, 0);
+      const nx = -Math.sin(q.h), nz = Math.cos(q.h);
+      const cam = new THREE.Vector3(q.x + nx * (half + dist) * sgn - T.center.x, q.y + 0.45, q.z + nz * (half + dist) * sgn - T.center.z);
+      const seesCar = [c.st.s, c.st.s + ahead * 0.5, c.st.s + ahead].every((s2) => { const r = at(s2, c.d); return clearView(cam, tmpV.set(r.x - T.center.x, r.y + 0.12, r.z - T.center.z)); });
+      if (seesCar) found = cam;
+    }
+    if (!found) { lastShot = ''; shot.type = type = 'persecucion'; shot.fov = 34; }
+    else shot.fixed = found;
+  }
+  // Corte seco con un fundido muy corto a negro
+  const cut = $('menuCut'); cut.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => cut.classList.remove('on')));
+  shot.snap = true;
+  return true;
+}
+// ¿Se ve el punto b desde a sin que lo tape nada del decorado (vallas, gradas, pórtico…)?
+const viewRay = new THREE.Raycaster();
+function clearView(a, b) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const d = dir.length();
+  viewRay.set(a, dir.normalize());
+  viewRay.far = Math.max(0, d - 0.4);
+  const hits = viewRay.intersectObjects(world.children.filter((o) => o !== carsGroup), true);
+  return !hits.some((h) => h.object.visible !== false && h.object.material && !h.object.material.transparent);
+}
+function menuCamera(dt) {
+  if (!shot || shot.t >= shot.dur || cars[shot.ci].crash) { if (!newShot()) { overviewCamera(camGoalPos, camGoalTarget); camPos.lerp(camGoalPos, Math.min(1, dt * 3)); camTarget.lerp(camGoalTarget, Math.min(1, dt * 3)); return; } }
+  shot.t += dt;
+  const c = cars[shot.ci], k = shot.t / shot.dur;
+  const p = at(c.st.s, c.d);
+  const ox = -T.center.x, oz = -T.center.z;
+  const fx = Math.cos(p.h), fz = Math.sin(p.h), nx = -Math.sin(p.h), nz = Math.cos(p.h);
+  const px = p.x + ox, py = p.y, pz = p.z + oz;
+  const sd = shot.side;
+  switch (shot.type) {
+    case 'pista': camGoalPos.copy(shot.fixed); camGoalTarget.set(px, py + 0.08, pz); break;
+    case 'lateral': {
+      const along = -0.7 + 1.4 * k;
+      camGoalPos.set(px + nx * 1.9 * sd + fx * along, py + 0.32, pz + nz * 1.9 * sd + fz * along);
+      camGoalTarget.set(px + fx * 0.15, py + 0.1, pz + fz * 0.15);
+      break;
+    }
+    case 'persecucion':
+      camGoalPos.set(px - fx * 2.5 + nx * 0.35 * sd, py + 0.55, pz - fz * 2.5 + nz * 0.35 * sd);
+      camGoalTarget.set(px + fx * 1.2, py + 0.12, pz + fz * 1.2);
+      break;
+    case 'frontal': {
+      const d = 2.8 - 0.8 * k;
+      camGoalPos.set(px + fx * d + nx * 0.5 * sd, py + 0.3, pz + fz * d + nz * 0.5 * sd);
+      camGoalTarget.set(px, py + 0.1, pz);
+      break;
+    }
+    case 'grua': {
+      const a = shot.a0 + k * 0.9;
+      camGoalPos.set(px + Math.cos(a) * 3.2, py + 1.3 + 0.9 * k, pz + Math.sin(a) * 3.2);
+      camGoalTarget.set(px, py + 0.1, pz);
+      break;
+    }
+    default: { // aéreo
+      camGoalPos.set(px + nx * 3 * sd - fx * 2, py + 7.5 - 1.5 * k, pz + nz * 3 * sd - fz * 2);
+      camGoalTarget.set(px + fx * 1.5, py, pz + fz * 1.5);
+    }
+  }
+  if (shot.snap) { camPos.copy(camGoalPos); camTarget.copy(camGoalTarget); shot.snap = false; }
+  else {
+    // Los planos móviles siguen al coche casi pegados; la cámara fija solo gira
+    const kp = 1 - Math.exp(-dt * (shot.type === 'pista' ? 30 : 14)), kt = 1 - Math.exp(-dt * 18);
+    camPos.lerp(camGoalPos, kp); camTarget.lerp(camGoalTarget, kt);
+  }
 }
 $('playPrac').addEventListener('click', () => { initAudio(); sfx.click(); mode = 'practica'; showCircuits(); });
 $('play1').addEventListener('click', () => { initAudio(); sfx.click(); mode = '1p'; showCircuits(); });
@@ -2150,6 +2269,7 @@ $('circBack').addEventListener('click', () => { sfx.click(); if (pickForOnline) 
 let draft = null;
 function openEditor(d) {
   draft = d ? JSON.parse(JSON.stringify(d)) : newDraft();
+  draft.lanes = 4;   // todos los circuitos son de 4 carriles
   showEditor();
 }
 function saveDraft() {
@@ -2199,7 +2319,6 @@ function renderEditor() {
   if (draft.published) $('edPublish').disabled = true;
   PALETTE.forEach((it, i) => { const b = $('edPalette').children[i]; if (b) b.disabled = !!it.when && !it.when(draft); });
   segButtons($('edRadius'), RADII, draft.radius, (id) => { draft.radius = id; renderEditor(); });
-  segButtons($('edLanes'), [[2, '2'], [4, '4']], draft.lanes, (id) => { draft.lanes = id; renderEditor(); });
   segButtons($('edScenery'), [['verde', 'Césped'], ['arena', 'Arena'], ['noche', 'Noche']], draft.scenery, (id) => { draft.scenery = id; renderEditor(); });
   $('edLaps').textContent = draft.laps;
   requestAnimationFrame(() => drawEditor($('edCanvas'), draft, closed));
@@ -3053,7 +3172,7 @@ Promise.race([document.fonts ? Promise.all([document.fonts.load('italic 700 20px
 
 // Gancho para pruebas automáticas
 window.__slot = {
-  get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; }, get wrGhost() { return wrGhost; },
+  get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; }, get wrGhost() { return wrGhost; }, get shot() { return shot; }, get world() { return world; },
   get actx() { return actx; }, get slotBuf() { return slotBuf; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },

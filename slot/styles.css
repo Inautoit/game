@@ -92,7 +92,8 @@ svg { width: 24px; height: 24px; }
   padding: calc(env(safe-area-inset-top) + 14px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 14px) calc(env(safe-area-inset-left) + 16px);
 }
 #menu.open, #circuits.open, #garage.open, #editor.open, #online.open, #champ.open, #shop.open { pointer-events: auto; }
-#menu { background: linear-gradient(180deg, rgba(10, 13, 22, 0.55), rgba(10, 13, 22, 0) 35%, rgba(10, 13, 22, 0) 55%, rgba(10, 13, 22, 0.85)); }
+#menu { background: linear-gradient(180deg, rgba(6, 8, 12, 0.7), rgba(6, 8, 12, 0) 28%, rgba(6, 8, 12, 0) 42%, rgba(6, 8, 12, 0.92) 78%); }
+#menu::before { /* viñeta de cine */ content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 60% 45%, transparent 55%, rgba(0, 0, 0, 0.55)); }
 #circuits, #garage, #editor, #online, #champ, #shop { background: rgba(10, 13, 22, 0.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .topbar { display: flex; gap: 10px; align-items: center; }
 .spacer { flex: 1; }
@@ -527,3 +528,67 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .splash-logo { width: 240px; }
 .splash-icon { border-radius: 26px; }
 @media (max-height: 560px) and (orientation: landscape) { .logo-img { width: min(420px, 60vw); } }
+
+/* ---- Menú principal (estilo juego de carreras de consola) ---- */
+.menu-main { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.menu-main .brand { text-align: left; margin-top: 2vh; }
+.menu-main .logo-img { width: min(420px, 78vw); margin: 0; }
+.menu-main .tag { margin-top: 8px; font-size: 15px; letter-spacing: 0.14em; }
+.menu-list { margin-top: auto; display: grid; gap: 6px; width: min(460px, 100%); }
+.mi {
+  position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 12px; text-align: left;
+  min-height: 58px; padding: 8px 18px 8px 20px; border: 0; border-radius: 4px;
+  background: linear-gradient(90deg, rgba(14, 17, 25, 0.88), rgba(14, 17, 25, 0.62)); color: var(--ink);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+.mi::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: rgba(255, 255, 255, 0.22); transition: background 0.18s, width 0.18s; }
+.mi .mi-t { grid-column: 1; font-family: var(--font-d); font-style: italic; font-weight: 700; font-size: 24px; line-height: 1; text-transform: uppercase; letter-spacing: 0.02em; }
+.mi .mi-s { grid-column: 1; margin-top: 4px; font-size: 13px; color: var(--ink-2); }
+.mi .mi-go { grid-column: 2; grid-row: 1 / span 2; width: 10px; height: 10px; border-top: 2.5px solid currentColor; border-right: 2.5px solid currentColor; transform: rotate(45deg); opacity: 0.55; margin-right: 8px; }
+.mi:hover, .mi:focus-visible { transform: translateX(6px); background: linear-gradient(90deg, rgba(30, 35, 48, 0.95), rgba(30, 35, 48, 0.7)); outline: none; }
+.mi:hover::before, .mi:focus-visible::before { background: var(--red); width: 6px; }
+.mi:active { transform: translateX(3px) scale(0.99); }
+.mi.hero { min-height: 72px; background: linear-gradient(90deg, #ffd21a, #ffb800); color: #12141a; }
+.mi.hero::before { background: var(--red); width: 6px; }
+.mi.hero .mi-t { font-size: 32px; }
+.mi.hero .mi-s { color: rgba(18, 20, 26, 0.72); font-weight: 600; }
+.mi.hero .mi-go { opacity: 0.9; }
+.mi.hero:hover, .mi.hero:focus-visible { background: linear-gradient(90deg, #ffdc4a, #ffc21a); }
+.mi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mi.small { min-height: 54px; padding: 8px 14px 8px 14px; grid-template-columns: 1fr; }
+.mi.small .mi-t { font-size: 18px; }
+.mi.small .mi-s { font-size: 11.5px; }
+.menu-main .footer { text-align: left; margin-top: 12px; font-size: 12px; letter-spacing: 0.04em; opacity: 0.8; }
+.live-tag { position: absolute; right: calc(env(safe-area-inset-right) + 18px); bottom: calc(env(safe-area-inset-bottom) + 18px); display: flex; align-items: stretch; font-family: var(--font-d); font-style: italic; font-weight: 700; text-transform: uppercase; font-size: 14px; letter-spacing: 0.06em; pointer-events: none; }
+.live-tag b { display: flex; align-items: center; gap: 7px; padding: 6px 10px; background: var(--red); color: #fff; font-weight: 700; }
+.live-tag b i { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: livePulse 1.4s ease-in-out infinite; }
+.live-tag span { padding: 6px 12px; background: rgba(10, 12, 18, 0.82); color: #fff; }
+.live-tag span:empty { display: none; }
+@keyframes livePulse { 50% { opacity: 0.25; } }
+.menu-cut { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.16s ease; }
+.menu-cut.on { opacity: 1; transition: none; }
+/* Pantalla horizontal (iPad, ordenador): menú en columna a la izquierda, el vídeo a la derecha */
+@media (min-aspect-ratio: 1/1) and (min-width: 700px) {
+  #menu { background: linear-gradient(90deg, rgba(6, 8, 12, 0.92) 0%, rgba(6, 8, 12, 0.72) 28%, rgba(6, 8, 12, 0) 52%), linear-gradient(180deg, rgba(6, 8, 12, 0.45), transparent 22%, transparent 80%, rgba(6, 8, 12, 0.5)); }
+  .menu-main { width: min(470px, 44vw); }
+}
+/* Móvil en vertical: el vídeo arriba y, encima del menú, el logotipo */
+@media (max-aspect-ratio: 1/1) {
+  .menu-main .brand { order: 2; margin-top: auto; text-align: center; }
+  .menu-main .logo-img { margin: 0 auto; width: min(300px, 74vw); }
+  .menu-main .tag { display: none; }
+  .menu-list { order: 3; margin-top: 12px; width: 100%; }
+  .menu-main .footer { order: 4; text-align: center; margin-top: 8px; }
+  .live-tag { position: static; order: 1; align-self: flex-start; margin-top: 10px; font-size: 12px; }
+  .mi { min-height: 48px; } .mi.hero { min-height: 62px; } .mi.hero .mi-t { font-size: 28px; } .mi .mi-t { font-size: 21px; }
+  .mi:not(.hero) .mi-s { display: none; }
+  .mi.small { min-height: 46px; padding: 6px 10px; } .mi.small .mi-t { font-size: 16px; }
+}
+@media (max-height: 620px) and (orientation: landscape) {
+  .menu-main .tag { display: none; }
+  .mi { min-height: 46px; } .mi.hero { min-height: 56px; } .mi.hero .mi-t { font-size: 26px; } .mi .mi-t { font-size: 20px; } .mi .mi-s { display: none; }
+  .mi.small { min-height: 42px; }
+  .menu-main .logo-img { width: min(300px, 40vw); }
+}

@@ -148,3 +148,13 @@ relacionado con ella.
 - **Fantasma dorado**: el juego descarga las pulsaciones del récord y las repite con su propia física para dibujar
   el coche del récordman junto al tuyo, vuelta a vuelta.
 - Entran los circuitos oficiales y los publicados en la comunidad. Las dos clases (con imán / sin imán) van aparte.
+
+## Menú con retransmisión en directo (v3.1)
+
+- De fondo del menú corre una carrera de exhibición de 4 coches en un circuito largo (cambia cada vez), y un
+  «realizador» va cortando entre planos como en la tele: cámara fija junto a la pista (comprueba que ninguna valla
+  o grada la tape), travelling lateral, persecución, frontal, grúa y aéreo. Es el propio juego en tiempo real, así
+  que no hay vídeo que descargar.
+- Menú en columna a la izquierda en iPad y ordenador, y abajo en el móvil, con el logotipo encima.
+- Todos los circuitos son de 4 carriles (La Horquilla se ha ensanchado para que quepan). El editor ya no deja elegir 2.
+- Los pilares de los puentes no se ponen donde pasa otro tramo de pista por debajo.

@@ -52,23 +52,23 @@
       <button class="icon-btn" data-open="mStats" aria-label="Estadísticas"><svg><use href="#i-stats"/></svg></button>
       <button class="icon-btn" data-open="mSettings" aria-label="Ajustes"><svg><use href="#i-gear"/></svg></button>
     </div>
-    <div class="brand"><h1 class="logo"><img class="logo-img" src="icons/logo.svg" alt="Turbo Slot" width="494" height="150"></h1><p class="tag">Simulador de slot 1:32 · <b>física real</b></p></div>
-    <div class="menu-actions">
-      <button id="playPrac" class="btn primary"><span class="btn-main">Práctica</span><span class="btn-sub">Contrarreloj con tu fantasma</span></button>
-      <div class="row2">
-        <button id="play1" class="btn secondary"><span class="btn-main">Carrera</span><span class="btn-sub">Contra la CPU</span></button>
-        <button id="playChamp" class="btn secondary"><span class="btn-main">Campeonato</span><span class="btn-sub">Copas con puntos</span></button>
-      </div>
-      <div class="row2">
-        <button id="playOnline" class="btn secondary"><span class="btn-main">Online</span><span class="btn-sub">Rápida o con amigos</span></button>
-        <button id="play2" class="btn ghost"><span class="btn-main">2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
-      </div>
-      <div class="row2">
-        <button id="playShop" class="btn ghost"><span class="btn-main">Coches</span><span class="btn-sub">Elige el tuyo</span></button>
-        <button id="playEditor" class="btn ghost"><span class="btn-main">Crear circuito</span><span class="btn-sub">Y compártelo</span></button>
-      </div>
-      <div class="footer">v3.0 · Editor de circuitos · Online con salas · Mando de consola</div>
+    <div class="menu-main">
+      <div class="brand"><h1 class="logo"><img class="logo-img" src="icons/logo.svg" alt="Turbo Slot" width="494" height="150"></h1><p class="tag">Simulador de slot 1:32 · <b>física real</b></p></div>
+      <div class="live-tag" aria-hidden="true"><b><i></i>En directo</b><span id="liveTrack"></span></div>
+      <nav class="menu-list" aria-label="Menú principal">
+        <button id="playPrac" class="mi hero"><span class="mi-t">Práctica</span><span class="mi-s">Contrarreloj · ranking mundial</span><i class="mi-go" aria-hidden="true"></i></button>
+        <button id="play1" class="mi"><span class="mi-t">Carrera</span><span class="mi-s">Contra la CPU</span><i class="mi-go" aria-hidden="true"></i></button>
+        <button id="playChamp" class="mi"><span class="mi-t">Campeonato</span><span class="mi-s">Copas con puntos</span><i class="mi-go" aria-hidden="true"></i></button>
+        <button id="playOnline" class="mi"><span class="mi-t">Online</span><span class="mi-s">Partida rápida o sala con amigos</span><i class="mi-go" aria-hidden="true"></i></button>
+        <div class="mi-row">
+          <button id="play2" class="mi small"><span class="mi-t">2 Jugadores</span><span class="mi-s">Mismo dispositivo</span></button>
+          <button id="playShop" class="mi small"><span class="mi-t">Coches</span><span class="mi-s">Elige el tuyo</span></button>
+          <button id="playEditor" class="mi small"><span class="mi-t">Crear circuito</span><span class="mi-s">Y compártelo</span></button>
+        </div>
+      </nav>
+      <div class="footer">v3.1 · 1:32 · 4 carriles · Online · Mando de consola</div>
     </div>
+    <div id="menuCut" class="menu-cut" aria-hidden="true"></div>
   </div>
 
   <!-- Circuitos -->
@@ -137,7 +137,6 @@
           <button id="edClear" class="btn small ghost"><span class="btn-main">Empezar de nuevo</span></button>
         </div>
         <div class="ed-row">
-          <span class="lbl">Carriles</span><div id="edLanes" class="seg"></div>
           <span class="lbl">Vueltas</span><div class="stepper"><button id="edLapsM" aria-label="Menos vueltas">−</button><b id="edLaps">5</b><button id="edLapsP" aria-label="Más vueltas">+</button></div>
         </div>
         <div class="ed-row"><span class="lbl">Escenario</span><div id="edScenery" class="seg"></div></div>

@@ -19,7 +19,7 @@ export const RADII = [['cerrada', 'Cerrada'], ['media', 'Media'], ['abierta', 'A
 export function newDraft() {
   return {
     lid: Math.random().toString(36).slice(2, 9),
-    name: '', lanes: 2, laps: 5, scenery: 'verde', radius: 'media',
+    name: '', lanes: 4, laps: 5, scenery: 'verde', radius: 'media',
     pieces: [['S', STRAIGHT * 2], ['C', 90, 3.2], ['S', STRAIGHT], ['C', 90, 3.2]],
     published: null,
   };
