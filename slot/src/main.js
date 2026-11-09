@@ -808,7 +808,7 @@ export const CARS = [
   { id: 'muscle', name: 'Clásico 70', type: 'Muscle car', price: 0, credit: '«Classic Muscle car» de Lexyc16' },
   { id: 'sedan', name: 'Turismo GTS', type: 'Turismo', price: 600, credit: '«Generic Sedan Car» de Márcio Meireles' },
   { id: 'f1', name: 'Monoplaza 22', type: 'Monoplaza de fórmula', price: 1800, credit: '«F1 Generic 2022» de TheoDev (sin logotipos)' },
-  { id: 'goblin', name: 'V12 Goblin', type: 'Superdeportivo', price: 2500, credit: '«Fictional supercar - V12 Goblin» de ollitei' },
+  { id: 'gt22', name: 'GT 22', type: 'Superdeportivo de carreras', price: 0, credit: '«Fantastic Race Car 22 Gold» de YDEVASHISH' },
 ];
 const carById = (id) => CARS.find((c) => c.id === id) || CARS[0];
 const CAR_LEN = 0.98;       // longitud del coche en unidades (≈ 12,5 cm; ≈ 6 cm de ancho)
@@ -1957,7 +1957,7 @@ function demoRace() {
   buildTrack(def);
   physTrack = { L: T.L, DSU: DS, pts: T.pts };
   clearCars();
-  [0, 1].forEach((l) => makeCar({ liv: LIVERIES[l], lane: l, human: false, name: 'demo', setupRaw: DEFAULT_SETUP, skill: 0.97 - l * 0.03, carId: l ? 'goblin' : (store.get('car0', 'muscle')) }));
+  [0, 1].forEach((l) => makeCar({ liv: LIVERIES[l], lane: l, human: false, name: 'demo', setupRaw: DEFAULT_SETUP, skill: 0.97 - l * 0.03, carId: l ? 'gt22' : (store.get('car0', 'muscle')) }));
   cars.forEach((c, i) => { c.st.s = i * 6; });
   race = { demo: true, simT: 0, acc: 0, goT: 0, started: true, laps: Infinity, def, humans: 0, finishedAt: null, mode: 'demo', cls: 'iman' };
 }
