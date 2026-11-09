@@ -416,12 +416,26 @@ function canvasTex(w, h, draw, repeat = true) {
 
 let T = null; // circuito actual: { def, pts, L, half, lanes, offsets, bbox }
 
+// Libera la memoria de la tarjeta gráfica de un grupo: geometrías, materiales y TODAS sus texturas
+// (no solo la principal), menos las compartidas que se reutilizan (userData.keep)
+const TEX_SLOTS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'alphaMap', 'aoMap', 'bumpMap', 'lightMap', 'clearcoatMap', 'clearcoatNormalMap', 'clearcoatRoughnessMap', 'specularMap', 'sheenColorMap', 'transmissionMap'];
 function disposeGroup(g) {
   g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { if (m.map && !m.map.userData.keep) m.map.dispose(); m.dispose(); });
+    if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose();   // la textura de los huesos de cada persona animada
+    if (o.geometry && !o.geometry.userData.keep) o.geometry.dispose();
+    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => {
+      for (const k of TEX_SLOTS) { const t = m[k]; if (t && t.isTexture && !t.userData.keep) t.dispose(); }
+      m.dispose();
+    });
   });
   g.clear();
+}
+// Marca como compartidas (no se liberan al cambiar de circuito) las texturas y mallas de un modelo que se reutiliza
+function keepModel(root) {
+  root.traverse((o) => {
+    if (o.geometry) o.geometry.userData.keep = true;
+    if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { for (const k of TEX_SLOTS) if (m[k] && m[k].isTexture) m[k].userData.keep = true; });
+  });
 }
 
 // Punto de la línea central interpolado en s (con vuelta)
@@ -893,6 +907,7 @@ const NOSE_AHEAD = 0.16;    // la guía va 2 cm por detrás del morro
 const carModels = {};       // id → { hi, lo } ya orientados y escalados
 const carLoading = {};      // id → promesa
 function prepareModel(scene) {
+  keepModel(scene);
   const box = new THREE.Box3().setFromObject(scene);
   const c = box.getCenter(new THREE.Vector3());
   // Todos los modelos vienen con el morro hacia +z (adivinarlo por los faros fallaba con el
@@ -943,6 +958,7 @@ function loadPeople() {
     peopleLoading = Promise.all(PEOPLE_FILES.map((f) => fetchGltf(`${f}.glb`))).then((gs) => {
       peopleSrc = gs.map((g) => {
         g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; } });
+        keepModel(g.scene);
         const box = new THREE.Box3().setFromObject(g.scene);
         return { scene: g.scene, clip: g.animations.find((a) => a.name === 'Idle') || g.animations[0], h: box.max.y - box.min.y };
       });
@@ -983,7 +999,7 @@ function makePerson(src, r) {
 // Coloca a la gente alrededor de la mesa: de pie, mirando hacia la pista, con huecos al azar
 function placeCrowd() {
   if (!T || !T.table || !peopleSrc) return;
-  for (const p of crowd) p.root.removeFromParent();
+  for (const p of crowd) { p.root.removeFromParent(); p.mixer.stopAllAction(); disposeGroup(p.root); }
   crowd = [];
   const { tw, td, cx, cz } = T.table;
   let seed = 0;

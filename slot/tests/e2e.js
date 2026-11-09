@@ -300,7 +300,9 @@ T('cuenta: crear, salir, entrar, contraseña mal y borrar la cuenta', async () =
   assert(cloud1.keys && cloud1.keys.best && cloud1.keys.best['ovalo|iman'] === 3.3, 'el récord no llega a la nube: ' + JSON.stringify(cloud1).slice(0, 200));
   await p.evaluate(() => document.querySelectorAll('.modal.open').forEach((m) => m.classList.remove('open')));
   await click(p, '#menu [data-open="mSettings"]'); await sleep(300);
-  await click(p, '#resetBtn'); await sleep(200); await click(p, '#resetYes'); await sleep(3500);
+  await click(p, '#resetBtn'); await sleep(200); await click(p, '#resetYes');
+  await p.waitForFunction(() => /Progreso borrado/.test(document.getElementById('toast').textContent), null, { timeout: 30000 });
+  assert(/también en tu cuenta/.test(await p.textContent('#toast')), 'no borra la nube: ' + (await p.textContent('#toast')));
   const after = await p.evaluate(async (api) => { const a = JSON.parse(localStorage.getItem('slot.account')); if (!a) return 'sin sesión'; return (await (await fetch(api + '/api/profile', { headers: { authorization: 'Bearer ' + a.token } })).json()).data; }, API);
   assert(after !== 'sin sesión', 'borrar el progreso cierra la sesión');
   assert(!after.keys || !after.keys.best, 'el progreso de la nube no se borra: ' + JSON.stringify(after).slice(0, 200));
