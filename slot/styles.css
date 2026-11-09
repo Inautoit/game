@@ -686,3 +686,23 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .load-veil b { font-family: var(--font-d); font-style: italic; font-weight: 700; font-size: clamp(28px, 6vw, 46px); text-transform: uppercase; }
 .load-veil i { width: 160px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--yellow), transparent); background-size: 200% 100%; animation: veilBar 1s linear infinite; }
 @keyframes veilBar { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+.btn.danger { background: linear-gradient(180deg, #ff5a4e, #d32f2f); color: #fff; }
+
+/* Ajustes: enlaces, contenido oculto; denuncias; créditos */
+.set-links { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 14px; }
+.set-links .btn { margin: 0; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+.set-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--ink-2); }
+.set-line[hidden] { display: none; }
+.set-line .linkbtn { margin: 0; }
+.check { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; font-size: 14px; color: var(--ink-2); }
+.check input { width: 20px; height: 20px; flex: none; accent-color: var(--yellow); margin-top: 1px; }
+.check a, .acc-form a { color: var(--yellow); }
+.rep-reasons { display: grid; gap: 8px; margin-top: 12px; }
+.rep-reasons .btn { margin: 0; }
+.credits { max-height: 60vh; overflow-y: auto; touch-action: pan-y; font-size: 14px; color: var(--ink-2); user-select: text; -webkit-user-select: text; }
+.credits h4 { margin: 14px 0 4px; color: var(--ink); font-size: 15px; }
+.credits ul { margin: 4px 0; padding-left: 18px; }
+.credits li { margin: 3px 0; }
+.circ-act button.rep { color: #ff8a80; }
+.rk-row .rk-hide { grid-column: 1 / -1; justify-self: end; margin-top: 4px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); color: #ff8a80; font-size: 12px; font-weight: 700; }

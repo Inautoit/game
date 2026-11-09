@@ -1,0 +1,21 @@
+{
+  "name": "turbo-slot-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Turbo Slot para iPhone y iPad (Capacitor)",
+  "scripts": {
+    "www": "bash build-www.sh",
+    "sync": "bash build-www.sh && npx cap sync ios",
+    "bundle": "bash build-bundle.sh"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.6.10",
+    "@capacitor/haptics": "^7.0.5",
+    "@capacitor/ios": "^7.6.10",
+    "@capacitor/status-bar": "^7.0.6",
+    "@capgo/capacitor-updater": "^7.53.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.10"
+  }
+}

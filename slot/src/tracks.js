@@ -62,9 +62,33 @@ export const PREMIUM = [
     pieces: [['S', 56, 0], ['C', 35, 4, 0], ['C', -70, 4, 0], ['C', 35, 4, 0], ['S', 14, 0], ['C', 90, 4.5, 0], ['S', 26, 0.9], ['C', -360, 5.5, 2.3], ['S', 16, 2.3], ['C', 90, 4.5, 2.2], ['S', 8, 2.1], ['C', -90, 3.5, 2.0], ['S', 10, 1.9], ['C', 90, 3.5, 1.8], ['S', 10, 1.7], ['C', 90, 3.5, 1.6], ['S', 10, 1.5], ['C', -90, 3.5, 1.4], ['S', 12, 1.1], ['C', 180, 3.4, 0.8], ['S', 30, 0.5], ['C', -180, 3.4, 0.3], ['S', 30, 0.1], ['C', -35, 4, 0], ['C', 70, 4, 0], ['C', -35, 4, 0], ['S', 44, 0], ['C', 90, 4.5, 0], ['S', null, 0], ['C', 90, 4.5, 0], ['S', null, 0]],
   },
 ];
-export const PREMIUM_SEASON = 'Temporada 1';
-export const ALL_TRACKS = [...TRACKS, ...PREMIUM];
-export const findTrack = (id) => ALL_TRACKS.find((t) => t.id === id) || null;
+export let PREMIUM_SEASON = 'Temporada 1';
+export const findTrack = (id) => TRACKS.find((t) => t.id === id) || PREMIUM.find((t) => t.id === id) || null;
+// Cambia los Premium por los de la temporada que manda el servidor (se comprueban antes: si alguno está mal, se ignora)
+const DECORS = ['montana', 'ciudad'];
+const SCENES = ['verde', 'arena', 'noche', 'ciudad'];
+export function setPremium(cfg) {
+  if (!cfg || !Array.isArray(cfg.tracks)) return false;
+  const ok = [];
+  for (const t of cfg.tracks.slice(0, 8)) {
+    try {
+      if (!t || typeof t.id !== 'string' || !/^[a-z0-9_-]{2,20}$/.test(t.id) || TRACKS.some((x) => x.id === t.id)) continue;
+      if (typeof t.name !== 'string' || !Array.isArray(t.pieces) || t.lanes !== 4) continue;
+      const def = {
+        id: t.id, name: t.name.slice(0, 28), lanes: 4, laps: Math.max(1, Math.min(10, t.laps | 0 || 3)),
+        scenery: SCENES.includes(t.scenery) ? t.scenery : 'verde', decor: DECORS.includes(t.decor) ? t.decor : undefined,
+        premium: true, long: !!t.long, blurb: String(t.blurb || '').slice(0, 140), pieces: t.pieces,
+      };
+      const S = sample(def);
+      if (S.closure > 0.05 || !selfOverlap(S.pts, 4).ok) continue;
+      ok.push(def);
+    } catch { /* circuito mal formado: fuera */ }
+  }
+  if (!ok.length) return false;
+  PREMIUM.splice(0, PREMIUM.length, ...ok);
+  if (typeof cfg.season === 'string') PREMIUM_SEASON = cfg.season.slice(0, 40);
+  return true;
+}
 
 export const LANE_W = 0.62; // separación entre carriles
 export const DS = 0.04;     // paso de muestreo

@@ -286,6 +286,7 @@
       <label class="field"><span>Nombre del circuito</span><input id="pubName" maxlength="28" placeholder="Ej.: Curvas del Pinar"></label>
       <label class="field"><span>Tu nombre de piloto</span><input id="pubAuthor" maxlength="20" autocomplete="nickname" placeholder="Ej.: Marta"></label>
       <p id="pubInfo" class="muted small"></p>
+      <label class="check"><input type="checkbox" id="pubRules"><span>Acepto las <a href="normas.html" target="_blank" rel="noopener">normas de la comunidad</a>: nada ofensivo en el nombre del circuito ni en el de piloto.</span></label>
       <button id="pubGo" class="btn primary"><span class="btn-main">Publicar para todos</span></button>
       <p id="pubMsg" class="small center"></p>
       <button id="pubWeb" class="btn secondary" hidden><span class="btn-main">Abrir en la web y publicar</span><span class="btn-sub">Tu circuito se abre ya cargado</span></button>
@@ -310,6 +311,7 @@
         <label class="field"><span>Usuario</span><input id="accRU" autocomplete="username" maxlength="16" autocapitalize="off" spellcheck="false" placeholder="De 3 a 16 caracteres"></label>
         <label class="field"><span>Contraseña</span><input id="accRP" type="password" autocomplete="new-password" maxlength="128" placeholder="Al menos 6 caracteres"></label>
         <label class="field"><span>Repite la contraseña</span><input id="accRP2" type="password" autocomplete="new-password" maxlength="128"></label>
+        <p class="muted small">Al crear la cuenta aceptas las <a href="normas.html" target="_blank" rel="noopener">normas de la comunidad</a> y la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</p>
         <button id="accRegGo" class="btn primary"><span class="btn-main">Crear cuenta</span></button>
       </div>
       <div id="acc-recover" class="acc-form" hidden>
@@ -332,8 +334,79 @@
         <p id="accStats" class="muted small"></p>
         <p class="muted small">Tus récords de todos los modos, fantasmas, circuitos, copas y estadísticas se guardan solos. Entra con este usuario en otro móvil, tablet u ordenador y lo tendrás todo.</p>
         <button id="accLogout" class="btn ghost"><span class="btn-main">Cerrar sesión</span></button>
+        <button id="accDelAsk" class="linkbtn">Borrar mi cuenta</button>
+      </div>
+      <div id="acc-delete" class="acc-form" hidden>
+        <p><b>Borrar la cuenta para siempre</b></p>
+        <p class="muted small">Se borran tu usuario, tu progreso guardado en la nube y tus tiempos del ranking mundial. No se puede deshacer. Lo que tengas en este dispositivo se queda en él.</p>
+        <label class="field"><span>Escribe tu contraseña para confirmarlo</span><input id="accDelP" type="password" autocomplete="current-password" maxlength="128"></label>
+        <button id="accDelGo" class="btn danger"><span class="btn-main">Borrar mi cuenta</span></button>
+        <button id="accDelBack" class="linkbtn">No, volver</button>
       </div>
       <p id="accMsg" class="acc-msg" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <!-- Denunciar un circuito de la comunidad -->
+  <div id="mReport" class="modal center" role="dialog" aria-modal="true" aria-labelledby="hReport">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hReport">Denunciar circuito</h3>
+      <p class="muted small"><b id="repName"></b>. Si varias personas lo denuncian, se oculta para todos hasta revisarlo. Además dejarás de verlo tú.</p>
+      <div class="rep-reasons">
+        <button class="btn secondary" data-reason="ofensivo"><span class="btn-main">Nombre ofensivo</span></button>
+        <button class="btn secondary" data-reason="spam"><span class="btn-main">Spam o repetido</span></button>
+        <button class="btn secondary" data-reason="otro"><span class="btn-main">Otro motivo</span></button>
+      </div>
+      <button id="repBlock" class="btn ghost"><span class="btn-main">Ocultar también todo lo de <span id="repAuthor"></span></span></button>
+      <p id="repMsg" class="small center"></p>
+    </div>
+  </div>
+
+  <!-- Contacto -->
+  <div id="mFeedback" class="modal center" role="dialog" aria-modal="true" aria-labelledby="hFeedback">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hFeedback">Contacto</h3>
+      <p class="muted small">Cuéntanos un fallo, una idea o denuncia algo que hayas visto. Lo leemos todo.</p>
+      <textarea id="fbMsg" class="ai-text" rows="4" maxlength="1500" placeholder="Escribe aquí tu mensaje"></textarea>
+      <label class="field"><span>Correo o forma de contestarte (opcional)</span><input id="fbContact" maxlength="120" autocomplete="email"></label>
+      <button id="fbGo" class="btn primary"><span class="btn-main">Enviar</span></button>
+      <p id="fbMsgOut" class="small center"></p>
+    </div>
+  </div>
+
+  <!-- Créditos -->
+  <div id="mCredits" class="modal" role="dialog" aria-modal="true" aria-labelledby="hCredits">
+    <div class="sheet">
+      <button class="icon-btn close" data-close aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
+      <h3 id="hCredits">Créditos</h3>
+      <div class="credits">
+        <p><b>Turbo Slot</b>. Juego, circuitos, física y diseño propios. Todos los coches y nombres son inventados: ninguna marca real.</p>
+        <h4>Coches</h4>
+        <p>Licencia CC BY 4.0 (creativecommons.org/licenses/by/4.0). Modificados: reorientados, escalados a 1:32, simplificados, sin logotipos y con pintura cambiable.</p>
+        <ul>
+          <li>Clásico 70: «Classic Muscle car» de Lexyc16 (Sketchfab)</li>
+          <li>Turismo GTS: «Generic Sedan Car» de Márcio Meireles (Sketchfab)</li>
+          <li>Monoplaza 22: «F1 Generic 2022» de TheoDev (Sketchfab)</li>
+          <li>GT 22: «Fantastic Race Car 22 Gold» de YDEVASHISH (Sketchfab)</li>
+        </ul>
+        <h4>Público</h4>
+        <p>«LowPoly Animated Characters» de Quaternius (quaternius.com), CC0.</p>
+        <h4>Iluminación, texturas y sonido</h4>
+        <ul>
+          <li>Iluminación HDRI: Poly Haven (Oliksiy Yakovlyev, Sergej Majboroda), CC0</li>
+          <li>Texturas de madera, hierba, tierra y tela: ambientCG, CC0</li>
+          <li>Sonido de la pista: «Electric circuit, 1 car» de Joseph Sardin, BigSoundBank, CC0</li>
+          <li>Música: compuesta y sintetizada en el propio juego</li>
+        </ul>
+        <h4>Código y tipografías</h4>
+        <ul>
+          <li>three.js y sus módulos de ejemplo, licencia MIT</li>
+          <li>Barlow y Barlow Condensed de Jeremy Tribby, SIL Open Font License 1.1</li>
+        </ul>
+      </div>
+      <button class="btn primary" data-close><span class="btn-main">Cerrar</span></button>
     </div>
   </div>
 
@@ -414,8 +487,15 @@
       <button id="resetBtn" class="btn ghost danger"><span class="btn-main">Borrar mi progreso</span></button>
       <div id="resetConfirm" class="confirm" hidden><span>¿Borrar récords, fantasmas y circuitos desbloqueados?</span>
         <div class="row2"><button id="resetYes" class="btn secondary"><span class="btn-main">Sí, borrar</span></button><button id="resetNo" class="btn ghost"><span class="btn-main">Cancelar</span></button></div></div>
-      <p class="muted small">Turbo Slot no usa cuentas, anuncios ni rastreadores. Tu progreso se guarda solo en este dispositivo.</p>
-      <p class="muted small center">Turbo Slot v3.1 · three.js (MIT) · Barlow y Barlow Condensed de Jeremy Tribby (OFL)<br>Coches (CC-BY 4.0, modificados): «Classic Muscle car» de Lexyc16 · «Generic Sedan Car» de Márcio Meireles · «F1 Generic 2022» de TheoDev · «Fantastic Race Car 22 Gold» de YDEVASHISH.<br>Iluminación: Poly Haven (CC0) · Texturas: ambientCG (CC0) · Sonido de pista: BigSoundBank (CC0)</p>
+      <div id="hiddenRow" class="set-line" hidden><span id="hiddenTxt"></span><button id="unhideBtn" class="linkbtn">Volver a mostrar</button></div>
+      <div class="set-links">
+        <button id="openFeedback" class="btn ghost small"><span class="btn-main">Contacto</span></button>
+        <button class="btn ghost small" data-open="mCredits"><span class="btn-main">Créditos</span></button>
+        <a class="btn ghost small" href="privacidad.html" target="_blank" rel="noopener"><span class="btn-main">Privacidad</span></a>
+        <a class="btn ghost small" href="normas.html" target="_blank" rel="noopener"><span class="btn-main">Normas</span></a>
+      </div>
+      <p class="muted small">Sin anuncios ni rastreadores. Tu progreso se guarda en este dispositivo y, si entras con una cuenta, también en ella para usarlo en otros dispositivos.</p>
+      <p id="verTxt" class="muted small center">Turbo Slot</p>
     </div>
   </div>
 
@@ -423,7 +503,7 @@
 
   <script type="module" src="src/main.js"></script>
   <script>
-    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    if ('serviceWorker' in navigator && location.protocol !== 'file:' && location.protocol !== 'capacitor:' && !window.Capacitor) {
       window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
     }
   </script>

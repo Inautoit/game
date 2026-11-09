@@ -66,3 +66,21 @@ CREATE TABLE IF NOT EXISTS limits (
   n INTEGER NOT NULL,
   PRIMARY KEY (k, day)
 );
+
+-- Moderación: circuitos ocultos tras varias denuncias, y las denuncias (una por persona y circuito)
+ALTER TABLE tracks ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS reports (
+  track_id TEXT NOT NULL,
+  reporter TEXT NOT NULL,        -- hash de la IP
+  reason TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY (track_id, reporter)
+);
+-- Mensajes de los jugadores (Ajustes → Contacto)
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created INTEGER NOT NULL,
+  user_name TEXT,
+  contact TEXT,
+  msg TEXT NOT NULL
+);

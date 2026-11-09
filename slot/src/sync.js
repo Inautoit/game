@@ -3,7 +3,7 @@
 // circuitos creados…). Las preferencias (coche, pintura, reglaje, nombre) las decide quien se aplica.
 
 // Claves del almacenamiento local que viajan con la cuenta
-export const SYNC_KEYS = ['best', 'pos', 'cups', 'coins', 'mytracks', 'liked', 'car0', 'liv0', 'setup0'];
+export const SYNC_KEYS = ['best', 'pos', 'cups', 'coins', 'mytracks', 'liked', 'car0', 'liv0', 'setup0', 'hiddenTracks', 'blocked'];
 export const SYNC_PREFIXES = ['ghost.', 'wrsent.'];
 const PREFS = new Set(['car0', 'liv0', 'setup0', 'pilot']);
 export const isSynced = (k) => SYNC_KEYS.includes(k) || SYNC_PREFIXES.some((p) => k.startsWith(p));
@@ -25,6 +25,8 @@ export function mergeKeys(local = {}, remote = {}, prefer = 'local') {
     if (k === 'best' || k === 'pos' || k === 'cups') out[k] = minMap(a, b);
     else if (k === 'coins') out[k] = Math.max(+a || 0, +b || 0);
     else if (k === 'liked') out[k] = [...new Set([...(a || []), ...(b || [])])];
+    // Lo oculto: al entrar se junta todo; después manda este dispositivo (así «volver a mostrar» funciona)
+    else if (k === 'hiddenTracks' || k === 'blocked') out[k] = prefer === 'remote' ? [...new Set([...(a || []), ...(b || [])])] : a;
     else if (k === 'mytracks') {
       const byId = new Map();
       for (const d of [...(b || []), ...(a || [])]) {

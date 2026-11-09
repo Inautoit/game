@@ -1,0 +1,14 @@
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-500.woff2") format("woff2"); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-600.woff2") format("woff2"); font-weight: 600 900; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-600.woff2") format("woff2"); font-weight: 400 600; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-700.woff2") format("woff2"); font-weight: 700 900; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-700i.woff2") format("woff2"); font-weight: 400 900; font-style: italic; font-display: swap; }
+:root { color-scheme: dark; }
+body { margin: 0; background: #0e1118; color: #e9ebf2; font: 16px/1.6 "Barlow", system-ui, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 28px 18px 60px; }
+h1 { font: italic 700 34px/1.1 "Barlow Condensed", system-ui, sans-serif; text-transform: uppercase; margin: 0 0 6px; }
+h2 { font: 700 20px/1.2 "Barlow Condensed", system-ui, sans-serif; text-transform: uppercase; margin: 28px 0 6px; color: #ffcc00; }
+a { color: #ffcc00; }
+.muted { color: #aab1c4; font-size: 14px; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+td, th { border-bottom: 1px solid rgba(255,255,255,.12); padding: 8px 6px; text-align: left; vertical-align: top; }

@@ -1,10 +1,11 @@
 // Turbo Slot — simulador de coches de slot 1:32.
 import * as THREE from '../vendor/three.module.min.js';
-import { TRACKS, PREMIUM, PREMIUM_SEASON, findTrack, sample, laneOffsets, LANE_W, DS } from './tracks.js';
+import { TRACKS, PREMIUM, PREMIUM_SEASON, findTrack, setPremium, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } from './editor.js';
 import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
 import { replay } from './verify.js';
 import { createMusic } from './music.js';
+import { GAME_VERSION } from './version.js';
 import { makeTerrain, buildMountain, buildCity } from './decor.js';
 import { isSynced, mergeProfile, otherStats, fitProfile } from './sync.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
@@ -40,7 +41,20 @@ const store = {
 let syncHook = null;   // con sesión iniciada: avisa de que hay progreso nuevo que subir
 const settings = Object.assign({ sound: true, music: true, vibe: true, lefty: false, cam: 'tv', tele: true, brakes: true }, store.get('settings', {}));
 const saveSettings = () => store.set('settings', settings);
-const vibrate = (p) => { if (settings.vibe && navigator.vibrate) navigator.vibrate(p); };
+// ¿Dentro de la app de iPhone/iPad (Capacitor)? Allí hay vibración nativa, barra de estado y actualizaciones al momento
+const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const plugin = (n) => (NATIVE && window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null;
+const vibrate = (p) => {
+  if (!settings.vibe) return;
+  const H = plugin('Haptics');
+  if (H) {
+    // En iPhone no existe navigator.vibrate: se usa el motor háptico (un golpe más fuerte cuanto más larga la vibración)
+    const total = Array.isArray(p) ? p.reduce((a, b, i) => a + (i % 2 ? 0 : b), 0) : p;
+    H.impact({ style: total > 120 ? 'HEAVY' : total > 40 ? 'MEDIUM' : 'LIGHT' }).catch(() => {});
+    return;
+  }
+  if (navigator.vibrate) navigator.vibrate(p);
+};
 const classOf = (setupRaw) => (setupRaw.magnet === 'sin' ? 'pro' : 'iman');
 const CLASS_NAME = { iman: 'Con imán', pro: 'Sin imán' };
 
@@ -2645,7 +2659,7 @@ function renderAccountChip() {
 let acctView = 'login';
 function showAcct(view) {
   acctView = view;
-  for (const v of ['login', 'register', 'recover', 'code', 'me']) $('acc-' + v).hidden = v !== view;
+  for (const v of ['login', 'register', 'recover', 'code', 'me', 'delete']) $('acc-' + v).hidden = v !== view;
   document.querySelectorAll('#accTabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === view));
   $('accTabs').hidden = !['login', 'register'].includes(view);
   $('accMsg').textContent = '';
@@ -2665,7 +2679,7 @@ $('accBtn').addEventListener('click', () => { initAudio(); sfx.click(); showAcct
 document.querySelectorAll('#accTabs button').forEach((b) => b.addEventListener('click', () => { sfx.click(); showAcct(b.dataset.v); }));
 $('accForgot').addEventListener('click', () => { sfx.click(); showAcct('recover'); });
 $('accBackLogin').addEventListener('click', () => { sfx.click(); showAcct('login'); });
-document.querySelectorAll('#mAccount input').forEach((i) => i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { const f = i.closest('.acc-form'); if (f) f.querySelector('.btn.primary').click(); } }));
+document.querySelectorAll('#mAccount input').forEach((i) => i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { const f = i.closest('.acc-form'); if (f) f.querySelector('.btn.primary, .btn.danger').click(); } }));
 async function accSubmit(btn, path, body, after) {
   const msg = $('accMsg');
   btn.disabled = true; msg.textContent = 'Un momento…';
@@ -2696,6 +2710,14 @@ $('accRecGo').addEventListener('click', (e) => accSubmit(e.currentTarget, '/api/
   $('accCode').textContent = j.recovery; showAcct('code');
 }));
 $('accCodeOk').addEventListener('click', () => { sfx.click(); showAcct('me'); });
+$('accDelAsk').addEventListener('click', () => { sfx.click(); $('accDelP').value = ''; showAcct('delete'); });
+$('accDelBack').addEventListener('click', () => { sfx.click(); showAcct('me'); });
+$('accDelGo').addEventListener('click', (e) => accSubmit(e.currentTarget, '/api/auth/delete', { password: $('accDelP').value }, async () => {
+  $('accDelP').value = '';
+  clearTimeout(syncTimer);
+  acct = null; store.set('account', null); syncHook = null; syncVer = -1; store.set('syncVer', -1);
+  renderAccountChip(); showAcct('login'); toast('Cuenta borrada. Tus datos ya no están en el servidor');
+}));
 $('accLogout').addEventListener('click', async () => {
   sfx.click();
   if (syncTimer) { clearTimeout(syncTimer); await syncNow(); }
@@ -2768,13 +2790,28 @@ function showCircuits() {
     const render = (tracks) => {
       box.innerHTML = '';
       if (!tracks.length) { empty('Todavía no hay circuitos. ¡Crea el primero!'); return; }
-      for (const t of tracks) {
+      const hid = new Set(store.get('hiddenTracks', [])), blk = new Set(store.get('blocked', []));
+      const shown = tracks.filter((t) => !hid.has(t.id) && !blk.has(String(t.author).toLowerCase()));
+      if (!shown.length) { empty('No hay circuitos que mostrar.'); return; }
+      for (const t of shown) {
         const def = commDef(t);
-        box.appendChild(circButton(def, [
+        const wrap = document.createElement('div'); wrap.className = 'circ-wrap';
+        box.appendChild(wrap);
+        let actEl = null;
+        if (!pickForOnline) {
+          const act = document.createElement('div'); act.className = 'circ-act'; actEl = act;
+          const rep = document.createElement('button'); rep.className = 'rep'; rep.textContent = 'Denunciar';
+          rep.addEventListener('click', (e) => { e.stopPropagation(); sfx.click(); openReport(t); });
+          const hide = document.createElement('button'); hide.textContent = 'Ocultar';
+          hide.addEventListener('click', (e) => { e.stopPropagation(); sfx.click(); hideTrack(t.id); toast('Circuito oculto. Puedes volver a mostrarlo en Ajustes'); showCircuits(); });
+          act.append(rep, hide);
+        }
+        wrap.appendChild(circButton(def, [
           ['', t.name], ['by', `de ${t.author} · ${t.length.toFixed(1).replace('.', ',')} m · ${t.lanes} carriles`],
           ['', `${t.plays} partidas  ·  ${t.likes} me gusta${t.best_time ? `  ·  Récord ${fmt(t.best_time)} (${t.best_name || 'Anónimo'})` : ''}`],
           ['rec', recTxt(def)],
         ], () => chooseTrack(def)));
+        if (actEl) wrap.appendChild(actEl);
       }
     };
     if (list) render(list);
@@ -2968,6 +3005,7 @@ $('pubGo').addEventListener('click', async () => {
   const name = $('pubName').value.trim(), author = $('pubAuthor').value.trim();
   if (name.length < 3) { $('pubMsg').textContent = 'Pon un nombre de al menos 3 letras'; return; }
   if (author.length < 2) { $('pubMsg').textContent = 'Pon tu nombre de piloto'; return; }
+  if (!$('pubRules').checked) { $('pubMsg').textContent = 'Acepta las normas de la comunidad para publicar'; return; }
   $('pubGo').disabled = true; $('pubMsg').textContent = 'Publicando…';
   try {
     const r = await apiPost('/api/tracks', { name, author, lanes: draft.lanes, laps: draft.laps, scenery: draft.scenery, pieces: closed.pieces });
@@ -3372,13 +3410,13 @@ function loadWorldRecord(r) {
   r.wr = null;
   apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${cls}&device=${rankId()}`).then((j) => {
     if (race !== r) return;
-    r.wr = j.laps[0] || null; r.wrMine = j.mine; r.wrTotal = j.total;
+    r.wr = j.laps.find((l) => l.me || !isBlocked(l.name)) || null; r.wrMine = j.mine; r.wrTotal = j.total;
     if (r.wr) flashText(0, `Récord mundial: ${fmt(r.wr.time)} · ${r.wr.name}`);
     updateHud(true);
   }).catch(() => {});
   // El fantasma: se repite la vuelta del récord con la misma física
   apiGet(`/api/laps/ghost?track=${encodeURIComponent(key)}&cls=${cls}`).then((j) => {
-    if (race !== r || !j.ghost) return;
+    if (race !== r || !j.ghost || isBlocked(j.ghost.name)) return;
     const g = j.ghost;
     const res = replay({ def: r.def, track: physTrack, lane: g.lane, setupRaw: g.setup, s0: g.s0, t0: g.t0, goT: g.goT, inputs: g.inputs }, g.lap);
     if (!res.ghost || !res.ghost.length || race !== r) return;
@@ -3410,6 +3448,75 @@ function submitLap(c, lt) {
     updateHud(true);
   }).catch((e) => { if (race === r) toast(`Ranking: ${e.message}`); });
 }
+// ---- App nativa: barra de estado oculta, enlaces legales en Safari y actualizaciones al momento ----
+const cmpVer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
+async function liveUpdate() {
+  const U = plugin('CapacitorUpdater');
+  if (!U) return;
+  try { await U.notifyAppReady(); } catch { /* sin plugin */ }
+  try {
+    const info = await apiGet('/api/app');
+    if (!info || !info.version || cmpVer(info.version, GAME_VERSION) <= 0) return;
+    const cur = await U.current().catch(() => null);
+    if (info.minNative && cur && cur.native && cmpVer(cur.native, info.minNative) < 0) return;   // hace falta la app nueva de la App Store
+    const b = await U.download({ url: info.url, version: info.version, checksum: info.sha256 });
+    await U.next({ id: b.id });
+    toast('Hay una versión nueva del juego: se pondrá la próxima vez que lo abras');
+  } catch { /* sin conexión o descarga fallida: se intenta en otra ocasión */ }
+}
+if (NATIVE) {
+  document.documentElement.classList.add('native');
+  const SB = plugin('StatusBar'); if (SB) SB.hide().catch(() => {});
+  // Las páginas de privacidad y normas se abren en Safari (si no, la app se iría de la pantalla del juego)
+  document.querySelectorAll('a[href$=".html"]').forEach((a) => { a.href = SITE + a.getAttribute('href'); a.target = '_blank'; });
+  setTimeout(liveUpdate, 4000);
+}
+$('verTxt').textContent = `Turbo Slot ${GAME_VERSION}${NATIVE ? ' · app' : ''}`;
+
+// ---- Temporada Premium: la manda el servidor (y se guarda para jugar sin conexión) ----
+setPremium(store.get('premiumCfg', null));
+apiGet('/api/premium').then((cfg) => { if (setPremium(cfg)) { store.set('premiumCfg', cfg); if (state === 'circuits' && circTab === 'premium') showCircuits(); } }).catch(() => {});
+
+// ---- Moderación: denunciar y ocultar (lo que oculta cada jugador viaja con su cuenta) ----
+const isBlocked = (name) => store.get('blocked', []).includes(String(name || '').toLowerCase());
+function hideTrack(id) { const l = store.get('hiddenTracks', []); if (!l.includes(id)) { l.push(id); store.set('hiddenTracks', l.slice(-500)); } }
+function blockName(name) { const n = String(name || '').toLowerCase(); const l = store.get('blocked', []); if (n && !l.includes(n)) { l.push(n); store.set('blocked', l.slice(-500)); } }
+let reportT = null;
+function openReport(t) {
+  reportT = t;
+  $('repName').textContent = `«${t.name}» de ${t.author}`;
+  $('repAuthor').textContent = t.author;
+  $('repMsg').textContent = '';
+  document.querySelectorAll('#mReport .rep-reasons .btn').forEach((b) => { b.disabled = false; });
+  openModal('mReport');
+}
+document.querySelectorAll('#mReport .rep-reasons .btn').forEach((b) => b.addEventListener('click', async () => {
+  if (!reportT) return;
+  sfx.click();
+  document.querySelectorAll('#mReport .rep-reasons .btn').forEach((x) => { x.disabled = true; });
+  hideTrack(reportT.id);
+  try { await apiPost(`/api/tracks/${reportT.id}/report`, { reason: b.dataset.reason }); $('repMsg').textContent = 'Gracias: denuncia enviada y circuito oculto.'; }
+  catch (e) { $('repMsg').textContent = `Circuito oculto. No se pudo enviar la denuncia: ${e.message}`; }
+  setTimeout(() => { closeModal('mReport'); if (state === 'circuits') showCircuits(); }, 1100);
+}));
+$('repBlock').addEventListener('click', () => {
+  if (!reportT) return;
+  sfx.click(); blockName(reportT.author); hideTrack(reportT.id);
+  closeModal('mReport'); toast(`No verás nada más de ${reportT.author}`);
+  if (state === 'circuits') showCircuits();
+});
+$('openFeedback').addEventListener('click', () => { sfx.click(); $('fbMsgOut').textContent = ''; openModal('mFeedback'); });
+$('fbMsg').addEventListener('keydown', (e) => e.stopPropagation());
+$('fbGo').addEventListener('click', async () => {
+  const msg = $('fbMsg').value.trim();
+  if (msg.length < 5) { $('fbMsgOut').textContent = 'Escribe un poco más, por favor'; return; }
+  sfx.click(); $('fbGo').disabled = true; $('fbMsgOut').textContent = 'Enviando…';
+  try { await apiPost('/api/feedback', { msg, contact: $('fbContact').value.trim() }); $('fbMsg').value = ''; $('fbMsgOut').textContent = '¡Gracias! Mensaje enviado.'; }
+  catch (e) { $('fbMsgOut').textContent = e.message; }
+  $('fbGo').disabled = false;
+});
+$('unhideBtn').addEventListener('click', () => { sfx.click(); store.set('hiddenTracks', []); store.set('blocked', []); fillSettings(); toast('Vuelves a verlo todo'); });
+
 // Pantalla del ranking de un circuito
 let rankDef = null, rankCls = 'iman';
 function openRanking(def) {
@@ -3424,8 +3531,14 @@ function openRanking(def) {
   apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${rankCls}&device=${rankId()}`).then((j) => {
     box.innerHTML = '';
     if (!j.laps.length) { box.innerHTML = '<div class="circ-empty">Nadie tiene tiempo todavía. ¡Sé el primero en Práctica!</div>'; return; }
-    j.laps.slice(0, 30).forEach((l, i) => {
+    j.laps.filter((l) => l.me || !isBlocked(l.name)).slice(0, 30).forEach((l, i) => {
       const row = document.createElement('div'); row.className = 'rk-row' + (l.me ? ' me' : '');
+      if (!l.me) row.addEventListener('click', () => {
+        if (row.querySelector('.rk-hide')) return;
+        const hb = document.createElement('button'); hb.className = 'rk-hide'; hb.textContent = `Ocultar a ${l.name}`;
+        hb.addEventListener('click', (e) => { e.stopPropagation(); sfx.click(); blockName(l.name); toast(`No verás más a ${l.name}`); openRanking(rankDef); });
+        row.appendChild(hb);
+      });
       const pos = document.createElement('b'); pos.textContent = `${i + 1}º`;
       const dot = document.createElement('i'); const lv = LIVERIES.find((x) => x.id === l.liv); dot.style.background = lv ? '#' + lv.color.toString(16).padStart(6, '0') : '#888';
       const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = l.name;
@@ -3730,6 +3843,9 @@ function fillSettings() {
   $('optTele').checked = settings.tele;
   $('optBrakes').checked = settings.brakes;
   $('resetConfirm').hidden = true;
+  const nh = store.get('hiddenTracks', []).length, nb = store.get('blocked', []).length;
+  $('hiddenRow').hidden = !(nh || nb);
+  $('hiddenTxt').textContent = `Ocultos: ${nh} ${nh === 1 ? 'circuito' : 'circuitos'} · ${nb} ${nb === 1 ? 'piloto' : 'pilotos'}`;
 }
 $('optSound').addEventListener('change', (e) => { settings.sound = e.target.checked; saveSettings(); initAudio(); setMuted(); sfx.click(); });
 $('optMusic').addEventListener('change', (e) => { settings.music = e.target.checked; saveSettings(); initAudio(); });

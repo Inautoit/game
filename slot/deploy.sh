@@ -21,7 +21,7 @@ done
 D1_ID="${D1_ID:-b72d6b1d-60b9-4b43-abfc-c127fd561ed4}"
 TMP="$(mktemp -d)"
 mkdir -p "$TMP/dist/assets"
-cp -r index.html styles.css src vendor icons fonts manifest.webmanifest sw.js og-image.png "$TMP/dist/"
+cp -r index.html privacidad.html normas.html legal_style.css styles.css src vendor icons fonts manifest.webmanifest sw.js og-image.png "$TMP/dist/"
 cp assets/CREDITOS.md "$TMP/dist/assets/" 2>/dev/null || true
 python3 -I ../tools/build_worker.py "$TMP/dist" "$TMP/worker.js" server/worker_template.js
 cp src/tracks.js src/physics.js src/dmath.js src/verify.js "$TMP/"

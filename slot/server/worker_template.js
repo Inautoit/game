@@ -3,7 +3,7 @@
 // - API de circuitos de la comunidad (D1),
 // - salas online en tiempo real (un Durable Object por sala, con WebSockets).
 import { Buffer } from 'node:buffer';
-import { validateTrack, TRACKS, findTrack } from './tracks.js';
+import { validateTrack, TRACKS, findTrack, PREMIUM, PREMIUM_SEASON } from './tracks.js';
 import { verifyLap } from './verify.js';
 
 const FILES = __FILES__;
@@ -14,7 +14,7 @@ function body(path, f) {
   if (!b) { b = Buffer.from(f[1], 'base64'); cache.set(path, b); }
   return b;
 }
-const TYPES = { glb: 'model/gltf-binary', hdr: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain; charset=utf-8', wav: 'audio/wav' };
+const TYPES = { zip: 'application/zip', glb: 'model/gltf-binary', hdr: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain; charset=utf-8', wav: 'audio/wav' };
 const SCENERY = ['verde', 'arena', 'noche'];
 
 // La API se puede usar desde otras páginas (por ejemplo, la versión del juego dentro de Claude)
@@ -35,6 +35,18 @@ function newId(n = 7, a = 'abcdefghijkmnpqrstuvwxyz23456789') {
   const r = crypto.getRandomValues(new Uint8Array(n));
   return [...r].map((b) => a[b % a.length]).join('');
 }
+// ---- Circuitos Premium de la temporada: se pueden cambiar sin nueva versión del juego.
+// Si en el almacén KV hay «config/premium.json» ({ season, tracks: [...] }) manda ese; si no, los que lleva el juego.
+let premiumCache = null, premiumAt = 0;
+async function getPremium(env) {
+  if (premiumCache && Date.now() - premiumAt < 60000) return premiumCache;
+  let cfg = null;
+  try { const t = env.ASSETS && await env.ASSETS.get('config/premium.json'); if (t) cfg = JSON.parse(t); } catch { cfg = null; }
+  premiumCache = cfg && Array.isArray(cfg.tracks) && cfg.tracks.length ? cfg : { season: PREMIUM_SEASON, tracks: PREMIUM };
+  premiumAt = Date.now();
+  return premiumCache;
+}
+
 // ---- Cuentas: usuario + contraseña (PBKDF2), sesiones con token y perfil sincronizado ----
 const PROFILE_MAX = 1500000;   // bytes del perfil (récords, fantasmas, circuitos…)
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -80,6 +92,21 @@ async function authApi(req, env, parts) {
   if (what === 'logout') {
     const h = (req.headers.get('authorization') || '').replace(/^Bearer /, '');
     if (h) await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha(h + ':ses')).run();
+    return json({ ok: true });
+  }
+  if (what === 'delete') {
+    // Borrar la cuenta (lo exige Apple): con la contraseña, se borran el usuario, sus sesiones y sus tiempos
+    const me = await authUser(req, db);
+    if (!me) return fail('Inicia sesión', 401);
+    const lim = await limited(db, req, 'fail', 30);
+    if (lim.over) return fail('Demasiados intentos fallidos hoy. Prueba mañana', 429);
+    const u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(me.id).first();
+    if (!u || !sameStr(await passHash(String(b.password || ''), u.salt), u.pass_hash)) { await lim.hit(); return fail('Contraseña incorrecta', 401); }
+    await db.batch([
+      db.prepare('DELETE FROM laps WHERE device = ?').bind(u.rid),
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(u.id),
+      db.prepare('DELETE FROM users WHERE id = ?').bind(u.id),
+    ]);
     return json({ ok: true });
   }
   const name = normName(b.name), pass = String(b.password || '');
@@ -143,6 +170,21 @@ async function profileApi(req, env) {
   return fail('Método no permitido', 405);
 }
 
+// Comentarios y avisos de los jugadores (contacto desde el juego)
+async function feedbackApi(req, env) {
+  const db = env.DB;
+  const b = await req.json().catch(() => ({}));
+  const msg = String(b.msg || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f<>]/g, '').trim().slice(0, 1500);
+  const contact = clean(b.contact, 120);
+  if (msg.length < 5) return fail('Escribe un poco más, por favor');
+  const lim = await limited(db, req, 'fb', 10);
+  if (lim.over) return fail('Has enviado muchos mensajes hoy. Prueba mañana', 429);
+  await lim.hit();
+  const u = await authUser(req, db);
+  await db.prepare('INSERT INTO feedback (created, user_name, contact, msg) VALUES (?, ?, ?, ?)').bind(Date.now(), u ? u.name : null, contact || null, msg).run();
+  return json({ ok: true });
+}
+
 const PUBLIC = 'id, name, author, lanes, laps, scenery, pieces, length, plays, likes, best_time, best_name, created';
 const rowOut = (r) => ({ ...r, pieces: JSON.parse(r.pieces) });
 
@@ -154,13 +196,13 @@ async function tracksApi(req, env, url, parts) {
     const order = sort === 'new' ? 'created DESC' : '(plays + likes * 4) DESC, created DESC';
     const ids = (url.searchParams.get('ids') || '').split(',').filter((x) => /^[a-z0-9]{7}$/.test(x)).slice(0, 50);
     const q = ids.length
-      ? db.prepare(`SELECT ${PUBLIC} FROM tracks WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY created DESC`).bind(...ids)
-      : db.prepare(`SELECT ${PUBLIC} FROM tracks ORDER BY ${order} LIMIT 60`);
+      ? db.prepare(`SELECT ${PUBLIC} FROM tracks WHERE hidden = 0 AND id IN (${ids.map(() => '?').join(',')}) ORDER BY created DESC`).bind(...ids)
+      : db.prepare(`SELECT ${PUBLIC} FROM tracks WHERE hidden = 0 ORDER BY ${order} LIMIT 60`);
     const { results } = await q.all();
     return json({ tracks: results.map(rowOut) });
   }
   if (req.method === 'GET' && parts.length === 3) {
-    const r = await db.prepare(`SELECT ${PUBLIC} FROM tracks WHERE id = ?`).bind(parts[2]).first();
+    const r = await db.prepare(`SELECT ${PUBLIC} FROM tracks WHERE id = ? AND hidden = 0`).bind(parts[2]).first();
     return r ? json({ track: rowOut(r) }) : fail('Ese circuito no existe', 404);
   }
   // Publicar
@@ -192,6 +234,16 @@ async function tracksApi(req, env, url, parts) {
     if (!/^[a-z0-9]{7}$/.test(id)) return fail('No encontrado', 404);
     if (act === 'play') await db.prepare('UPDATE tracks SET plays = plays + 1 WHERE id = ?').bind(id).run();
     else if (act === 'like') await db.prepare('UPDATE tracks SET likes = likes + 1 WHERE id = ?').bind(id).run();
+    else if (act === 'report') {
+      // Denuncia: con 3 personas distintas que lo denuncien, el circuito se oculta para todos hasta revisarlo
+      let reason = 'otro';
+      try { const j = await req.json(); if (['ofensivo', 'spam', 'otro'].includes(j.reason)) reason = j.reason; } catch { /* nada */ }
+      const who = await sha((req.headers.get('cf-connecting-ip') || '') + ':report');
+      await db.prepare('INSERT OR IGNORE INTO reports (track_id, reporter, reason, created) VALUES (?, ?, ?, ?)').bind(id, who, reason, Date.now()).run();
+      const c = await db.prepare('SELECT COUNT(*) AS n FROM reports WHERE track_id = ?').bind(id).first();
+      if (c && c.n >= 3) await db.prepare('UPDATE tracks SET hidden = 1 WHERE id = ?').bind(id).run();
+      return json({ ok: true });
+    }
     else if (act === 'lap') {
       let t = null, who = '';
       try { const j = await req.json(); t = Number(j.time); who = clean(j.name, 20); } catch { /* nada */ }
@@ -210,9 +262,10 @@ async function tracksApi(req, env, url, parts) {
 // ---------------------------------------------------------------------------
 // Clasificación mundial con vueltas comprobadas
 // ---------------------------------------------------------------------------
-async function trackDefFor(db, key) {
+async function trackDefFor(db, key, env) {
   if (key.startsWith('o:')) {
-    const t = findTrack(key.slice(2));
+    let t = findTrack(key.slice(2));
+    if (!t && env) t = (await getPremium(env)).tracks.find((x) => x.id === key.slice(2));   // Premium de temporada
     return t ? { pieces: t.pieces, lanes: t.lanes } : null;
   }
   if (key.startsWith('c:')) {
@@ -257,7 +310,7 @@ async function lapsApi(req, env, url, parts) {
     const device = acc ? acc.rid : String(b.device || '');
     if (!/^[a-z0-9]{12,32}$/.test(device)) return fail('Dispositivo no válido');
     let name = acc ? acc.name : clean(b.name, 16); if (name.length < 2 || isBad(name)) name = 'Piloto';
-    const def = await trackDefFor(db, key);
+    const def = await trackDefFor(db, key, env);
     if (!def) return fail('Ese circuito no existe', 404);
     const setup = { magnet: String(b.setup?.magnet || 'medio'), gear: String(b.setup?.gear || 'medio'), tire: String(b.setup?.tire || 'blando'), brake: Number(b.setup?.brake), curve: Number(b.setup?.curve) };
     if (!Number.isFinite(setup.brake) || !Number.isFinite(setup.curve)) return fail('Reglaje no válido');
@@ -307,6 +360,19 @@ export default {
         if (req.headers.get('Upgrade') !== 'websocket') return fail('Se necesita WebSocket', 426);
         const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
         return stub.fetch(req);
+      }
+      // Actualizaciones al momento de la app: { version, url, sha256, minNative } (lo sube app/build-bundle.sh)
+      if (parts[1] === 'app' && req.method === 'GET') {
+        let info = {};
+        try { const t = env.ASSETS && await env.ASSETS.get('app/latest.json'); if (t) info = JSON.parse(t); } catch { info = {}; }
+        return new Response(JSON.stringify(info), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...CORS } });
+      }
+      if (parts[1] === 'premium' && req.method === 'GET') {
+        const p = await getPremium(env);
+        return new Response(JSON.stringify(p), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=300', ...CORS } });
+      }
+      if (parts[1] === 'feedback' && req.method === 'POST') {
+        try { return await feedbackApi(req, env); } catch (e) { return fail('Error del servidor', 500); }
       }
       if (parts[1] === 'auth') {
         try { return await authApi(req, env, parts); } catch (e) { return fail('Error del servidor', 500); }

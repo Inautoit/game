@@ -1,0 +1,23 @@
+{
+  "appId": "com.turboslot.juego",
+  "appName": "Turbo Slot",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0e1118",
+    "scrollEnabled": false,
+    "allowsLinkPreview": false
+  },
+  "plugins": {
+    "CapacitorUpdater": {
+      "autoUpdate": false,
+      "appReadyTimeout": 15000,
+      "autoDeleteFailed": true,
+      "resetWhenUpdate": true,
+      "statsUrl": "",
+      "updateUrl": "https://turbo-slot.inautoit.workers.dev/api/app",
+      "channelUrl": "https://turbo-slot.inautoit.workers.dev/api/app"
+    },
+    "StatusBar": { "overlaysWebView": true, "style": "DARK" }
+  }
+}
