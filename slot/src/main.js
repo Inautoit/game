@@ -1883,14 +1883,19 @@ function miniTrack(def) {
 // ---- API de la comunidad (en Claude o en local se usa el servidor publicado) ----
 const API = /turbo-slot\.[a-z0-9-]+\.workers\.dev$/.test(location.hostname) ? '' : 'https://turbo-slot.inautoit.workers.dev';
 const playedCids = new Set();
+const ON_WEB = API === '';
+const SITE = 'https://turbo-slot.inautoit.workers.dev/';
+class NetError extends Error {}
+const netFail = () => { throw new NetError(ON_WEB ? 'No hay conexión con el servidor. Comprueba Internet e inténtalo otra vez.' : 'Desde aquí no se puede conectar con el servidor del juego.'); };
 async function apiGet(path) {
-  const r = await fetch(API + path, { cache: 'no-store' });
+  const r = await fetch(API + path, { cache: 'no-store' }).catch(netFail);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Sin conexión');
   return j;
 }
 function apiPost(path, data) {
   return fetch(API + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data || {}) })
+    .catch(netFail)
     .then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Sin conexión'); return j; });
 }
 // Circuito de la comunidad → definición jugable
@@ -2032,6 +2037,7 @@ function segButtons(box, items, cur, onPick) {
 }
 function renderEditor() {
   if (!draft) return;
+  if (draft.published && draft.pubKey && draftKey(draft) !== draft.pubKey) { draft.published = null; draft.pubKey = null; draft.lid = Math.random().toString(36).slice(2, 9); }
   if (draft.pieces.length > 1 && draft.saved) saveDraft();   // una vez guardado, se guarda solo con cada cambio
   const closed = closeDraft(draft);
   const info = $('edInfo');
@@ -2111,6 +2117,7 @@ $('edPublish').addEventListener('click', () => {
   $('pubInfo').textContent = `${lenTxt(draftDef(draft, closed))} · ${draft.lanes} carriles · ${draft.laps} vueltas. Cualquiera podrá jugarlo; no se puede borrar después.`;
   $('pubMsg').textContent = '';
   $('pubGo').disabled = false;
+  $('pubWeb').hidden = true;
   openModal('mPublish');
 });
 $('pubGo').addEventListener('click', async () => {
@@ -2121,12 +2128,27 @@ $('pubGo').addEventListener('click', async () => {
   $('pubGo').disabled = true; $('pubMsg').textContent = 'Publicando…';
   try {
     const r = await apiPost('/api/tracks', { name, author, lanes: draft.lanes, laps: draft.laps, scenery: draft.scenery, pieces: closed.pieces });
-    draft.name = name; draft.published = r.id; settings.pilot = author; saveSettings(); saveDraft();
+    draft.name = name; draft.published = r.id; draft.pubKey = draftKey(draft); settings.pilot = author; saveSettings(); saveDraft();
     commCache = { top: null, new: null };
     closeModal('mPublish'); sfx.best(); toast('🌍 ¡Circuito publicado!');
     circTab = 'comunidad'; commSort = 'new'; showCircuits(); demoRace();
-  } catch (e) { $('pubMsg').textContent = e.message; $('pubGo').disabled = false; }
+  } catch (e) {
+    $('pubMsg').textContent = e.message; $('pubGo').disabled = false;
+    // Sin conexión desde otra página (por ejemplo, dentro de Claude): llevar el circuito a la web
+    if (e instanceof NetError && !ON_WEB) {
+      draft.name = name; settings.pilot = author; saveSettings(); saveDraft();
+      $('pubWeb').hidden = false;
+    }
+  }
 });
+// Abre la web del juego con este circuito ya cargado en el editor
+$('pubWeb').addEventListener('click', () => {
+  const data = { name: draft.name, lanes: draft.lanes, laps: draft.laps, scenery: draft.scenery, radius: draft.radius, pieces: draft.pieces };
+  const enc = btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  window.open(`${SITE}?circuito=${enc}`, '_blank', 'noopener');
+});
+// Clave del contenido: si cambias algo después de publicar, se publica como circuito nuevo
+const draftKey = (d) => JSON.stringify([d.pieces, d.lanes, d.laps, d.scenery]);
 addEventListener('resize', () => { if (state === 'editor') renderEditor(); });
 $('playEditor').addEventListener('click', () => { initAudio(); sfx.click(); openEditor(null); });
 
@@ -2537,6 +2559,22 @@ applyQuality();
 showMenu();
 loadCarModels();
 overviewCamera(camPos, camTarget);
+// Enlace con un circuito (?circuito=…): se guarda en «Mis circuitos» y se abre en el editor
+{
+  const raw = new URLSearchParams(location.search).get('circuito');
+  if (raw && raw.length < 20000) {
+    try {
+      const j = JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g, '+').replace(/_/g, '/')))));
+      if (Array.isArray(j.pieces) && j.pieces.length < 90) {
+        const d = { ...newDraft(), name: String(j.name || '').slice(0, 28), lanes: j.lanes === 4 ? 4 : 2, laps: Math.max(1, Math.min(20, j.laps | 0 || 5)), scenery: ['verde', 'arena', 'noche'].includes(j.scenery) ? j.scenery : 'verde', radius: ['cerrada', 'media', 'abierta'].includes(j.radius) ? j.radius : 'media', pieces: j.pieces.filter((p) => Array.isArray(p) && (p[0] === 'S' || p[0] === 'C')).map((p) => p.map((v, i) => (i ? Number(v) : v))) };
+        draft = d; saveDraft();
+        history.replaceState(null, '', location.pathname);
+        showEditor();
+        toast('Circuito cargado: ya puedes publicarlo');
+      }
+    } catch { /* enlace roto */ }
+  }
+}
 // Enlace de invitación: ?sala=ABCD abre la pantalla online con el código puesto
 {
   const sala = (new URLSearchParams(location.search).get('sala') || '').toUpperCase();
