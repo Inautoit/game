@@ -12,6 +12,8 @@
 //  - Si la fuerza lateral en la guía supera lo que sujeta el coche, o la trasera
 //    gira demasiado, el coche se sale de la ranura.
 
+import * as DM from './dmath.js';
+
 export const DT = 1 / 480;      // paso de integración (s)
 export const SCALE = 0.126;     // metros por unidad de pista (78 mm entre carriles)
 const GRAV = 9.81;
@@ -68,7 +70,7 @@ export function step(c, track, d, thr, setup) {
   const { m, I, a, f, L, r } = BODY;
   const { kc, kl, slope } = trackAt(track, c.s, d);
   const v = c.v, th = c.th, w = c.w;
-  const cs = Math.cos(th), sn = Math.sin(th);
+  const cs = DM.cos(th), sn = DM.sin(th);
 
   // Cargas: peso repartido + imán sobre el eje trasero
   const rearFrac = (a - f) / (L - f);
@@ -83,21 +85,21 @@ export function step(c, track, d, thr, setup) {
   const omega = (setup.G * u) / r;
   let torque;
   if (thr > 0.015) {
-    const V = MOTOR.V * Math.pow(thr, setup.curve);
+    const V = MOTOR.V * DM.pow(thr, setup.curve);
     torque = (MOTOR.ke * (V - MOTOR.ke * omega)) / MOTOR.R;
   } else {
     torque = (-MOTOR.ke * MOTOR.ke * omega * setup.brake * 1.6) / MOTOR.R; // freno por cortocircuito
   }
   c.amps = torque / MOTOR.ke;
   c.rpm = Math.abs(omega) * 9.549;
-  let Fd = (torque * setup.G) / r - MOTOR.fric * Math.tanh(u * 20);
+  let Fd = (torque * setup.G) / r - MOTOR.fric * DM.tanh(u * 20);
 
   // Neumático trasero: fuerza lateral según el ángulo de deriva
-  const alpha = Math.atan2(wl, Math.max(Math.abs(u), 0.25));
-  let Fl = -setup.mu * Nr * Math.tanh(alpha / 0.09);
+  const alpha = DM.atan2(wl, Math.max(Math.abs(u), 0.25));
+  let Fl = -setup.mu * Nr * DM.tanh(alpha / 0.09);
   // Círculo de fricción
   const lim = setup.mu * Nr;
-  const mag = Math.hypot(Fd, Fl);
+  const mag = DM.hypot(Fd, Fl);
   let spin = 0;
   if (mag > lim) { const k = lim / mag; spin = 1 - k; Fd *= k; Fl *= k; }
   c.slip = Math.min(1.5, Math.abs(alpha) / 0.35);
@@ -107,7 +109,7 @@ export function step(c, track, d, thr, setup) {
   const Frx = Fd * cs - Fl * sn;
   const Fry = Fd * sn + Fl * cs;
   // Resistencias en el centro de gravedad (según la tangente) y pendiente
-  const drag = 0.012 * Nt * Math.tanh(v * 10) + 0.0006 * v * Math.abs(v) + m * GRAV * slope;
+  const drag = 0.012 * Nt * DM.tanh(v * 10) + 0.0006 * v * Math.abs(v) + m * GRAV * slope;
   const Fx = Frx - drag, Fy = Fry;
   // Momento de la fuerza trasera respecto al centro de gravedad, más el rozamiento
   // de la guía y las trencillas, que amortigua el bamboleo de la trasera

@@ -4,6 +4,7 @@
 // - salas online en tiempo real (un Durable Object por sala, con WebSockets).
 import { Buffer } from 'node:buffer';
 import { validateTrack, TRACKS } from './tracks.js';
+import { verifyLap } from './verify.js';
 
 const FILES = __FILES__;
 const cache = new Map();
@@ -98,6 +99,82 @@ async function tracksApi(req, env, url, parts) {
   return fail('No encontrado', 404);
 }
 
+// ---------------------------------------------------------------------------
+// Clasificación mundial con vueltas comprobadas
+// ---------------------------------------------------------------------------
+async function trackDefFor(db, key) {
+  if (key.startsWith('o:')) {
+    const t = TRACKS.find((x) => x.id === key.slice(2));
+    return t ? { pieces: t.pieces, lanes: t.lanes } : null;
+  }
+  if (key.startsWith('c:')) {
+    const r = await db.prepare('SELECT pieces, lanes FROM tracks WHERE id = ?').bind(key.slice(2)).first();
+    return r ? { pieces: JSON.parse(r.pieces), lanes: r.lanes } : null;
+  }
+  return null;
+}
+const keyOk = (k) => typeof k === 'string' && /^(o:[a-z0-9_-]{2,20}|c:[a-z0-9]{7})$/.test(k);
+async function lapsApi(req, env, url, parts) {
+  const db = env.DB;
+  // Ranking: GET /api/laps?track=o:ovalo&cls=iman&device=…
+  if (req.method === 'GET' && parts.length === 2) {
+    const key = url.searchParams.get('track'), cls = url.searchParams.get('cls') === 'pro' ? 'pro' : 'iman';
+    if (!keyOk(key)) return fail('Circuito no válido');
+    const dev = url.searchParams.get('device') || '';
+    const { results } = await db.prepare('SELECT name, time, car, liv, device, created FROM laps WHERE track_key = ? AND cls = ? ORDER BY time ASC LIMIT 50').bind(key, cls).all();
+    let mine = null;
+    if (dev) {
+      const r = await db.prepare('SELECT time FROM laps WHERE track_key = ? AND cls = ? AND device = ?').bind(key, cls, dev).first();
+      if (r) { const p = await db.prepare('SELECT COUNT(*) AS n FROM laps WHERE track_key = ? AND cls = ? AND time < ?').bind(key, cls, r.time).first(); mine = { time: r.time, pos: p.n + 1 }; }
+    }
+    const total = await db.prepare('SELECT COUNT(*) AS n FROM laps WHERE track_key = ? AND cls = ?').bind(key, cls).first();
+    return json({ laps: results.map((r) => ({ name: r.name, time: r.time, car: r.car, liv: r.liv, me: !!dev && r.device === dev, created: r.created })), mine, total: total.n });
+  }
+  // Fantasma del récord: GET /api/laps/ghost?track=…&cls=…
+  if (req.method === 'GET' && parts[2] === 'ghost') {
+    const key = url.searchParams.get('track'), cls = url.searchParams.get('cls') === 'pro' ? 'pro' : 'iman';
+    if (!keyOk(key)) return fail('Circuito no válido');
+    const r = await db.prepare('SELECT name, time, car, liv, lane, setup, s0, t0, go_t, inputs, lap FROM laps WHERE track_key = ? AND cls = ? ORDER BY time ASC LIMIT 1').bind(key, cls).first();
+    if (!r) return json({ ghost: null });
+    return json({ ghost: { ...r, setup: JSON.parse(r.setup), inputs: JSON.parse(r.inputs), goT: r.go_t } });
+  }
+  // Enviar una vuelta: POST /api/laps
+  if (req.method === 'POST' && parts.length === 2) {
+    if (Number(req.headers.get('content-length') || 0) > 600000) return fail('Vuelta demasiado grande');
+    let b;
+    try { b = await req.json(); } catch { return fail('Datos no válidos'); }
+    const key = b.track;
+    if (!keyOk(key)) return fail('Circuito no válido');
+    const device = String(b.device || '');
+    if (!/^[a-z0-9]{12,32}$/.test(device)) return fail('Dispositivo no válido');
+    let name = clean(b.name, 16); if (name.length < 2 || isBad(name)) name = 'Piloto';
+    const def = await trackDefFor(db, key);
+    if (!def) return fail('Ese circuito no existe', 404);
+    const setup = { magnet: String(b.setup?.magnet || 'medio'), gear: String(b.setup?.gear || 'medio'), tire: String(b.setup?.tire || 'blando'), brake: Number(b.setup?.brake), curve: Number(b.setup?.curve) };
+    if (!Number.isFinite(setup.brake) || !Number.isFinite(setup.curve)) return fail('Reglaje no válido');
+    const cls = setup.magnet === 'sin' ? 'pro' : 'iman';
+    const sub = { lane: b.lane | 0, setup, s0: Number(b.s0), t0: Number(b.t0), goT: Number(b.goT), inputs: b.inputs, lap: b.lap, time: Number(b.time) };
+    // La comprobación (repetir la vuelta entera) se hace en un Durable Object: tiene más tiempo de CPU
+    const ver = env.ROOMS.get(env.ROOMS.idFromName('__VERIFICADOR__'));
+    const vr = await (await ver.fetch(new Request('https://sala/verify', { method: 'POST', body: JSON.stringify({ sub, def }) }))).json();
+    if (!vr.ok) return fail(vr.error || 'Vuelta no válida', 422);
+    const car = clean(b.car, 12), liv = clean(b.liv, 12);
+    const prev = await db.prepare('SELECT time FROM laps WHERE track_key = ? AND cls = ? AND device = ?').bind(key, cls, device).first();
+    if (!prev || vr.time < prev.time) {
+      await db.prepare(`INSERT INTO laps (track_key, cls, device, name, time, car, liv, lane, setup, s0, t0, go_t, inputs, lap, created)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(track_key, cls, device) DO UPDATE SET name=excluded.name, time=excluded.time, car=excluded.car, liv=excluded.liv, lane=excluded.lane,
+          setup=excluded.setup, s0=excluded.s0, t0=excluded.t0, go_t=excluded.go_t, inputs=excluded.inputs, lap=excluded.lap, created=excluded.created`)
+        .bind(key, cls, device, name, vr.time, car, liv, sub.lane, JSON.stringify(setup), sub.s0, sub.t0, sub.goT, JSON.stringify(sub.inputs), sub.lap, Date.now()).run();
+    }
+    const best = Math.min(vr.time, prev ? prev.time : Infinity);
+    const pos = await db.prepare('SELECT COUNT(*) AS n FROM laps WHERE track_key = ? AND cls = ? AND time < ?').bind(key, cls, best).first();
+    const top = await db.prepare('SELECT name, time FROM laps WHERE track_key = ? AND cls = ? ORDER BY time ASC LIMIT 1').bind(key, cls).first();
+    return json({ ok: true, time: vr.time, best, pos: pos.n + 1, improved: !prev || vr.time < prev.time, wr: top });
+  }
+  return fail('No encontrado', 404);
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -121,6 +198,9 @@ export default {
         if (req.headers.get('Upgrade') !== 'websocket') return fail('Se necesita WebSocket', 426);
         const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
         return stub.fetch(req);
+      }
+      if (parts[1] === 'laps') {
+        try { return await lapsApi(req, env, url, parts); } catch (e) { return fail('Error del servidor', 500); }
       }
       if (parts[1] === 'tracks') {
         try { return await tracksApi(req, env, url, parts); } catch (e) { return fail('Error del servidor', 500); }
@@ -200,6 +280,14 @@ export class Room {
   async fetch(req) {
     const url = new URL(req.url);
     // Emparejador de la partida rápida: el mismo código para los que lleguen en los próximos segundos
+    if (url.pathname === '/verify') {
+      try {
+        const { sub, def } = await req.json();
+        return new Response(JSON.stringify(verifyLap(sub, def)), { headers: { 'content-type': 'application/json' } });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: 'No se pudo comprobar la vuelta' }), { headers: { 'content-type': 'application/json' } });
+      }
+    }
     if (url.pathname === '/match') {
       const now = Date.now();
       if (!this.mm || now > this.mm.until || this.mm.n >= MAX) this.mm = { code: newId(4, 'ABCDEFGHJKLMNPQRSTUVWXYZ'), until: now + 11000, n: 0 };

@@ -96,11 +96,7 @@ CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... ./deploy.sh
 
 ## Próximas fases
 
-1. **Clasificación mundial** con verificación en el servidor: al ser la física
-   determinista, el servidor puede volver a simular la vuelta con tus entradas y
-   comprobar el tiempo antes de aceptarlo. Descarga de fantasmas de los mejores.
-2. **Carreras online** en directo.
-3. **App nativa** (iOS / Android) empaquetando la web.
+1. **App nativa** (iOS / Android) empaquetando la web.
 
 «Scalextric» es una marca registrada de su propietario; Turbo Slot no está
 relacionado con ella.
@@ -134,3 +130,21 @@ relacionado con ella.
   con el servidor para que la salida sea a la vez, y la sala recoge los tiempos de llegada.
   El enlace `?sala=ABCD` abre la sala directamente.
 - Publicar: `SKIP_KV=1 bash deploy.sh` publica sin volver a subir los modelos y las texturas.
+
+## Clasificación mundial comprobada y fantasma del récord
+
+- **Física idéntica en todas partes** (`src/dmath.js`): seno, coseno, arcotangente, exp, log, pow y tanh hechos solo
+  con suma, resta, multiplicación, división y raíz cuadrada (exactas en IEEE 754). `Math.sin` y compañía pueden variar
+  en el último decimal entre navegadores; con esto la misma secuencia de gatillo da el mismo tiempo en un iPhone,
+  un Android y el servidor, al último bit.
+- **Grabación** (`src/main.js`): en Práctica, desde una parada (salida o tras salirte) se guarda el gatillo de cada
+  paso de física (redondeado a milésimas y comprimido en tramos `[valor, pasos]`).
+- **Comprobación** (`src/verify.js`, en el Durable Object `__VERIFICADOR__`): el servidor repite la vuelta con el
+  mismo circuito, carril y reglaje. Si el coche se sale, no completa la vuelta o el tiempo no sale exacto, se rechaza.
+  Máximo 5 minutos de simulación por envío.
+- **API**: `GET /api/laps?track=o:<id>|c:<id>&cls=iman|pro&device=…` (top 50 y tu puesto),
+  `GET /api/laps/ghost` (las pulsaciones del récord) y `POST /api/laps`. Se guarda la mejor vuelta de cada
+  dispositivo por circuito y clase (tabla `laps`).
+- **Fantasma dorado**: el juego descarga las pulsaciones del récord y las repite con su propia física para dibujar
+  el coche del récordman junto al tuyo, vuelta a vuelta.
+- Entran los circuitos oficiales y los publicados en la comunidad. Las dos clases (con imán / sin imán) van aparte.

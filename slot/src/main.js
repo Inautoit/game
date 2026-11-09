@@ -3,6 +3,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { TRACKS, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } from './editor.js';
 import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
+import { replay } from './verify.js';
 import { step, newCarState, resolveSetup, DEFAULT_SETUP, SETUP_OPTIONS, DT, SCALE } from './physics.js';
 import { buildProfile, aiThrottle } from './ai.js';
 import { makeTelemetry, telStep, telLap, dangerColor, drawTrace, SECTORS } from './telemetry.js';
@@ -876,7 +877,7 @@ function loadCarModels() { return loadCar('muscle'); }
 function paintModel(src, liv, ghost, car) {
   const m = src.pivot.clone(true);
   const cache = new Map();
-  const ghostMat = new THREE.MeshBasicMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.28, depthWrite: false });
+  const ghostMat = new THREE.MeshBasicMaterial({ color: ghost === 'gold' ? 0xffcc33 : 0x9fe3ff, transparent: true, opacity: ghost === 'gold' ? 0.42 : 0.28, depthWrite: false });
   const tintCol = new THREE.Color(0xffffff).lerp(new THREE.Color(liv.color), 0.8);
   m.traverse((o) => {
     if (!o.isMesh) return;
@@ -1245,6 +1246,7 @@ function clearCars() {
   for (const ch of [...carsGroup.children]) if (ch !== sparkPts && ch !== skids) { carsGroup.remove(ch); disposeGroup(ch); }
   cars = [];
   ghost = null;
+  wrGhost = null;
   clearSkids();
   brakeGroups.length = 0;
 }
@@ -1348,6 +1350,9 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
     goT: mode === 'practica' ? 1.2 : online ? Math.max(1, (online.startAt - room.serverNow()) / 1000) : 4.2 + Math.random() * 0.8, lightsOn: 0, started: false, finishedAt: null, humans, entries,
     cls: classOf(entries[0].setupRaw),
   };
+  // Clasificación mundial (práctica en circuitos oficiales o publicados)
+  race.rankKey = mode === 'practica' ? rankKeyOf(def) : null;
+  if (race.rankKey) loadWorldRecord(race);
   state = 'countdown';
   heliH = null; camLook = 0;
   camMode = DEFAULT_CAM;
@@ -1359,6 +1364,7 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
 }
 
 function crashCar(c) {
+  c.vlog = null;   // la vuelta con salida no cuenta; se vuelve a grabar desde la parada
   const p = at(c.st.s, c.d);
   c.crashes++;
   const psi = p.h + c.st.th;
@@ -1400,6 +1406,13 @@ function physStep(c) {
   if (c.finished && !c.human) thr = Math.min(thr, 0.35);
   if (hold) { thr = 0; c.st.v = 0; c.st.w = 0; c.st.th = 0; }
   c.thr = thr;
+  // Clasificación mundial: se graban las pulsaciones desde la última parada (salida o tras salirse)
+  if (!hold && c.human && race.rankKey) {
+    if (!c.vlog) { c.st = newCarState(c.st.s); c.vlog = { s0: c.st.s, t0: race.simTPrev, inputs: [], steps: 0, cross: 0 }; }
+    const L = c.vlog.inputs;
+    if (L.length && L[L.length - 2] === thr) L[L.length - 1]++; else L.push(thr, 1);
+    c.vlog.steps++;
+  }
   const before = c.st.s;
   step(c.st, physTrack, c.d, thr, c.setup);
   if (hold) c.st.s = before;
@@ -1408,6 +1421,7 @@ function physStep(c) {
     c.st.s -= T.L;
     // Instante exacto del paso por meta (interpolado dentro del paso)
     const over = (c.st.s * SCALE) / Math.max(0.05, c.st.v);
+    if (c.vlog) c.vlog.cross++;
     crossLine(c, race.simT - over - race.goT);
   }
   if (c.tel) telStep(c.tel, c.st, c.st.s, race.simT - race.goT, race.started && c.lap > 0 && !c.finished);
@@ -1439,6 +1453,7 @@ function crossLine(c, now) {
       flashText(c.player, rec ? '¡Récord personal!' : '¡Primera vuelta!');
       if (race.mode === 'practica') store.set(ghostKey(race.def.id, race.cls), { t: lt, d: c.d, s: c.rec });
     } else if (lt < prevBest) { sfx.best(); flashText(c.player, '¡Mejor vuelta!'); } else sfx.lap();
+    if (race.rankKey && c.vlog && c.vlog.cross >= 2 && c.player === 0) submitLap(c, lt);
     // Récord del circuito de la comunidad (el servidor guarda solo el mejor)
     if (race.def.cid && lt === c.best && race.humans === 1) {
       const wr = race.def.community && race.def.community.best_time;
@@ -1488,13 +1503,14 @@ function stepRace(dt) {
       }
     }
   }
-  for (const c of cars) if (c.human) c.thrIn = readThrottle(c.player, dt);
+  for (const c of cars) if (c.human) c.thrIn = Math.round(clamp(readThrottle(c.player, dt), 0, 1) * 1000) / 1000;
   if (race.mode === 'online') onlineTick();
   // Física a paso fijo
   race.acc += dt;
   let n = 0;
   while (race.acc >= DT && n < 60) {
     race.acc -= DT; n++;
+    race.simTPrev = race.simT;
     race.simT += DT;
     for (const c of cars) physStep(c);
   }
@@ -1531,6 +1547,16 @@ function stepRace(dt) {
       ghost.mesh.visible = true;
       placeCar(ghost.mesh, ghost.data.s[i * 2], ghost.data.d, ghost.data.s[i * 2 + 1]);
     } else ghost.mesh.visible = false;
+  }
+  // Fantasma del récord mundial (dorado), sincronizado con tu vuelta
+  if (wrGhost && race.started && wrGhost.race === race) {
+    const me = cars[0];
+    const tLap = me.lap > 0 ? race.simT - race.goT - me.lapStart : -1;
+    const i = Math.floor(tLap * 60);
+    if (i >= 0 && i * 2 + 1 < wrGhost.s.length) {
+      wrGhost.mesh.visible = true;
+      placeCar(wrGhost.mesh, wrGhost.s[i * 2], wrGhost.d, wrGhost.s[i * 2 + 1]);
+    } else wrGhost.mesh.visible = false;
   }
   updateSparks(dt);
   // Fin
@@ -1875,6 +1901,11 @@ function updateHud(force) {
     card.querySelector('.tkmh').textContent = kmh;
     const dEl = card.querySelector('.tdelta');
     if (delta != null && race.mode === 'practica') { dEl.textContent = fmtDelta(delta); dEl.className = 'tdelta ' + (delta <= 0 ? 'good' : 'bad'); }
+    if (race.rankKey && c.player === 0) {
+      const w = document.createElement('span'); w.className = 'wr-line';
+      w.textContent = race.wr ? `Récord mundial ${fmt(race.wr.time)} · ${race.wr.name}${race.wrMine ? ` · tú ${race.wrMine.pos}º` : ''}` : 'Récord mundial: ¡aún libre!';
+      card.querySelector('.tmain').appendChild(w);
+    }
     ui.hudRows.appendChild(card);
   }
   // Lista de vueltas (práctica)
@@ -2646,6 +2677,87 @@ function champAfterRace(order) {
 $('playChamp').addEventListener('click', () => { initAudio(); sfx.click(); showChamp(); });
 $('chBack').addEventListener('click', () => { sfx.click(); champ = null; showMenu(); });
 
+// ---- Clasificación mundial (vueltas comprobadas por el servidor) y fantasma del récord ----
+const deviceId = (() => { let d = store.get('device', null); if (!d) { d = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join(''); store.set('device', d); } return d; })();
+function rankKeyOf(def) {
+  if (TRACKS.includes(def)) return 'o:' + def.id;
+  if (def.cid) return 'c:' + def.cid;
+  return null;
+}
+let wrGhost = null;   // { race, mesh, s, d, name, time }
+function loadWorldRecord(r) {
+  const key = r.rankKey, cls = r.cls;
+  r.wr = null;
+  apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${cls}&device=${deviceId}`).then((j) => {
+    if (race !== r) return;
+    r.wr = j.laps[0] || null; r.wrMine = j.mine; r.wrTotal = j.total;
+    if (r.wr) flashText(0, `Récord mundial: ${fmt(r.wr.time)} · ${r.wr.name}`);
+    updateHud(true);
+  }).catch(() => {});
+  // El fantasma: se repite la vuelta del récord con la misma física
+  apiGet(`/api/laps/ghost?track=${encodeURIComponent(key)}&cls=${cls}`).then((j) => {
+    if (race !== r || !j.ghost) return;
+    const g = j.ghost;
+    const res = replay({ def: r.def, track: physTrack, lane: g.lane, setupRaw: g.setup, s0: g.s0, t0: g.t0, goT: g.goT, inputs: g.inputs }, g.lap);
+    if (!res.ghost || !res.ghost.length || race !== r) return;
+    if (wrGhost && wrGhost.mesh.parent) carsGroup.remove(wrGhost.mesh);
+    const liv = LIVERIES.find((l) => l.id === g.liv) || LIVERIES[3];
+    const mesh = makeCarMesh(liv, 'gold', CARS.some((x) => x.id === g.car) ? g.car : 'muscle');
+    mesh.visible = false;
+    carsGroup.add(mesh);
+    wrGhost = { race: r, mesh, s: res.ghost, d: res.d, name: g.name, time: g.time };
+  }).catch(() => {});
+}
+function submitLap(c, lt) {
+  const key = race.rankKey, cls = race.cls;
+  const bestKey = `wrsent.${key}|${cls}`;
+  const sent = store.get(bestKey, Infinity);
+  if (!(lt < sent)) return;
+  const body = {
+    track: key, lane: c.lane, setup: c.setupRaw, car: c.carId, liv: c.liv.id, name: settings.pilot || 'Piloto', device: deviceId,
+    s0: c.vlog.s0, t0: c.vlog.t0, goT: race.goT, inputs: c.vlog.inputs.slice(), lap: c.vlog.cross - 1, time: lt,
+  };
+  const r = race;
+  apiPost('/api/laps', body).then((j) => {
+    store.set(bestKey, j.best);
+    if (race !== r) return;
+    r.wrMine = { time: j.best, pos: j.pos };
+    if (j.wr) r.wr = { ...(r.wr || {}), name: j.wr.name, time: j.wr.time };
+    if (j.improved && j.pos === 1) { sfx.finish(); flashText(0, '¡Récord mundial!'); toast('Vuelta comprobada: ¡récord mundial!'); }
+    else if (j.improved) toast(`Vuelta comprobada · ${j.pos}º del mundo`);
+    updateHud(true);
+  }).catch((e) => { if (race === r) toast(`Ranking: ${e.message}`); });
+}
+// Pantalla del ranking de un circuito
+let rankDef = null, rankCls = 'iman';
+function openRanking(def) {
+  rankDef = def;
+  const key = rankKeyOf(def);
+  $('rkTitle').textContent = `Ranking mundial · ${def.name}`;
+  document.querySelectorAll('#rkTabs button').forEach((b) => b.classList.toggle('on', b.dataset.cls === rankCls));
+  const box = $('rkList'); box.innerHTML = '<div class="circ-empty">Cargando…</div>';
+  $('rkMine').textContent = '';
+  openModal('mRank');
+  if (!key) { box.innerHTML = '<div class="circ-empty">Este circuito todavía no está publicado: publícalo para tener ranking.</div>'; return; }
+  apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${rankCls}&device=${deviceId}`).then((j) => {
+    box.innerHTML = '';
+    if (!j.laps.length) { box.innerHTML = '<div class="circ-empty">Nadie tiene tiempo todavía. ¡Sé el primero en Práctica!</div>'; return; }
+    j.laps.slice(0, 30).forEach((l, i) => {
+      const row = document.createElement('div'); row.className = 'rk-row' + (l.me ? ' me' : '');
+      const pos = document.createElement('b'); pos.textContent = `${i + 1}º`;
+      const dot = document.createElement('i'); const lv = LIVERIES.find((x) => x.id === l.liv); dot.style.background = lv ? '#' + lv.color.toString(16).padStart(6, '0') : '#888';
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = l.name;
+      const car = document.createElement('small'); car.textContent = (CARS.find((x) => x.id === l.car) || {}).name || '';
+      const tm = document.createElement('span'); tm.className = 'tm'; tm.textContent = fmt(l.time);
+      row.append(pos, dot, nm, car, tm); box.appendChild(row);
+    });
+    $('rkMine').textContent = j.mine ? `Tu mejor vuelta: ${fmt(j.mine.time)} · ${j.mine.pos}º de ${j.total}` : `${j.total} ${j.total === 1 ? "piloto" : "pilotos"} en el ranking. Haz una vuelta en Práctica para entrar.`;
+  }).catch((e) => { box.innerHTML = ''; const d = document.createElement('div'); d.className = 'circ-empty'; d.textContent = e.message; box.appendChild(d); });
+}
+$('garRank').addEventListener('click', () => { sfx.click(); rankCls = classOf(editing ? editing.setupRaw : DEFAULT_SETUP); openRanking(selDef); });
+$('pauseRank').addEventListener('click', () => { sfx.click(); rankCls = race.cls; openRanking(race.def); });
+document.querySelectorAll('#rkTabs button').forEach((b) => b.addEventListener('click', () => { sfx.click(); rankCls = b.dataset.cls; openRanking(rankDef); }));
+
 // ---- Créditos y tienda ----
 const coins = () => store.get('coins', 300);
 // Todos los coches están disponibles desde el principio (no hay que comprarlos)
@@ -2715,6 +2827,7 @@ let entries = [];
 let editing = null; // { liv, setupRaw }
 function showGarage() {
   state = 'garage';
+  $('garRank').hidden = !(mode === 'practica' && selDef && rankKeyOf(selDef));
   entries = [];
   beginEntry();
   setScreen('garage');
@@ -2810,6 +2923,7 @@ function pause() {
   for (const c of cars) updateEngine(c.engine, c.st, false);
   pads.forEach((p) => { p.id = null; p.value = 0; });
   $('quitBtn').querySelector('.btn-main').textContent = race.mode === 'practica' ? 'Terminar práctica' : 'Salir';
+  $('pauseRank').hidden = !race.rankKey;
   openModal('mPause');
 }
 function resume() {
@@ -2939,7 +3053,7 @@ Promise.race([document.fonts ? Promise.all([document.fonts.load('italic 700 20px
 
 // Gancho para pruebas automáticas
 window.__slot = {
-  get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; },
+  get state() { return state; }, get cars() { return cars; }, get race() { return race; }, get T() { return T; }, get wrGhost() { return wrGhost; },
   get actx() { return actx; }, get slotBuf() { return slotBuf; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },

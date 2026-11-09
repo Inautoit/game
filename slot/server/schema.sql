@@ -17,3 +17,23 @@ CREATE TABLE IF NOT EXISTS tracks (
 );
 CREATE INDEX IF NOT EXISTS tracks_created ON tracks(created DESC);
 CREATE INDEX IF NOT EXISTS tracks_plays ON tracks(plays DESC);
+
+-- Clasificación mundial: la mejor vuelta comprobada de cada piloto (dispositivo) por circuito y clase.
+-- inputs = pulsaciones del gatillo desde la última parada; el servidor repite la vuelta con
+-- la física del juego y solo la guarda si da exactamente el mismo tiempo.
+CREATE TABLE IF NOT EXISTS laps (
+  track_key TEXT NOT NULL,       -- 'o:ovalo' (oficial) o 'c:abc1234' (comunidad)
+  cls TEXT NOT NULL,             -- 'iman' | 'pro'
+  device TEXT NOT NULL,          -- identificador aleatorio del dispositivo
+  name TEXT NOT NULL,
+  time REAL NOT NULL,
+  car TEXT, liv TEXT,
+  lane INTEGER NOT NULL,
+  setup TEXT NOT NULL,           -- JSON del reglaje
+  s0 REAL NOT NULL, t0 REAL NOT NULL, go_t REAL NOT NULL,
+  inputs TEXT NOT NULL,          -- JSON [valor, pasos, …]
+  lap INTEGER NOT NULL,
+  created INTEGER NOT NULL,
+  PRIMARY KEY (track_key, cls, device)
+);
+CREATE INDEX IF NOT EXISTS laps_rank ON laps(track_key, cls, time);
