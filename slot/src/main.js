@@ -1120,9 +1120,11 @@ function updateHalo(c) {
 // ---------------------------------------------------------------------------
 // Cámara: TV (vista de mesa), persecución y a bordo
 // ---------------------------------------------------------------------------
-const CAMS = ['tv', 'heli', 'persecucion', 'bordo'];
+const CAMS = ['heli', 'tv', 'persecucion', 'bordo'];
 const CAM_NAME = { tv: 'Cámara TV', heli: 'Helicóptero', persecucion: 'Persecución', bordo: 'A bordo' };
-let camMode = settings.cam || 'tv';
+// La cámara principal es la de helicóptero: cada carrera empieza con ella
+const DEFAULT_CAM = 'heli';
+let camMode = DEFAULT_CAM;
 const camPos = new THREE.Vector3(), camTarget = new THREE.Vector3();
 let camLook = 0, heliH = null;
 const camGoalPos = new THREE.Vector3(), camGoalTarget = new THREE.Vector3();
@@ -1314,6 +1316,7 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
   };
   state = 'countdown';
   heliH = null; camLook = 0;
+  camMode = DEFAULT_CAM;
   setupSliders();
   setScreen('hud');
   T.lights.forEach((m) => { m.material.emissive.setHex(0x000000); m.material.color.setHex(0x331111); });
@@ -2697,7 +2700,6 @@ function resume() {
 }
 function toggleCam() {
   camMode = CAMS[(CAMS.indexOf(camMode) + 1) % CAMS.length];
-  settings.cam = camMode; saveSettings();
   toast('' + CAM_NAME[camMode]);
 }
 $('pauseBtn').addEventListener('click', pause);
