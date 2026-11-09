@@ -20,46 +20,71 @@ function trackSampler(P, step = 3) {
 // Altura del terreno: sube por debajo de la pista cuando va en alto (con taludes), baja hasta la
 // pista que pasa por abajo (para no taparla) y forma un pico dentro de la espiral.
 export function makeTerrain(P, half) {
-  const { pts, dist } = trackSampler(P, 6);
+  const { pts, dist } = trackSampler(P, 5);
   const ymax = Math.max(...pts.map((p) => p.y));
   // Centro de la espiral: media de los centros de curvatura de las curvas en lo alto (las del giro mayoritario)
-  const hiCurve = pts.filter((p) => p.y > ymax - 1.2 && p.k);
-  const pos = hiCurve.filter((p) => p.k > 0), neg = hiCurve.filter((p) => p.k < 0);
-  const spiral = pos.length >= neg.length ? pos : neg;
+  // (los puntos en alto cuyos centros de curvatura coinciden en el mismo sitio: la espiral)
+  const cells = new Map();
+  for (const p of pts) if (p.y > ymax - 1.8 && p.k) {
+    const cxp = p.x - Math.sin(p.h) / p.k, czp = p.z + Math.cos(p.h) / p.k;
+    const k = Math.round(cxp) + ',' + Math.round(czp);
+    if (!cells.has(k)) cells.set(k, []);
+    cells.get(k).push(p);
+  }
+  let spiral = [];
+  for (const g of cells.values()) if (g.length > spiral.length) spiral = g;
   let sx = 0, sz = 0;
   for (const p of spiral) { sx += p.x - Math.sin(p.h) / p.k; sz += p.z + Math.cos(p.h) / p.k; }
   const pc = spiral.length ? { x: sx / spiral.length, z: sz / spiral.length } : { x: 0, z: 0 };
   const rSp = spiral.length ? Math.abs(1 / spiral[0].k) : 3;
   const rIn = Math.max(0.8, rSp - half - 0.25);
-  const peak = ymax + 3.2;   // la cima, dentro de la espiral (~40 cm por encima de la pista más alta)
-  const hp = pts.filter((p) => p.y > 0.05);
-  const reachHi = half + 0.3 + (ymax + 0.2) / 0.55;   // más lejos de esto, la pista en alto ya no levanta terreno
-  const h = (x, z) => {
-    let raise = -0.05, carve = Infinity;
-    for (const p of hp) {
-      const dx = x - p.x, dz = z - p.z, d2 = dx * dx + dz * dz;
-      if (d2 > reachHi * reachHi) continue;
-      const r = p.y - 0.07 - Math.max(0, Math.sqrt(d2) - half - 0.3) * 0.55;
-      if (r > raise) raise = r;
+  const peak = ymax + 3.2;          // la cima dentro de la espiral
+  const massif = ymax + 4.2;        // la montaña que llena el interior del circuito
+  // Cubos de 4 unidades para mirar solo los puntos de pista cercanos
+  const B = 4, buckets = new Map();
+  const key = (i, j) => i * 100003 + j;
+  for (const p of pts) { const k = key(Math.floor(p.x / B), Math.floor(p.z / B)); if (!buckets.has(k)) buckets.set(k, []); buckets.get(k).push(p); }
+  const near = (x, z, r, fn) => {
+    const i0 = Math.floor((x - r) / B), i1 = Math.floor((x + r) / B), j0 = Math.floor((z - r) / B), j1 = Math.floor((z + r) / B);
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const l = buckets.get(key(i, j)); if (l) for (const p of l) fn(p); }
+  };
+  // ¿Dentro del circuito? (regla del par/impar con la línea central, simplificada)
+  const poly = []; for (let i = 0; i < P.length; i += 20) poly.push(P[i]);
+  const inside = (x, z) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a.z > z) !== (b.z > z) && x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z) + a.x) c = !c;
     }
-    if (raise <= -0.05 && Math.hypot(x - pc.x, z - pc.z) >= rIn) return -0.05;
-    for (const p of pts) {
+    return c;
+  };
+  const R = 22;   // a partir de aquí la pista ya no influye en el terreno
+  const h = (x, z) => {
+    let raise = -0.05, carve = Infinity, dmin2 = R * R;
+    near(x, z, R, (p) => {
       const dx = x - p.x, dz = z - p.z, d2 = dx * dx + dz * dz;
-      const lim = (Math.max(raise, peak) - p.y) / 2.6 + half + 0.2;
-      if (d2 > lim * lim) continue;
-      const c = p.y - 0.07 + Math.max(0, Math.sqrt(d2) - half - 0.2) * 2.6;
+      if (d2 < dmin2) dmin2 = d2;
+      const d = Math.sqrt(d2);
+      if (p.y > 0.05) { const r = p.y - 0.07 - Math.max(0, d - half - 0.3) * 0.55; if (r > raise) raise = r; }
+      const c = p.y - 0.07 + Math.max(0, d - half - 0.2) * 2.6;
       if (c < carve) carve = c;
+    });
+    const dmin = Math.sqrt(dmin2);
+    if (inside(x, z)) {
+      // Montaña con laderas y crestas: sube al alejarse de la pista, con relieve irregular
+      const rough = 0.72 + 0.28 * (0.5 + 0.25 * (Math.sin(x * 0.33 + 1.7) * Math.cos(z * 0.27) + Math.sin(x * 0.11 + z * 0.17 + 0.6)));
+      raise = Math.max(raise, massif * (1 - Math.exp(-Math.max(0, dmin - half - 0.7) / 6.5)) * rough);
     }
     const dc = Math.hypot(x - pc.x, z - pc.z);
     if (dc < rIn) raise = Math.max(raise, ymax - 0.07 + (peak - ymax) * Math.pow(1 - dc / rIn, 0.6));
     return Math.min(raise, carve);
   };
-  return { h, dist, ymax, peak };
+  return { h, dist, ymax, peak: Math.max(peak, massif * 0.95) };
 }
 
 export function buildMountain(group, terrain, table, half, seed) {
   const { tw, td, cx, cz } = table;
-  const res = 0.42;
+  const res = Math.max(0.42, Math.sqrt((tw * td) / 26000));   // en mesas enormes, celdas algo mayores
   const nx = Math.ceil(tw / res), nz = Math.ceil(td / res);
   const geo = new THREE.PlaneGeometry(tw, td, nx, nz);
   geo.rotateX(-Math.PI / 2);
@@ -75,7 +100,7 @@ export function buildMountain(group, terrain, table, half, seed) {
   const nrm = geo.attributes.normal;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i), steep = 1 - nrm.getY(i);
-    if (y > terrain.ymax + 1.3) c.setRGB(0.93, 0.95, 0.97);                     // nieve
+    if (y > terrain.peak - 1.5) c.setRGB(0.93, 0.95, 0.97);                     // nieve (solo en las cumbres)
     else if (steep > 0.35) c.setRGB(0.42 + r() * 0.05, 0.4, 0.37);             // roca
     else c.setRGB(0.24 + r() * 0.06, 0.42 + r() * 0.08 + Math.min(0.1, y * 0.02), 0.2);  // hierba
     col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
@@ -87,12 +112,13 @@ export function buildMountain(group, terrain, table, half, seed) {
   group.add(mesh);
   // Pinos y rocas (instanciados: muchas copias baratas)
   const crowns = [], trunks = [], rocks = [];
-  for (let k = 0; k < 900 && crowns.length < 90; k++) {
+  const maxTrees = Math.min(260, Math.round((tw * td) / 28));
+  for (let k = 0; k < maxTrees * 10 && crowns.length < maxTrees; k++) {
     const x = cx + (r() - 0.5) * (tw - 1.2), z = cz + (r() - 0.5) * (td - 1.2);
     const d = terrain.dist(x, z);
     if (d < half + 0.75) continue;
     const y = terrain.h(x, z);
-    if (y > terrain.ymax + 1.6) continue;                       // en la nieve no
+    if (y > terrain.peak - 1.7) continue;                       // en la nieve no
     if (y < 0.1 && r() < 0.7) continue;                         // en el llano, pocos
     const s = 0.8 + r() * 0.7;
     crowns.push([x, y, z, s]); trunks.push([x, y, z, s]);
@@ -195,10 +221,16 @@ export function buildCity(group, P, half, table, seed, night) {
   // Edificios: se colocan donde no tocan la pista, la acera, el mar ni otros edificios
   const boxes = [], geos = [];
   const palette = ['#d8cfc0', '#c7b9a4', '#e3dccd', '#b9a58b', '#cdbfb0', '#a9b2b8', '#d9c3a5', '#bfae9a'].map((h) => new THREE.Color(h));
-  for (let k = 0; k < 1500 && boxes.length < 70; k++) {
-    const w = 0.9 + r() * 1.6, d = 0.9 + r() * 1.6;
-    const x = minX + w / 2 + r() * (tw - 0.8 - w), z = minZ + d / 2 + r() * (td - 0.8 - d);
-    if (x + w / 2 > maxX || z + d / 2 > maxZ) continue;
+  // Manzanas: una cuadrícula de solares de 2,6 unidades con calles estrechas entre ellos
+  const maxB = 700, G = 2.6;
+  const lots = [];
+  for (let x = minX + G / 2; x < maxX - G / 2; x += G) for (let z = minZ + G / 2; z < maxZ - G / 2; z += G) lots.push([x, z]);
+  for (let i = lots.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [lots[i], lots[j]] = [lots[j], lots[i]]; }
+  for (const [lx, lz] of lots) {
+    if (boxes.length >= maxB) break;
+    if (r() < 0.12) continue;   // algún solar vacío (plaza)
+    const w = G - 0.35 - r() * 0.5, d = G - 0.35 - r() * 0.5;
+    const x = lx + (r() - 0.5) * 0.2, z = lz + (r() - 0.5) * 0.2;
     let ok = true;
     for (const [px, pz] of [[x, z], [x - w / 2, z - d / 2], [x + w / 2, z - d / 2], [x - w / 2, z + d / 2], [x + w / 2, z + d / 2], [x, z - d / 2], [x, z + d / 2], [x - w / 2, z], [x + w / 2, z]]) {
       if (dist(px, pz) < half + 0.75 || inSea(pz)) { ok = false; break; }
@@ -206,7 +238,9 @@ export function buildCity(group, P, half, table, seed, night) {
     if (!ok) continue;
     for (const b of boxes) if (Math.abs(b.x - x) < (b.w + w) / 2 + 0.2 && Math.abs(b.z - z) < (b.d + d) / 2 + 0.2) { ok = false; break; }
     if (!ok) continue;
-    const h = 0.9 + r() * r() * 4.2;
+    // Más bajos junto a la pista y más altos hacia dentro, como un centro de ciudad
+    const far = Math.min(1, Math.max(0, (dist(x, z) - half - 1.5) / 8));
+    const h = 0.9 + r() * 1.3 + far * (1 + r() * 3.5);
     boxes.push({ x, z, w, d });
     geos.push(buildingGeo(w, h, d, palette[Math.floor(r() * palette.length)]).translate(x, 0, z));
   }

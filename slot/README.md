@@ -214,8 +214,10 @@ relacionado con ella.
   ven desde dentro, así que las tomas desde fuera de la sala ven a través, como en una maqueta.
 - **Circuitos Premium** (`PREMIUM` en `src/tracks.js`, pestaña «Premium»): exclusivos de temporada que cambiarán con
   las actualizaciones. Usan el mismo ranking mundial (`o:<id>`) y se pueden elegir en las salas online.
-  - *Subida al Pico* (19,2 m): sube en espiral hasta 49 cm (pendiente máx. ~11 %) y baja; terreno que sostiene la
-    pista, pico nevado dentro de la espiral, pinos y rocas (`src/decor.js`, `makeTerrain` / `buildMountain`).
-  - *Urbano del Puerto* (13,3 m): calles de noche entre edificios en miniatura con ventanas encendidas, farolas,
-    muelle, mar y barcos (`buildCity`).
+  - *Subida al Pico* (50,3 m, el más largo con montaña): rasante en meta con curvas enlazadas, subida larga, espiral
+    hasta 55 cm, curvas enlazadas en la cima, dos herraduras de bajada, chicane en el valle y otro rasante (pendiente
+    máx. 9,6 %). Terreno que sostiene la pista y montaña con crestas, cumbres nevadas, pinos y rocas en el interior.
+  - *Urbano del Puerto* (55,2 m, el más largo del juego): recta del puerto con chicane, rampa en espiral, calles en
+    escalera, dos horquillas y otra chicane; ciudad de noche en manzanas, farolas, muelle, mar y barcos.
+  - Se diseñan y comprueban con una herramienta que mide el largo, las rectas de cierre, las pendientes y los cruces.
 - La pasada de TV de la presentación va más despacio (de 6 a 14 s; 9 s en el online, que dura 13 s en total).
