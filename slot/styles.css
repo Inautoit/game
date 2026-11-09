@@ -462,7 +462,7 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .on-roomcode b { font-size: 40px; font-weight: 700; }
 .chip { font-weight: 700; font-size: 20px; }
 .tag { font-family: var(--font-d); font-style: italic; text-transform: uppercase; letter-spacing: 0.08em; font-size: 18px; }
-.chip .cup { width: 20px; height: 20px; color: var(--yellow); }
+.chip .trophy-ico { width: 20px; height: 20px; color: var(--yellow); flex: none; }
 .step-ico { font-family: var(--font-d); font-weight: 700; font-style: italic; font-size: 20px; color: #1b1300; background: var(--yellow) !important; }
 .ed-palette button:disabled { opacity: 0.35; }
 
@@ -508,3 +508,10 @@ input[type=range] { width: 100%; accent-color: var(--yellow); touch-action: pan-
 .res-coins { text-align: center; font-family: var(--font-d); font-weight: 700; font-size: 20px; color: var(--yellow); margin: 2px 0 6px; }
 .shop-list { grid-auto-rows: max-content; }
 .shop-card > * { flex-shrink: 0; }
+
+/* Logotipo e icono */
+.logo { margin: 0; line-height: 0; }
+.logo-img { display: block; width: min(560px, 88vw); height: auto; margin: 0 auto; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.55)); }
+.splash-logo { width: 240px; }
+.splash-icon { border-radius: 26px; }
+@media (max-height: 560px) and (orientation: landscape) { .logo-img { width: min(420px, 60vw); } }

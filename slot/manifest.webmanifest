@@ -1,7 +1,7 @@
 {
   "name": "Turbo Slot",
   "short_name": "Turbo Slot",
-  "description": "Carreras de coches de slot en 3D. Contra la CPU o 2 jugadores en el mismo dispositivo.",
+  "description": "Simulador de slot 1:32 con física real: carreras, copas, editor de circuitos y online.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

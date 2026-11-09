@@ -38,8 +38,8 @@
   <canvas id="game" aria-label="Pista de slot"></canvas>
 
   <div id="splash">
-    <img src="icons/icon.svg" alt="" width="110" height="110">
-    <div class="wordmark">TURBO <span>SLOT</span></div>
+    <img class="splash-icon" src="icons/icon.svg" alt="" width="110" height="110">
+    <img class="logo-img splash-logo" src="icons/logo.svg" alt="Turbo Slot" width="260" height="79">
     <div class="loader"><i></i></div>
   </div>
 
@@ -47,12 +47,12 @@
   <div id="menu" class="screen">
     <div class="topbar">
       <button class="icon-btn" data-open="mHelp" aria-label="Cómo jugar"><svg><use href="#i-help"/></svg></button>
-      <div class="chip"><svg class="cup" viewBox="0 0 24 24" aria-label="Trofeos"><path d="M7 3h10v3h3v2a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V17h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V6h3Zm0 5H6a2 2 0 0 0 1 1.7Zm10 0v1.7A2 2 0 0 0 18 8Z" fill="currentColor"/></svg><span id="trophies">0/6</span></div>
+      <div class="chip"><svg class="trophy-ico" viewBox="0 0 24 24" aria-label="Trofeos"><path d="M7 3h10v3h3v2a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V17h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V6h3Zm0 5H6a2 2 0 0 0 1 1.7Zm10 0v1.7A2 2 0 0 0 18 8Z" fill="currentColor"/></svg><span id="trophies">0/6</span></div>
       <div class="spacer"></div>
       <button class="icon-btn" data-open="mStats" aria-label="Estadísticas"><svg><use href="#i-stats"/></svg></button>
       <button class="icon-btn" data-open="mSettings" aria-label="Ajustes"><svg><use href="#i-gear"/></svg></button>
     </div>
-    <div class="brand"><div class="wordmark big">TURBO<br><span>SLOT</span></div><p class="tag">Simulador de slot 1:32 · <b>física real</b></p></div>
+    <div class="brand"><h1 class="logo"><img class="logo-img" src="icons/logo.svg" alt="Turbo Slot" width="494" height="150"></h1><p class="tag">Simulador de slot 1:32 · <b>física real</b></p></div>
     <div class="menu-actions">
       <button id="playPrac" class="btn primary"><span class="btn-main">Práctica</span><span class="btn-sub">Contrarreloj con tu fantasma</span></button>
       <div class="row2">
