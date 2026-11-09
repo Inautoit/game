@@ -11,6 +11,7 @@ import { buildProfile, aiThrottle } from './ai.js';
 import { makeTelemetry, telStep, telLap, dangerColor, drawTrace, SECTORS } from './telemetry.js';
 import { RGBELoader } from '../vendor/jsm/loaders/RGBELoader.js';
 import { GLTFLoader } from '../vendor/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from '../vendor/jsm/utils/SkeletonUtils.js';
 import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from '../vendor/jsm/postprocessing/ShaderPass.js';
@@ -681,6 +682,8 @@ function buildTrack(def) {
   table.position.set(cx, -0.17, cz);
   table.receiveShadow = true;
   trackGroup.add(table);
+  T.table = { tw, td, cx, cz };
+  buildRoom(sideMat);
   const rimMat = new THREE.MeshStandardMaterial({ map: woodCol, normalMap: woodNor, color: 0xb07a4e, roughness: 0.45 });
   for (const [w2, d2, x2, z2] of [[tw + 0.3, 0.15, 0, td / 2 + 0.075], [tw + 0.3, 0.15, 0, -td / 2 - 0.075], [0.15, td, tw / 2 + 0.075, 0], [0.15, td, -tw / 2 - 0.075, 0]]) {
     const r = new THREE.Mesh(new THREE.BoxGeometry(w2, 0.38, d2), rimMat);
@@ -875,6 +878,154 @@ function prepareModel(scene) {
 }
 const gltfLoader = new GLTFLoader();
 // Si el servidor no sirve .glb (por ejemplo, dentro de Claude), se usa la copia en texto base64
+function fetchGltf(f) {
+  const fromText = () => fetch(`assets/models/${f}.txt`).then((r) => (r.ok ? r.text() : Promise.reject(new Error('sin modelo')))).then((b64) => {
+    const bin = atob(b64.trim());
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new Promise((res, rej) => gltfLoader.parse(buf.buffer, 'assets/models/', res, rej));
+  });
+  return new Promise((res, rej) => gltfLoader.load(`assets/models/${f}`, res, undefined, rej)).catch(fromText);
+}
+
+// ---- Público alrededor de la mesa (personajes de Quaternius, CC0) ----
+// Escala real: 1 unidad = 12,6 cm. Una persona mide ~1,75 m (14 unidades) y la mesa está a 80 cm del suelo.
+const FLOOR_Y = -0.02 - 0.8 / 0.126;
+const PEOPLE_FILES = ['people_m1', 'people_f1', 'people_m2', 'people_f2'];
+let peopleSrc = null, peopleLoading = null;
+let crowd = [];   // { root, mixer, yaw0, yaw }
+function loadPeople() {
+  if (!peopleLoading) {
+    peopleLoading = Promise.all(PEOPLE_FILES.map((f) => fetchGltf(`${f}.glb`))).then((gs) => {
+      peopleSrc = gs.map((g) => {
+        g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; } });
+        const box = new THREE.Box3().setFromObject(g.scene);
+        return { scene: g.scene, clip: g.animations.find((a) => a.name === 'Idle') || g.animations[0], h: box.max.y - box.min.y };
+      });
+    }).catch(() => { peopleLoading = null; });
+  }
+  return peopleLoading;
+}
+const PAL = {
+  Shirt: ['#1f3b73', '#c62828', '#eeeeee', '#2e7d32', '#262626', '#f9a825', '#6a1b9a', '#00838f', '#ef6c00', '#546e7a', '#ad1457', '#3949ab'],
+  Vest: ['#263238', '#37474f', '#1a237e', '#4e342e', '#b71c1c', '#33691e'],
+  Pants: ['#2b3f5c', '#1c1c1c', '#5d4e37', '#6d6d6d', '#3e4a61', '#b8a77a', '#283593'],
+  Hair: ['#1b1b1b', '#3b2416', '#6b4423', '#c9a25a', '#8d8d8d', '#a0522d', '#2a1a10'],
+  Skin: ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#d9a06b', '#b5835a'],
+  Hat: ['#c62828', '#1f3b73', '#262626', '#f9a825', '#eeeeee'],
+};
+const pickc = (l, r) => l[Math.floor(r() * l.length)];
+function makePerson(src, r) {
+  const root = SkeletonUtils.clone(src.scene);
+  const hideHat = r() < 0.65;
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = (Array.isArray(o.material) ? o.material : [o.material]).map((m) => {
+      const c = m.clone();
+      const pal = PAL[m.name];
+      if (pal) c.color.set(pickc(pal, r));
+      if (m.name === 'Hat' && hideHat) c.visible = false;
+      c.roughness = 0.85; c.metalness = 0;
+      return c;
+    });
+    o.material = Array.isArray(o.material) ? mats : mats[0];
+  });
+  const k = (13.2 + r() * 1.6) / src.h;
+  root.scale.setScalar(k);
+  const mixer = new THREE.AnimationMixer(root);
+  if (src.clip) { const a = mixer.clipAction(src.clip); a.play(); a.time = r() * src.clip.duration; a.timeScale = 0.85 + r() * 0.3; }
+  return { root, mixer };
+}
+// Coloca a la gente alrededor de la mesa: de pie, mirando hacia la pista, con huecos al azar
+function placeCrowd() {
+  if (!T || !T.table || !peopleSrc) return;
+  for (const p of crowd) p.root.removeFromParent();
+  crowd = [];
+  const { tw, td, cx, cz } = T.table;
+  let seed = 0;
+  for (const ch of String(T.def.id || 'x')) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const r = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const max = quality >= 2 ? 6 : quality === 1 ? 12 : 22;
+  const gap = 3.6;   // del borde de la mesa al centro de la persona (~45 cm)
+  const spots = [];
+  // [inicio x, inicio z, dirección x, dirección z, largo, normal hacia la mesa x, z]
+  const sides = [
+    [cx - tw / 2, cz - td / 2 - gap, 1, 0, tw, 0, 1], [cx - tw / 2, cz + td / 2 + gap, 1, 0, tw, 0, -1],
+    [cx - tw / 2 - gap, cz - td / 2, 0, 1, td, 1, 0], [cx + tw / 2 + gap, cz - td / 2, 0, 1, td, -1, 0],
+  ];
+  for (const [x0, z0, dx, dz, len, nx, nz] of sides) {
+    for (let t = 2 + r() * 4; t < len - 2; t += 6.5 + r() * 6) {
+      if (r() < 0.3) continue;
+      spots.push({ x: x0 + dx * t + nx * (r() - 0.5) * 1.2, z: z0 + dz * t + nz * (r() - 0.5) * 1.2, nx, nz });
+    }
+  }
+  for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+  const grp = new THREE.Group(); grp.name = 'crowd';
+  for (const sp of spots.slice(0, max)) {
+    const src = peopleSrc[Math.floor(r() * peopleSrc.length)];
+    const p = makePerson(src, r);
+    const yaw0 = Math.atan2(sp.nx, sp.nz) + (r() - 0.5) * 0.5;
+    p.root.position.set(sp.x, FLOOR_Y, sp.z);
+    p.root.rotation.y = yaw0;
+    p.yaw0 = yaw0; p.yaw = yaw0;
+    grp.add(p.root);
+    crowd.push(p);
+  }
+  trackGroup.add(grp);
+}
+// Suelo de la sala y patas de la mesa, para que la gente esté de pie sobre algo
+function buildRoom(woodMat) {
+  const { tw, td, cx, cz } = T.table;
+  const R = Math.max(tw, td) / 2 + 40;
+  const fade = canvasTex(256, 256, (g, w, h) => {
+    const grd = g.createRadialGradient(w / 2, h / 2, w * 0.25, w / 2, h / 2, w / 2);
+    grd.addColorStop(0, '#fff'); grd.addColorStop(1, '#000');
+    g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  }, false);
+  const floorCol = loadTex('wood095_color', true).clone();   // copia: la textura de la mesa no se toca
+  floorCol.userData = {};
+  floorCol.repeat.set(R / 6, R / 6);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(R * 2, R * 2), new THREE.MeshStandardMaterial({ map: floorCol, color: 0x6b5a4a, roughness: 0.8, alphaMap: fade, transparent: true, depthWrite: false }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(cx, FLOOR_Y, cz);
+  trackGroup.add(floor);
+  const legH = -0.32 - FLOOR_Y;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.7, legH, 0.7), woodMat);
+    leg.position.set(cx + sx * (tw / 2 - 0.8), FLOOR_Y + legH / 2, cz + sz * (td / 2 - 0.8));
+    trackGroup.add(leg);
+  }
+  crowd = [];
+  const myT = T;
+  if (peopleSrc) placeCrowd(); else loadPeople().then(() => { if (T === myT) placeCrowd(); });
+}
+// Cada fotograma: respiran (animación) y giran un poco el cuerpo siguiendo al coche que va delante.
+// Quien se pone entre la cámara y la pista se oculta para no tapar la carrera.
+const _pv = new THREE.Vector3();
+function updateCrowd(dt) {
+  if (!crowd.length) return;
+  const lead = cars.length ? cars.reduce((a, c) => ((c.lap * 1e4 + c.st.s) > (a.lap * 1e4 + a.st.s) ? c : a), cars[0]) : null;
+  const camDist = camera.position.distanceTo(camTarget);
+  for (const p of crowd) {
+    p.mixer.update(dt);
+    if (lead && !lead.crash) {
+      const lp = lead.mesh.position;
+      let want = Math.atan2(lp.x - p.root.position.x, lp.z - p.root.position.z);
+      let d = want - p.yaw0; d -= Math.round(d / (2 * Math.PI)) * 2 * Math.PI;
+      d = clamp(d, -0.75, 0.75);
+      let cur = p.yaw - p.yaw0; cur -= Math.round(cur / (2 * Math.PI)) * 2 * Math.PI;
+      p.yaw = p.yaw0 + cur + (d - cur) * Math.min(1, dt * 1.5);
+      p.root.rotation.y = p.yaw;
+    }
+    // ¿Tapa la vista? (está más cerca de la cámara que lo que se mira y dentro del encuadre)
+    p.root.getWorldPosition(_pv); _pv.y += 9;
+    const dc = camera.position.distanceTo(_pv);
+    _pv.project(camera);
+    const inView = Math.abs(_pv.x) < 1.15 && _pv.y > -1.2 && _pv.y < 1.2 && _pv.z < 1;
+    p.root.visible = !(inView && dc < camDist * 0.92);
+  }
+}
+
 function fetchModel(f) {
   const fromText = () => fetch(`assets/models/${f}.txt`).then((r) => (r.ok ? r.text() : Promise.reject(new Error('sin modelo')))).then((b64) => {
     const bin = atob(b64.trim());
@@ -1875,6 +2026,8 @@ function loop(now) {
   camera.position.copy(camPos);
   if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
   camera.lookAt(camTarget);
+  camera.updateMatrixWorld();
+  updateCrowd(dt);
   renderFrame(dt);
 }
 

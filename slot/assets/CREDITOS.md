@@ -28,6 +28,15 @@ Todos modificados: reorientados, escalados a 1:32, mallas simplificadas en una v
 pintura cambiable según la decoración. Licencia: CC-BY 4.0 (http://creativecommons.org/licenses/by/4.0/).
 Las fotos de `cars/*.webp` son renders hechos para el juego a partir de esos modelos.
 
+## Público
+
+| Archivo | Recurso | Autor | Fuente | Licencia |
+|---|---|---|---|---|
+| `models/people_m1.glb`, `people_f1.glb` | Casual2_Male / Casual2_Female (solo la animación «Idle», comprimidos) | Quaternius | «LowPoly Animated Characters», quaternius.com | **CC0** |
+| `models/people_m2.glb`, `people_f2.glb` | Worker_Male / Worker_Female (ídem; el casco se quita o se recolorea) | Quaternius | ídem | **CC0** |
+
+Cada espectador sale con colores de ropa, pelo y piel al azar.
+
 ## Sonido
 
 | Archivo | Recurso | Autor | Fuente | Licencia |

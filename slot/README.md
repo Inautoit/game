@@ -187,3 +187,10 @@ relacionado con ella.
 - **Ranking mundial**: con sesión, las vueltas se guardan a nombre de la cuenta (su identificador de ranking), así
   que tu mejor tiempo es el mismo en todos tus dispositivos.
 - API: `POST /api/auth/register|login|recover|logout`, `GET|PUT /api/profile` (cabecera `Authorization: Bearer`).
+
+## Público alrededor de la mesa
+
+- Entre 6 y 22 personas (según la calidad gráfica) de pie alrededor de la mesa, a escala real (1,65–1,85 m, con
+  la mesa a 80 cm del suelo), con ropa, pelo y piel al azar. Respiran (animación «Idle») y giran el cuerpo para
+  seguir al coche que va delante. Quien se pone entre la cámara y la pista se oculta para no tapar la carrera.
+- Suelo de la sala y patas de la mesa. Modelos: Quaternius (CC0), ver `assets/CREDITOS.md`.
