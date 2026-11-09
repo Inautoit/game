@@ -807,9 +807,8 @@ const blobTex = (() => {
 export const CARS = [
   { id: 'muscle', name: 'Clásico 70', type: 'Muscle car', price: 0, credit: '«Classic Muscle car» de Lexyc16' },
   { id: 'sedan', name: 'Turismo GTS', type: 'Turismo', price: 600, credit: '«Generic Sedan Car» de Márcio Meireles' },
-  { id: 'drag', name: 'Dragster V8', type: 'Muscle de aceleración', price: 1200, credit: '«Custom High Poly Muscle Car Drag Car» de the_86_guy' },
-  { id: 'concept', name: 'Aero Concept', type: 'Prototipo', price: 2000, tint: true, credit: '«My Futuristic Concept Car» de Ar3Designer' },
-  { id: 'goblin', name: 'V12 Goblin', type: 'Superdeportivo', price: 3000, credit: '«Fictional supercar - V12 Goblin» de ollitei' },
+  { id: 'f1', name: 'Monoplaza 22', type: 'Monoplaza de fórmula', price: 1800, credit: '«F1 Generic 2022» de TheoDev (sin logotipos)' },
+  { id: 'goblin', name: 'V12 Goblin', type: 'Superdeportivo', price: 2500, credit: '«Fictional supercar - V12 Goblin» de ollitei' },
 ];
 const carById = (id) => CARS.find((c) => c.id === id) || CARS[0];
 const CAR_LEN = 0.98;       // longitud del coche en unidades (≈ 12,5 cm; ≈ 6 cm de ancho)
@@ -2650,7 +2649,7 @@ $('chBack').addEventListener('click', () => { sfx.click(); champ = null; showMen
 
 // ---- Créditos y tienda ----
 const coins = () => store.get('coins', 300);
-const ownedCars = () => { const o = store.get('ownedCars', ['muscle']); return o.includes('muscle') ? o : ['muscle', ...o]; };
+const ownedCars = () => { const o = store.get('ownedCars', ['muscle']).filter((id) => CARS.some((c) => c.id === id)); return o.includes('muscle') ? o : ['muscle', ...o]; };
 function addCoins(n) {
   if (!n) return;
   store.set('coins', coins() + n);
