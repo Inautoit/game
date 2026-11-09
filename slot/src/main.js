@@ -1848,11 +1848,7 @@ function crossLine(c, now) {
       if (race.mode === 'practica') store.set(ghostKey(race.def.id, race.cls), { t: lt, d: c.d, s: c.rec });
     } else if (lt < prevBest) { sfx.best(); flashText(c.player, '¡Mejor vuelta!'); } else sfx.lap();
     if (race.rankKey && c.vlog && c.vlog.cross >= 2 && c.player === 0) submitLap(c, lt);
-    // Récord del circuito de la comunidad (el servidor guarda solo el mejor)
-    if (race.def.cid && lt === c.best && race.humans === 1) {
-      const wr = race.def.community && race.def.community.best_time;
-      if (!wr || lt < wr) apiPost(`/api/tracks/${race.def.cid}/lap`, { time: lt, name: settings.pilot || 'Anónimo' }).catch(() => {});
-    }
+    // (el récord de los circuitos de la comunidad sale del ranking mundial: vueltas comprobadas en Práctica)
     c.rec = []; c.recT = 0;
   }
   if (race.mode === 'online' && (c.human || c.botId)) {
@@ -2095,7 +2091,7 @@ function readThrottle(player, dt) {
   return throttles[player];
 }
 window.addEventListener('keydown', (e) => {
-  if (e.target && e.target.tagName === 'INPUT') return;
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
   if (['ArrowUp', ' ', 'w'].includes(e.key)) { keys.add(e.key); initAudio(); e.preventDefault(); }
   if (e.key === 'Escape') { if (state === 'race' || state === 'countdown') pause(); else if (state === 'pause') resume(); }
   if (e.key === 'c' && (state === 'race' || state === 'countdown')) toggleCam();
@@ -2581,7 +2577,7 @@ function miniTrack(def) {
 // ---- API de la comunidad (en Claude o en local se usa el servidor publicado) ----
 const API = /turbo-slot\.[a-z0-9-]+\.workers\.dev$/.test(location.hostname) ? '' : 'https://turbo-slot.inautoit.workers.dev';
 const playedCids = new Set();
-const ON_WEB = API === '';
+const ON_WEB = API === '' || NATIVE;   // en la web del juego o en la app: el servidor es «el nuestro»
 const SITE = 'https://turbo-slot.inautoit.workers.dev/';
 class NetError extends Error {}
 const netFail = () => { throw new NetError(ON_WEB ? 'No hay conexión con el servidor. Comprueba Internet e inténtalo otra vez.' : 'Desde aquí no se puede conectar con el servidor del juego.'); };
@@ -3531,7 +3527,7 @@ function openRanking(def) {
   apiGet(`/api/laps?track=${encodeURIComponent(key)}&cls=${rankCls}&device=${rankId()}`).then((j) => {
     box.innerHTML = '';
     if (!j.laps.length) { box.innerHTML = '<div class="circ-empty">Nadie tiene tiempo todavía. ¡Sé el primero en Práctica!</div>'; return; }
-    j.laps.filter((l) => l.me || !isBlocked(l.name)).slice(0, 30).forEach((l, i) => {
+    j.laps.map((l, k) => ({ ...l, pos: k + 1 })).filter((l) => l.me || !isBlocked(l.name)).slice(0, 30).forEach((l) => {
       const row = document.createElement('div'); row.className = 'rk-row' + (l.me ? ' me' : '');
       if (!l.me) row.addEventListener('click', () => {
         if (row.querySelector('.rk-hide')) return;
@@ -3539,7 +3535,7 @@ function openRanking(def) {
         hb.addEventListener('click', (e) => { e.stopPropagation(); sfx.click(); blockName(l.name); toast(`No verás más a ${l.name}`); openRanking(rankDef); });
         row.appendChild(hb);
       });
-      const pos = document.createElement('b'); pos.textContent = `${i + 1}º`;
+      const pos = document.createElement('b'); pos.textContent = `${l.pos}º`;   // la posición real, aunque haya pilotos ocultos
       const dot = document.createElement('i'); const lv = LIVERIES.find((x) => x.id === l.liv); dot.style.background = lv ? '#' + lv.color.toString(16).padStart(6, '0') : '#888';
       const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = l.name;
       const car = document.createElement('small'); car.textContent = (CARS.find((x) => x.id === l.car) || {}).name || '';
@@ -3836,6 +3832,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && !(r
 
 // ---- Ajustes y estadísticas ----
 function fillSettings() {
+  $('resetTxt').textContent = acct ? '¿Borrar récords, fantasmas, copas y circuitos, aquí y en tu cuenta?' : '¿Borrar récords, fantasmas, copas y circuitos de este dispositivo?';
   $('optSound').checked = settings.sound;
   $('optMusic').checked = settings.music;
   $('optVibe').checked = settings.vibe;
@@ -3855,9 +3852,20 @@ $('optTele').addEventListener('change', (e) => { settings.tele = e.target.checke
 $('optBrakes').addEventListener('change', (e) => { settings.brakes = e.target.checked; saveSettings(); for (const g of brakeGroups) g.visible = settings.brakes; });
 $('resetBtn').addEventListener('click', () => { $('resetConfirm').hidden = false; });
 $('resetNo').addEventListener('click', () => { $('resetConfirm').hidden = true; });
-$('resetYes').addEventListener('click', () => {
-  try { Object.keys(localStorage).filter((k) => k.startsWith('slot.') && !k.endsWith('settings')).forEach((k) => localStorage.removeItem(k)); } catch { /* nada */ }
-  closeModal('mSettings'); showMenu(); toast('Progreso borrado');
+$('resetYes').addEventListener('click', async () => {
+  // Se borra el progreso, pero no la sesión, los ajustes ni el identificador del dispositivo
+  const KEEP = ['slot.settings', 'slot.account', 'slot.device', 'slot.syncVer', 'slot.seenHelp2', 'slot.quality', 'slot.premiumCfg'];
+  try { Object.keys(localStorage).filter((k) => k.startsWith('slot.') && !KEEP.includes(k)).forEach((k) => localStorage.removeItem(k)); } catch { /* nada */ }
+  closeModal('mSettings'); showMenu();
+  if (!acct) { toast('Progreso borrado'); return; }
+  // Con cuenta: también el progreso guardado en la nube (si no, volvería con la siguiente sincronización)
+  clearTimeout(syncTimer);
+  try {
+    const cur = await apiGet('/api/profile');
+    const r = await apiReq('PUT', '/api/profile', { data: { keys: {}, statsBy: {} }, ver: cur.ver }, { allow: [409] });
+    if (r.ok) { syncVer = r.ver; store.set('syncVer', syncVer); }
+    toast('Progreso borrado, también en tu cuenta');
+  } catch (e) { toast('Progreso borrado aquí. No se pudo borrar el de la cuenta: ' + e.message); }
 });
 function fillStats() {
   // Las de este dispositivo más las de los demás donde se ha jugado con la misma cuenta

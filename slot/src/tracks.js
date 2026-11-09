@@ -32,7 +32,7 @@ export const TRACKS = [
   // --- Circuitos largos de club (de 16 a 36 metros de cuerda) ---
   {
     id: 'montana', name: 'Montaña', lanes: 4, laps: 5, scenery: 'verde', long: true,
-    pieces: [['S', 6, 0], ['C', -90, 4, 0], ['S', null, 0], ['S', 8, 0], ['C', 90, 4], ['S', 6], ['C', 45, 3], ['C', -45, 3], ['S', 4], ['C', 90, 3.5], ['S', 6], ['C', 90, 4, 0.95], ['S', null, 0.95], ['C', -90, 4, 0.6], ['S', 6, 0.3], ['C', -90, 3.5, 0], ['S', 4, 0], ['C', -45, 3], ['C', 45, 3]],
+    pieces: [['S', 6, 0], ['C', -90, 4, 0], ['S', null, 0], ['S', 8, 0], ['C', 90, 4], ['S', 6], ['C', 45, 3], ['C', -45, 3], ['S', 4], ['C', 90, 3.5], ['S', 6, 0.45], ['C', 90, 4, 0.95], ['S', null, 0.95], ['C', -90, 4, 0.6], ['S', 6, 0.3], ['C', -90, 3.5, 0], ['S', 4, 0], ['C', -45, 3], ['C', 45, 3]],
   },
   {
     id: 'autodromo', name: 'Autódromo', lanes: 4, laps: 5, scenery: 'arena', long: true,

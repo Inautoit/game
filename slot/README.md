@@ -232,3 +232,16 @@ relacionado con ella.
 - Mientras se monta un circuito con decorado sale «Preparando el circuito» en vez de quedarse la imagen congelada.
 - Los Premium rediseñados tienen identificador nuevo (`pico-xl`, `puerto-xl`): ranking y fantasmas empiezan de cero,
   porque los tiempos del trazado anterior no valen para el nuevo.
+
+## Pruebas automáticas (`tests/`)
+
+- `node tests/unit.mjs` — sin navegador, en segundos: los 12 circuitos (cierran, no se cruzan, pendiente < 13 %),
+  la CPU da vueltas en todos con y sin imán sin valores imposibles, el ranking repite exactamente una vuelta real y
+  rechaza trampas (tiempo cambiado, gatillo cambiado), el editor, la sincronización de cuentas y las temporadas Premium.
+- `node tests/e2e.js [filtro]` — en un navegador de verdad (con `python3 -m http.server 8130` en `slot/`): pantallas
+  en móvil, iPad y ordenador (nada cortado ni fuera de pantalla), carreras en los 12 circuitos, práctica, 2 jugadores,
+  carrera completa hasta los resultados, campeonato, editor (crear, completar, guardar, probar, borrar), publicar pide
+  las normas, ocultar y volver a mostrar, ajustes que se guardan, créditos, contacto, páginas legales, ranking,
+  cuentas (crear, borrar progreso también en la nube, contraseña mal, entrar, borrar la cuenta), online con dos
+  jugadores, la app nativa simulada (vibración, barra, enlaces y actualizaciones) y que la memoria no crezca.
+  Toda prueba falla si la página da cualquier error. Lo que crean en el servidor (cuentas) lo borran ellas mismas.

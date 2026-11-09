@@ -245,14 +245,7 @@ async function tracksApi(req, env, url, parts) {
       return json({ ok: true });
     }
     else if (act === 'lap') {
-      let t = null, who = '';
-      try { const j = await req.json(); t = Number(j.time); who = clean(j.name, 20); } catch { /* nada */ }
-      if (!who || isBad(who)) who = 'Anónimo';
-      const row = await db.prepare('SELECT length FROM tracks WHERE id = ?').bind(id).first();
-      // Vuelta imposible (más rápida que la punta del coche) = no cuenta
-      if (row && Number.isFinite(t) && t > row.length / 7 && t < 600) {
-        await db.prepare('UPDATE tracks SET best_time = ?, best_name = ? WHERE id = ? AND (best_time IS NULL OR ? < best_time)').bind(t, who, id, t).run();
-      }
+      // (antiguo: el récord de la ficha ya solo sale de las vueltas comprobadas del ranking)
     } else return fail('Acción no válida');
     return json({ ok: true });
   }
@@ -332,6 +325,8 @@ async function lapsApi(req, env, url, parts) {
     const best = Math.min(vr.time, prev ? prev.time : Infinity);
     const pos = await db.prepare('SELECT COUNT(*) AS n FROM laps WHERE track_key = ? AND cls = ? AND time < ?').bind(key, cls, best).first();
     const top = await db.prepare('SELECT name, time FROM laps WHERE track_key = ? AND cls = ? ORDER BY time ASC LIMIT 1').bind(key, cls).first();
+    // Récord de la ficha de un circuito de la comunidad: solo con vueltas comprobadas
+    if (key.startsWith('c:') && top) await db.prepare('UPDATE tracks SET best_time = ?, best_name = ? WHERE id = ? AND (best_time IS NULL OR ? < best_time)').bind(top.time, top.name, key.slice(2), top.time).run();
     return json({ ok: true, time: vr.time, best, pos: pos.n + 1, improved: !prev || vr.time < prev.time, wr: top });
   }
   return fail('No encontrado', 404);
