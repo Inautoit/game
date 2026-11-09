@@ -801,15 +801,25 @@ const blobTex = (() => {
   return new THREE.CanvasTexture(c);
 })();
 // ---------------------------------------------------------------------------
-// Modelo 3D realista del coche («Generic Sport Coupé Car», Márcio Meireles, CC-BY 4.0)
+// Coches: catálogo de la tienda y modelos 3D (todos inventados, sin marcas reales)
+// Todos corren igual: la física no cambia de un coche a otro (gana el reglaje y el piloto).
 // ---------------------------------------------------------------------------
+export const CARS = [
+  { id: 'muscle', name: 'Clásico 70', type: 'Muscle car', price: 0, credit: '«Classic Muscle car» de Lexyc16' },
+  { id: 'sedan', name: 'Turismo GTS', type: 'Turismo', price: 600, credit: '«Generic Sedan Car» de Márcio Meireles' },
+  { id: 'drag', name: 'Dragster V8', type: 'Muscle de aceleración', price: 1200, credit: '«Custom High Poly Muscle Car Drag Car» de the_86_guy' },
+  { id: 'concept', name: 'Aero Concept', type: 'Prototipo', price: 2000, tint: true, credit: '«My Futuristic Concept Car» de Ar3Designer' },
+  { id: 'goblin', name: 'V12 Goblin', type: 'Superdeportivo', price: 3000, credit: '«Fictional supercar - V12 Goblin» de ollitei' },
+];
+const carById = (id) => CARS.find((c) => c.id === id) || CARS[0];
 const CAR_LEN = 0.98;       // longitud del coche en unidades (≈ 12,5 cm; ≈ 6 cm de ancho)
 const NOSE_AHEAD = 0.16;    // la guía va 2 cm por detrás del morro
-let carModels = null;       // { hi, lo } ya orientados y escalados
+const carModels = {};       // id → { hi, lo } ya orientados y escalados
+const carLoading = {};      // id → promesa
 function prepareModel(scene) {
   const box = new THREE.Box3().setFromObject(scene);
   const c = box.getCenter(new THREE.Vector3());
-  // ¿Hacia dónde mira? Los faros marcan el morro
+  // ¿Hacia dónde mira? Los faros marcan el morro (si no hay, los modelos vienen mirando a +z)
   const head = new THREE.Box3();
   scene.traverse((o) => { if (o.isMesh && /headlight/i.test(o.material.name || '')) head.expandByObject(o); });
   const hc = head.isEmpty() ? new THREE.Vector3(0, 0, 1) : head.getCenter(new THREE.Vector3()).sub(c);
@@ -835,37 +845,50 @@ function prepareModel(scene) {
   });
   return { pivot, wheels };
 }
-function loadCarModels() {
-  const ld = new GLTFLoader();
-  // Si el servidor no sirve .glb (por ejemplo, dentro de Claude), se usa la copia en texto base64
-  const fromText = (f) => fetch(`assets/models/${f}.txt`).then((r) => (r.ok ? r.text() : Promise.reject(new Error('sin modelo')))).then((b64) => {
+const gltfLoader = new GLTFLoader();
+// Si el servidor no sirve .glb (por ejemplo, dentro de Claude), se usa la copia en texto base64
+function fetchModel(f) {
+  const fromText = () => fetch(`assets/models/${f}.txt`).then((r) => (r.ok ? r.text() : Promise.reject(new Error('sin modelo')))).then((b64) => {
     const bin = atob(b64.trim());
     const buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-    return new Promise((res, rej) => ld.parse(buf.buffer, 'assets/models/', (g) => res(g.scene), rej));
+    return new Promise((res, rej) => gltfLoader.parse(buf.buffer, 'assets/models/', (g) => res(g.scene), rej));
   });
-  const get = (f) => new Promise((res, rej) => ld.load(`assets/models/${f}`, (g) => res(g.scene), undefined, rej)).catch(() => fromText(f));
-  return Promise.all([get('car_hi.glb'), get('car_lo.glb')]).then(([hi, lo]) => {
-    carModels = { hi: prepareModel(hi), lo: prepareModel(lo) };
-    // Cambia los coches que ya están en pantalla por el modelo realista
+  return new Promise((res, rej) => gltfLoader.load(`assets/models/${f}`, (g) => res(g.scene), undefined, rej)).catch(fromText);
+}
+// Carga un coche (una sola vez) y cambia los que ya estén en pantalla por el modelo de verdad
+function loadCar(id) {
+  if (carLoading[id]) return carLoading[id];
+  carLoading[id] = Promise.all([fetchModel(`car_${id}_hi.glb`), fetchModel(`car_${id}_lo.glb`)]).then(([hi, lo]) => {
+    carModels[id] = { hi: prepareModel(hi), lo: prepareModel(lo) };
     for (const c of cars) {
+      if ((c.carId || 'muscle') !== id) continue;
       const old = c.mesh;
-      c.mesh = makeCarMesh(c.liv);
+      c.mesh = makeCarMesh(c.liv, false, id);
       c.mesh.position.copy(old.position); c.mesh.rotation.copy(old.rotation);
       if (c.human) { c.mesh.userData.ring.material.opacity = 0.7; c.mesh.userData.halo = makeHalo(); c.mesh.add(c.mesh.userData.halo); }
       carsGroup.remove(old); carsGroup.add(c.mesh);
     }
-    if (ghost) { const old = ghost.mesh; ghost.mesh = makeCarMesh(old.userData.liv, true); carsGroup.remove(old); carsGroup.add(ghost.mesh); }
-  }).catch(() => { /* sin modelo: se usa el coche hecho por código */ });
+    if (ghost && ghost.carId === id) { const old = ghost.mesh; ghost.mesh = makeCarMesh(old.userData.liv, true, id); carsGroup.remove(old); carsGroup.add(ghost.mesh); }
+  }).catch(() => { delete carLoading[id]; });
+  return carLoading[id];
 }
-function paintModel(src, liv, ghost) {
+function loadCarModels() { return loadCar('muscle'); }
+function paintModel(src, liv, ghost, car) {
   const m = src.pivot.clone(true);
   const cache = new Map();
   const ghostMat = new THREE.MeshBasicMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.28, depthWrite: false });
+  const tintCol = new THREE.Color(0xffffff).lerp(new THREE.Color(liv.color), 0.8);
   m.traverse((o) => {
     if (!o.isMesh) return;
     if (ghost) { o.material = ghostMat; o.castShadow = false; return; }
     const name = o.material.name || '';
+    if (car.tint) {
+      // Coche con una sola textura: se tiñe entero del color de la decoración
+      if (!cache.has(name)) { const mat = o.material.clone(); mat.color = tintCol.clone(); cache.set(name, mat); }
+      o.material = cache.get(name);
+      return;
+    }
     let col = null;
     if (/^Paint 1/.test(name) || /^Paint 2/.test(name)) col = liv.color;
     else if (/^Interior 3/.test(name)) col = liv.accent;
@@ -873,8 +896,12 @@ function paintModel(src, liv, ghost) {
       if (!cache.has(name)) {
         const mat = o.material.clone();
         mat.color = new THREE.Color(col);
-        if (/^Paint/.test(name)) { mat.clearcoat = 1; mat.clearcoatRoughness = 0.04; mat.metalness = Math.min(mat.metalness ?? 0.5, 0.6); mat.roughness = Math.min(mat.roughness ?? 0.3, 0.3); }
-        cache.set(name, mat);
+        if (/^Paint/.test(name)) {
+          // Barniz de coche: la propiedad clearcoat solo existe en MeshPhysicalMaterial
+          const phys = mat.isMeshPhysicalMaterial ? mat : Object.assign(new THREE.MeshPhysicalMaterial(), { color: mat.color, map: mat.map || null, normalMap: mat.normalMap || null, name: mat.name });
+          phys.clearcoat = 1; phys.clearcoatRoughness = 0.04; phys.metalness = Math.min(mat.metalness ?? 0.5, 0.6); phys.roughness = Math.min(mat.roughness ?? 0.3, 0.3);
+          cache.set(name, phys);
+        } else cache.set(name, mat);
       }
       o.material = cache.get(name);
     }
@@ -884,17 +911,21 @@ function paintModel(src, liv, ghost) {
   m.userData.wheels = wheels;
   return m;
 }
-function makeCarMesh(liv, ghost = false) {
-  if (carModels) {
+function makeCarMesh(liv, ghost = false, carId = 'muscle') {
+  const model = carModels[carId];
+  if (!model) loadCar(carId);
+  if (model) {
+    const car = carById(carId);
     const root = new THREE.Group();
     root.userData.liv = liv;
+    root.userData.carId = carId;
     const lod = new THREE.LOD();
-    const hi = paintModel(carModels.hi, liv, ghost), lo = paintModel(carModels.lo, liv, ghost);
+    const hi = paintModel(model.hi, liv, ghost, car), lo = paintModel(model.lo, liv, ghost, car);
     lod.addLevel(hi, 0); lod.addLevel(lo, 7);
     root.add(lod);
     if (!ghost) {
       // La sombra la proyecta la versión ligera (invisible): misma silueta, mucho menos coste
-      const shadowProxy = carModels.lo.pivot.clone(true);
+      const shadowProxy = model.lo.pivot.clone(true);
       const inv = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
       shadowProxy.traverse((o) => { if (o.isMesh) { o.material = inv; o.castShadow = true; o.receiveShadow = false; } });
       root.add(shadowProxy);
@@ -914,7 +945,9 @@ function makeCarMesh(liv, ghost = false) {
     }
     return root;
   }
-  return makeCarMeshSimple(liv, ghost);
+  const simple = makeCarMeshSimple(liv, ghost);
+  simple.userData.carId = carId;
+  return simple;
 }
 function makeCarMeshSimple(liv, ghost = false) {
   const root = new THREE.Group();
@@ -1226,12 +1259,12 @@ function placeCar(mesh, s, d, th) {
   return p;
 }
 
-function makeCar({ liv, lane, human, player, name, setupRaw, skill }) {
-  const mesh = makeCarMesh(liv);
+function makeCar({ liv, lane, human, player, name, setupRaw, skill, carId = 'muscle' }) {
+  const mesh = makeCarMesh(liv, false, carId);
   carsGroup.add(mesh);
   const setup = resolveSetup(setupRaw);
   const c = {
-    liv, lane, d: T.offsets[lane], human, player, name, setupRaw, setup, skill: skill || 1,
+    carId, liv, lane, d: T.offsets[lane], human, player, name, setupRaw, setup, skill: skill || 1,
     st: newCarState(T.L - 0.55), thr: 0, mesh,
     lap: 0, lapStart: 0, laps: [], best: Infinity, last: NaN, finished: false, finishTime: 0,
     crash: null, blink: 0, mistake: 0, crashes: 0,
@@ -1266,7 +1299,7 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
   const others = LIVERIES.filter((l) => !used.has(l.id));
   entries.forEach((e, i) => {
     const lane = online ? online.lane : humans === 2 ? i : (lanes === 2 ? 1 : Math.min(lanes - 1, 1));
-    makeCar({ liv: e.liv, lane, human: true, player: i, name: humans === 2 ? `Jugador ${i + 1}` : 'Tú', setupRaw: e.setupRaw });
+    makeCar({ liv: e.liv, lane, human: true, player: i, name: humans === 2 ? `Jugador ${i + 1}` : 'Tú', setupRaw: e.setupRaw, carId: e.carId || 'muscle' });
   });
   for (const c of cars) if (c.human) buildBrakeMarks(c);
   // Online: los coches de los demás pilotos (se mueven con lo que llega por la red)
@@ -1274,17 +1307,17 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
     for (const p of online.players) {
       if (p.id === online.me) continue;
       const liv = LIVERIES.find((l) => l.id === p.liv) || LIVERIES[(p.lane + 1) % LIVERIES.length];
-      const c = makeCar({ liv, lane: p.lane, human: false, name: p.name, setupRaw: DEFAULT_SETUP });
+      const c = makeCar({ liv, lane: p.lane, human: false, name: p.name, setupRaw: DEFAULT_SETUP, carId: CARS.some((x) => x.id === p.car) ? p.car : 'muscle' });
       c.remote = p.id; c.net = [];
     }
     // CPU de la sala: el anfitrión los conduce (IA normal) y manda su estado; los demás los ven por la red
     for (const bt of online.bots || []) {
       const liv = LIVERIES.find((l) => l.id === bt.liv) || LIVERIES[(bt.lane + 2) % LIVERIES.length];
       if (online.amHost) {
-        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet }, skill: 0.9 + Math.random() * 0.05 });
+        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet }, skill: 0.9 + Math.random() * 0.05, carId: bt.car || 'muscle' });
         c.botId = bt.id;
       } else {
-        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: DEFAULT_SETUP });
+        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: DEFAULT_SETUP, carId: bt.car || 'muscle' });
         c.remote = bt.id; c.net = [];
       }
     }
@@ -1296,7 +1329,8 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
       // La CPU corre con el mismo imán que tú: si vas sin imán, ellos también
       const setupRaw = { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet };
       const skill = clamp(base + (i - (free.length - 1) / 2) * 0.025, 0.82, 0.97);
-      makeCar({ liv: others[i % others.length], lane: l, human: false, name: RIVALS[i % RIVALS.length], setupRaw, skill });
+      // Los rivales llevan coches distintos del catálogo (así se ven los de la tienda)
+      makeCar({ liv: others[i % others.length], lane: l, human: false, name: RIVALS[i % RIVALS.length], setupRaw, skill, carId: CARS[(i * 2 + 1) % CARS.length].id });
     });
   }
   // Fantasma: tu mejor vuelta guardada (solo en práctica)
@@ -1304,9 +1338,10 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
     const cls = classOf(entries[0].setupRaw);
     const data = store.get(ghostKey(def.id, cls), null);
     if (data) {
-      const mesh = makeCarMesh(entries[0].liv, true);
+      const gid = entries[0].carId || 'muscle';
+      const mesh = makeCarMesh(entries[0].liv, true, gid);
       carsGroup.add(mesh);
-      ghost = { mesh, data };
+      ghost = { mesh, data, carId: gid };
     }
   }
   race = {
@@ -1397,8 +1432,10 @@ function crossLine(c, now) {
     const key = `${race.def.id}|${race.cls}`;
     const recs = store.get('best', {});
     const rec = recs[key];
+    if (race.mode === 'practica') addCoins(5);
     if (!rec || lt < rec) {
       recs[key] = lt; store.set('best', recs);
+      if (race.mode === 'practica' && rec) addCoins(25);
       sfx.best();
       flashText(c.player, rec ? '¡Récord personal!' : '¡Primera vuelta!');
       if (race.mode === 'practica') store.set(ghostKey(race.def.id, race.cls), { t: lt, d: c.d, s: c.rec });
@@ -1553,6 +1590,19 @@ function endRace() {
   $('likeBtn').hidden = !race.def.cid || race.mode === 'online';
   $('likeBtn').disabled = liked.includes(race.def.cid);
   $('likeBtn').querySelector('.btn-main').textContent = liked.includes(race.def.cid) ? 'Te gusta' : 'Me gusta este circuito';
+  // Créditos ganados
+  let earned = 0;
+  if (!race.paid) {
+    race.paid = true;
+    const humansPos = cars.filter((c) => c.human).map((c) => order.indexOf(c) + 1);
+    const bestPos = Math.min(...humansPos);
+    const me0 = cars.find((c) => c.human && c.player === 0);
+    if (race.mode === 'online') earned = me0 && me0.finished && me0.finishTime < 9000 ? 60 + (myPos === 1 ? 120 : 0) : 0;
+    else earned = raceReward(bestPos, Math.min(race.laps, 20));
+    addCoins(earned);
+  }
+  $('resCoins').hidden = !earned;
+  $('resCoins').textContent = `+${earned} créditos`;
   if (race.mode === 'online') { $('nextBtn').hidden = true; $('resChamp').hidden = true; setTimeout(() => openModal('mResults'), 300); return; }
   $('resChamp').hidden = true;
   if (race.champ) champAfterRace(order);
@@ -1766,7 +1816,7 @@ const ui = {
   splash: $('splash'), menu: $('menu'), circuits: $('circuits'), garage: $('garage'), hud: $('hud'),
   count: $('count'), toast: $('toast'), hudRows: $('hudRows'), timing: $('timing'),
 };
-const SCREENS = { menu: ui.menu, circuits: ui.circuits, garage: ui.garage, hud: ui.hud, editor: $('editor'), online: $('online'), champ: $('champ') };
+const SCREENS = { menu: ui.menu, circuits: ui.circuits, garage: ui.garage, hud: ui.hud, editor: $('editor'), online: $('online'), champ: $('champ'), shop: $('shop') };
 function setScreen(name) { for (const [k, el] of Object.entries(SCREENS)) el.classList.toggle('open', k === name); }
 function openModal(id) { if (id === 'mSettings') fillSettings(); if (id === 'mStats') fillStats(); $(id).classList.add('open'); }
 function closeModal(id) { $(id).classList.remove('open'); }
@@ -1901,6 +1951,7 @@ function showMenu() {
   demoRace();
   const pos = store.get('pos', {});
   $('trophies').textContent = `${TRACKS.filter((t) => pos[t.id] === 1).length}/${TRACKS.length}`;
+  $('coins').textContent = coins().toLocaleString('es-ES');
   setScreen('menu');
 }
 function demoRace() {
@@ -1908,7 +1959,7 @@ function demoRace() {
   buildTrack(def);
   physTrack = { L: T.L, DSU: DS, pts: T.pts };
   clearCars();
-  [0, 1].forEach((l) => makeCar({ liv: LIVERIES[l], lane: l, human: false, name: 'demo', setupRaw: DEFAULT_SETUP, skill: 0.97 - l * 0.03 }));
+  [0, 1].forEach((l) => makeCar({ liv: LIVERIES[l], lane: l, human: false, name: 'demo', setupRaw: DEFAULT_SETUP, skill: 0.97 - l * 0.03, carId: l ? 'goblin' : (store.get('car0', 'muscle')) }));
   cars.forEach((c, i) => { c.st.s = i * 6; });
   race = { demo: true, simT: 0, acc: 0, goT: 0, started: true, laps: Infinity, def, humans: 0, finishedAt: null, mode: 'demo', cls: 'iman' };
 }
@@ -2187,7 +2238,7 @@ $('edTest').addEventListener('click', () => {
   const def = draftDef(draft, closed);
   const raw = { ...DEFAULT_SETUP, ...store.get('setup0', {}) };
   const liv = LIVERIES.find((l) => l.id === store.get('liv0', 'rojo')) || LIVERIES[0];
-  startRace({ def, mode: 'practica', entries: [{ liv, setupRaw: raw }] });
+  startRace({ def, mode: 'practica', entries: [{ liv, setupRaw: raw, carId: store.get('car0', 'muscle') }] });
   race.editorTest = true;
 });
 $('edPublish').addEventListener('click', () => {
@@ -2243,7 +2294,7 @@ function onlineEntry() {
   if (!myEntry) {
     const raw = { ...DEFAULT_SETUP, ...store.get('setup0', {}) };
     const liv = LIVERIES.find((l) => l.id === store.get('liv0', 'rojo')) || LIVERIES[0];
-    myEntry = { liv, setupRaw: raw };
+    myEntry = { liv, setupRaw: raw, carId: ownedCars().includes(store.get('car0', 'muscle')) ? store.get('car0', 'muscle') : 'muscle' };
   }
   return myEntry;
 }
@@ -2268,7 +2319,7 @@ function connectRoom(code, quick = false) {
   roomState = null; myId = null;
   onMsg('Conectando…');
   room = new RoomClient(API, code, {
-    open: () => { const e = onlineEntry(); room.send({ t: 'join', name, liv: e.liv.id, cls: classOf(e.setupRaw), quick }); },
+    open: () => { const e = onlineEntry(); room.send({ t: 'join', name, liv: e.liv.id, cls: classOf(e.setupRaw), car: e.carId, quick }); },
     close: (why) => { room = null; roomState = null; if (state === 'online') { renderLobby(); onMsg(why); } else toast('' + why); },
     message: onRoomMessage,
   });
@@ -2449,7 +2500,7 @@ for (const [id, d] of [['onLapsM', -1], ['onLapsP', 1]]) {
 }
 function onlineCarChosen(entry) {
   myEntry = entry;
-  room && room.send({ t: 'me', liv: entry.liv.id, cls: classOf(entry.setupRaw) });
+  room && room.send({ t: 'me', liv: entry.liv.id, cls: classOf(entry.setupRaw), car: entry.carId });
   showOnline();
 }
 $('playOnline').addEventListener('click', () => { initAudio(); sfx.click(); showOnline(); });
@@ -2484,7 +2535,7 @@ $('onCar').addEventListener('click', () => {
   sfx.click();
   selDef = roomDef(roomState && roomState.track) || TRACKS[0];
   mode = 'online';
-  state = 'garage'; entries = []; editing = { liv: onlineEntry().liv, setupRaw: { ...onlineEntry().setupRaw } };
+  state = 'garage'; entries = []; editing = { liv: onlineEntry().liv, setupRaw: { ...onlineEntry().setupRaw }, carId: onlineEntry().carId };
   renderGarage(); setScreen('garage');
 });
 $('onReady').addEventListener('click', () => {
@@ -2587,6 +2638,8 @@ function champAfterRace(order) {
     const best = store.get('cups', {}), key = `${champ.cup.id}|${champ.players}`;
     if (!best[key] || myCup < best[key]) { best[key] = myCup; store.set('cups', best); }
     if (myCup === 1) sfx.finish();
+    const prize = [400, 200, 100][myCup - 1] || 0;
+    if (prize) { addCoins(prize); $('resCoins').hidden = false; $('resCoins').textContent = `${$('resCoins').textContent ? $('resCoins').textContent + ' · ' : ''}Premio de la copa: +${prize}`; }
   } else {
     $('nextBtn').hidden = false;
     $('nextBtn').querySelector('.btn-main').textContent = `Siguiente: ${champ.defs[champ.idx + 1].name} ›`;
@@ -2594,6 +2647,85 @@ function champAfterRace(order) {
 }
 $('playChamp').addEventListener('click', () => { initAudio(); sfx.click(); showChamp(); });
 $('chBack').addEventListener('click', () => { sfx.click(); champ = null; showMenu(); });
+
+// ---- Créditos y tienda ----
+const coins = () => store.get('coins', 300);
+const ownedCars = () => { const o = store.get('ownedCars', ['muscle']); return o.includes('muscle') ? o : ['muscle', ...o]; };
+function addCoins(n) {
+  if (!n) return;
+  store.set('coins', coins() + n);
+  $('coins').textContent = coins().toLocaleString('es-ES');
+}
+// Créditos de una carrera: por puesto y por vuelta (para 1 jugador; en 2 jugadores, el que gane)
+function raceReward(myPos, laps) { return ([120, 70, 45, 25][myPos - 1] || 15) + laps * 5; }
+function showShop(from) {
+  state = 'shop';
+  shopFrom = from || 'menu';
+  setScreen('shop');
+  renderShop();
+}
+let shopFrom = 'menu';
+function renderShop() {
+  $('shCoins').textContent = coins().toLocaleString('es-ES');
+  const box = $('shList'); box.innerHTML = '';
+  const owned = ownedCars(), sel = store.get('car0', 'muscle');
+  for (const car of CARS) {
+    const card = document.createElement('div');
+    const has = owned.includes(car.id);
+    card.className = 'shop-card' + (has ? ' owned' : '');
+    const img = new Image(); img.src = `assets/cars/${car.id}.webp`; img.alt = car.name; img.loading = 'lazy';
+    const info = document.createElement('div'); info.className = 'info';
+    const nm = document.createElement('b'); nm.textContent = car.name;
+    const ty = document.createElement('small'); ty.textContent = car.type;
+    const st = document.createElement('small'); st.className = 'tag-own';
+    st.textContent = has ? (sel === car.id ? 'Equipado' : 'En tu garaje') : '';
+    const btn = document.createElement('button');
+    btn.className = 'btn ' + (has ? 'ghost' : coins() >= car.price ? 'primary' : 'ghost');
+    const bm = document.createElement('span'); bm.className = 'btn-main';
+    if (has) { bm.textContent = sel === car.id ? 'Equipado' : 'Equipar'; btn.disabled = sel === car.id; }
+    else { bm.textContent = `Comprar · ${car.price.toLocaleString('es-ES')}`; btn.disabled = coins() < car.price; }
+    btn.appendChild(bm);
+    if (!has && coins() < car.price) { const sub = document.createElement('span'); sub.className = 'btn-sub'; sub.textContent = `Te faltan ${(car.price - coins()).toLocaleString('es-ES')}`; btn.appendChild(sub); }
+    btn.addEventListener('click', () => {
+      if (has) { store.set('car0', car.id); sfx.click(); toast(`${car.name} equipado`); renderShop(); return; }
+      if (coins() < car.price) return;
+      store.set('coins', coins() - car.price);
+      store.set('ownedCars', [...owned, car.id]);
+      store.set('car0', car.id);
+      sfx.best(); toast(`¡${car.name} es tuyo!`);
+      loadCar(car.id);
+      renderShop();
+    });
+    info.append(nm, ty, st, btn);
+    card.append(img, info);
+    box.appendChild(card);
+  }
+}
+// Selector de coche en el taller (solo los que tienes) y acceso a la tienda
+function renderCarPick() {
+  const box = $('carPick'); box.innerHTML = '';
+  const taken = entries.map((e) => e.carId);
+  for (const id of ownedCars()) {
+    const car = carById(id);
+    const b = document.createElement('button');
+    b.className = id === editing.carId ? 'on' : '';
+    const img = new Image(); img.src = `assets/cars/${id}.webp`; img.alt = '';
+    const sp = document.createElement('span'); sp.textContent = car.name;
+    b.append(img, sp);
+    b.addEventListener('click', () => { sfx.click(); editing.carId = id; loadCar(id); renderGarage(); });
+    box.appendChild(b);
+  }
+  const sh = document.createElement('button'); sh.className = 'shop'; sh.textContent = 'Tienda ›';
+  sh.addEventListener('click', () => { sfx.click(); showShop('garage'); });
+  box.appendChild(sh);
+}
+$('playShop').addEventListener('click', () => { initAudio(); sfx.click(); showShop('menu'); });
+$('coinChip').addEventListener('click', () => { initAudio(); sfx.click(); showShop('menu'); });
+$('shBack').addEventListener('click', () => {
+  sfx.click();
+  if (shopFrom === 'garage') { state = 'garage'; const sel = store.get('car0', 'muscle'); if (editing && ownedCars().includes(sel) && entries.length === 0) editing.carId = sel; renderGarage(); setScreen('garage'); }
+  else showMenu();
+});
 
 // ---- Taller: decoración y reglaje ----
 let entries = [];
@@ -2610,7 +2742,8 @@ function beginEntry() {
   const taken = entries.map((e) => e.liv.id);
   const livId = store.get(`liv${player}`, LIVERIES[player].id);
   const liv = LIVERIES.find((l) => l.id === livId && !taken.includes(l.id)) || LIVERIES.find((l) => !taken.includes(l.id));
-  editing = { liv, setupRaw: { ...DEFAULT_SETUP, ...(saved || {}) } };
+  const savedCar = store.get(`car${player}`, 'muscle');
+  editing = { liv, setupRaw: { ...DEFAULT_SETUP, ...(saved || {}) }, carId: ownedCars().includes(savedCar) ? savedCar : 'muscle' };
   renderGarage();
 }
 function carIcon(liv) {
@@ -2627,7 +2760,11 @@ function renderGarage() {
   const player = entries.length;
   $('garTitle').textContent = mode === '2p' ? `Jugador ${player + 1}: taller` : 'Taller';
   $('garTrack').textContent = champ ? `${champ.cup.name} · ${champ.defs.length} carreras` : `${selDef.name} · ${mode === 'practica' ? 'Práctica' : mode === '2p' ? '2 jugadores' : mode === 'online' ? 'Online' : 'Carrera'}`;
-  $('garPreview').innerHTML = carIcon(editing.liv);
+  // Foto del coche elegido (si aún no está, el dibujo de siempre)
+  const img = new Image(); img.alt = carById(editing.carId).name; img.src = `assets/cars/${editing.carId}.webp`;
+  img.onerror = () => { $('garPreview').innerHTML = carIcon(editing.liv); };
+  $('garPreview').innerHTML = ''; $('garPreview').appendChild(img);
+  renderCarPick();
   $('garName').textContent = editing.liv.name;
   const taken = entries.map((e) => e.liv.id);
   const lv = $('livList');
@@ -2672,7 +2809,8 @@ $('garGo').addEventListener('click', () => {
   const player = entries.length;
   store.set(`setup${player}`, editing.setupRaw);
   store.set(`liv${player}`, editing.liv.id);
-  entries.push({ liv: editing.liv, setupRaw: { ...editing.setupRaw } });
+  store.set(`car${player}`, editing.carId);
+  entries.push({ liv: editing.liv, setupRaw: { ...editing.setupRaw }, carId: editing.carId });
   if (mode === '2p' && entries.length < 2) beginEntry();
   else if (mode === 'online') onlineCarChosen(entries[0]);
   else if (champ && champ.idx === 0 && !champ.entries) { champ.entries = entries.slice(); startChampRace(); }

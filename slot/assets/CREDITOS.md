@@ -15,13 +15,19 @@ en un juego comercial sin pagar ni dar atribución. Aun así, los citamos.
 Código de terceros: three.js y sus módulos de ejemplo (`vendor/`), licencia MIT.
 Tipografía Fredoka, licencia SIL OFL.
 
-## Modelo del coche
+## Coches (todos inventados, sin marcas reales; licencia CC-BY 4.0: hay que citar al autor)
 
-| Archivo | Recurso | Autor | Fuente | Licencia |
+| Archivo | Coche en el juego | Modelo original | Autor | Fuente |
 |---|---|---|---|---|
-| `models/car_hi.glb`, `models/car_lo.glb` | "Generic Sport Coupé Car" (coche inventado, sin marca real). Modificado: piezas internas y multimedia quitadas, ruedas separadas, pintura para las decoraciones, texturas WebP | Márcio Meireles (mmcworks), adaptado por timo-hoen (sls-racing) | https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882 | **CC-BY 4.0** (hay que citar al autor) |
+| `models/car_muscle_*.glb` | Clásico 70 | «Classic Muscle car» | Lexyc16 | https://sketchfab.com/3d-models/classic-muscle-car-641efc889e5f4543bae51d0922e6f4b3 |
+| `models/car_sedan_*.glb` | Turismo GTS | «Generic Sedan Car» (adaptado por sls-racing) | Márcio Meireles | https://sketchfab.com/3d-models/generic-sedan-car-58c33766470d46e7b2aed542650494e5 |
+| `models/car_drag_*.glb` | Dragster V8 | «Custom High Poly Muscle Car Drag Car» (sin tornillos, logotipos ni pegatinas) | the_86_guy | https://sketchfab.com/3d-models/custom-high-poly-muscle-car-drag-car-77089622cacb4024a1f967b153234753 |
+| `models/car_concept_*.glb` | Aero Concept | «My Futuristic Concept Car» | Ar3Designer | https://sketchfab.com/3d-models/my-futuristic-concept-car-2b0c4c23cd6046ac82f04b1b5be28a67 |
+| `models/car_goblin_*.glb` | V12 Goblin | «Fictional supercar - V12 Goblin» (adaptado por sls-racing) | ollitei | https://sketchfab.com/3d-models/fictional-supercar-v12-goblin-0a20e49ad5774d778567cb5c3f345786 |
 
-Atribución que debe aparecer en el juego: *"Generic Sport Coupé Car" de Márcio Meireles (https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882), CC-BY 4.0 (http://creativecommons.org/licenses/by/4.0/), modificado.*
+Todos modificados: reorientados, escalados a 1:32, mallas simplificadas en una versión ligera, texturas WebP y
+pintura cambiable según la decoración. Licencia: CC-BY 4.0 (http://creativecommons.org/licenses/by/4.0/).
+Las fotos de `cars/*.webp` son renders hechos para el juego a partir de esos modelos.
 
 ## Sonido
 

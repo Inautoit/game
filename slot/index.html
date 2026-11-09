@@ -48,6 +48,7 @@
     <div class="topbar">
       <button class="icon-btn" data-open="mHelp" aria-label="Cómo jugar"><svg><use href="#i-help"/></svg></button>
       <div class="chip"><svg class="cup" viewBox="0 0 24 24" aria-label="Trofeos"><path d="M7 3h10v3h3v2a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V17h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V6h3Zm0 5H6a2 2 0 0 0 1 1.7Zm10 0v1.7A2 2 0 0 0 18 8Z" fill="currentColor"/></svg><span id="trophies">0/6</span></div>
+      <button id="coinChip" class="chip coin-chip" aria-label="Créditos: abrir la tienda"><svg class="coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7v10M9.5 9.5h3.8a1.7 1.7 0 0 1 0 3.4h-2.6a1.7 1.7 0 0 0 0 3.4h3.8" stroke="#1b1300" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg><span id="coins">0</span></button>
       <div class="spacer"></div>
       <button class="icon-btn" data-open="mStats" aria-label="Estadísticas"><svg><use href="#i-stats"/></svg></button>
       <button class="icon-btn" data-open="mSettings" aria-label="Ajustes"><svg><use href="#i-gear"/></svg></button>
@@ -63,7 +64,10 @@
         <button id="playOnline" class="btn secondary"><span class="btn-main">Online</span><span class="btn-sub">Rápida o con amigos</span></button>
         <button id="play2" class="btn ghost"><span class="btn-main">2 Jugadores</span><span class="btn-sub">Mismo dispositivo</span></button>
       </div>
-      <button id="playEditor" class="btn ghost"><span class="btn-main">Crear circuito</span><span class="btn-sub">Y compártelo con todos</span></button>
+      <div class="row2">
+        <button id="playShop" class="btn ghost"><span class="btn-main">Tienda</span><span class="btn-sub">Coches nuevos</span></button>
+        <button id="playEditor" class="btn ghost"><span class="btn-main">Crear circuito</span><span class="btn-sub">Y compártelo</span></button>
+      </div>
       <div class="footer">v3.0 · Editor de circuitos · Online con salas · Mando de consola</div>
     </div>
   </div>
@@ -86,6 +90,18 @@
       <button data-sort="new">Nuevos</button>
     </div>
     <div id="circList" class="circ-list"></div>
+  </div>
+
+  <!-- Tienda -->
+  <div id="shop" class="screen">
+    <div class="topbar">
+      <button id="shBack" class="icon-btn" aria-label="Volver"><svg><use href="#i-back"/></svg></button>
+      <div><h2 class="title">Tienda</h2><div class="subtitle">Gana créditos corriendo: carreras, copas, vueltas y récords</div></div>
+      <div class="spacer"></div>
+      <div class="chip coin-chip"><svg class="coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7v10M9.5 9.5h3.8a1.7 1.7 0 0 1 0 3.4h-2.6a1.7 1.7 0 0 0 0 3.4h3.8" stroke="#1b1300" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg><span id="shCoins">0</span></div>
+    </div>
+    <div id="shList" class="shop-list"></div>
+    <p class="muted small center">Todos los coches corren igual: lo que cambia es el aspecto. Gana el reglaje y el piloto.</p>
   </div>
 
   <!-- Campeonatos -->
@@ -180,6 +196,7 @@
     <div class="garage-body">
       <div class="gar-car">
         <div id="garPreview" class="gar-preview"></div>
+        <div id="carPick" class="car-pick"></div>
         <div class="gar-name"><b id="garName"></b><span id="garClass" class="cls iman">Con imán</span></div>
         <div id="livList" class="liv-list"></div>
       </div>
@@ -236,6 +253,7 @@
       <div class="res-head"><span>Pos.</span><span></span><span>Piloto</span><span>Tiempo</span><span>Mejor v.</span></div>
       <div id="resTable" class="res-table"></div>
       <div id="resBest" class="muted center small"></div>
+      <div id="resCoins" class="res-coins" hidden></div>
       <div id="resChamp" class="res-champ" hidden></div>
       <button id="likeBtn" class="btn small ghost" hidden><span class="btn-main">Me gusta este circuito</span></button>
       <button id="nextBtn" class="btn primary"><span class="btn-main">Siguiente circuito ›</span></button>
@@ -334,7 +352,7 @@
       <div id="resetConfirm" class="confirm" hidden><span>¿Borrar récords, fantasmas y circuitos desbloqueados?</span>
         <div class="row2"><button id="resetYes" class="btn secondary"><span class="btn-main">Sí, borrar</span></button><button id="resetNo" class="btn ghost"><span class="btn-main">Cancelar</span></button></div></div>
       <p class="muted small">Turbo Slot no usa cuentas, anuncios ni rastreadores. Tu progreso se guarda solo en este dispositivo.</p>
-      <p class="muted small center">Turbo Slot v3.1 · three.js (MIT) · Barlow y Barlow Condensed de Jeremy Tribby (OFL)<br>Coche: «Generic Sport Coupé Car» de Márcio Meireles (Sketchfab), CC-BY 4.0, modificado.<br>Iluminación: Poly Haven (CC0) · Texturas: ambientCG (CC0) · Sonido de pista: BigSoundBank (CC0)</p>
+      <p class="muted small center">Turbo Slot v3.1 · three.js (MIT) · Barlow y Barlow Condensed de Jeremy Tribby (OFL)<br>Coches (CC-BY 4.0, modificados): «Classic Muscle car» de Lexyc16 · «Generic Sedan Car» de Márcio Meireles · «Custom High Poly Muscle Car Drag Car» de the_86_guy · «My Futuristic Concept Car» de Ar3Designer · «Fictional supercar - V12 Goblin» de ollitei.<br>Iluminación: Poly Haven (CC0) · Texturas: ambientCG (CC0) · Sonido de pista: BigSoundBank (CC0)</p>
     </div>
   </div>
 

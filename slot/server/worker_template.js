@@ -150,6 +150,8 @@ export default {
 const MAX = 4;
 const LIVS = ['rojo', 'azul', 'verde', 'amarillo', 'negro', 'blanco'];
 const CPU_NAMES = ['Ortega', 'Ferrer', 'Sanz', 'Vidal'];
+const CAR_IDS = ['muscle', 'sedan', 'drag', 'concept', 'goblin'];
+const carOf = (c) => (CAR_IDS.includes(c) ? c : 'muscle');
 const CHAMP_PTS = [10, 6, 4, 3];
 // Copas online (circuitos oficiales)
 const CUPS = {
@@ -180,7 +182,7 @@ export class Room {
     return {
       t: 'room', phase: this.phase, track: this.track, startAt: this.startAt, cpu: this.cpu, quick: this.quick, autoAt: this.autoAt,
       bots: this.bots, champ: this.champ,
-      players: [...this.players.entries()].map(([id, p]) => ({ id, name: p.name, liv: p.liv, cls: p.cls, lane: p.lane, ready: p.ready, host: p.host, fin: p.fin })),
+      players: [...this.players.entries()].map(([id, p]) => ({ id, name: p.name, liv: p.liv, cls: p.cls, car: p.car, lane: p.lane, ready: p.ready, host: p.host, fin: p.fin })),
     };
   }
   pickLiv(want, exceptId) {
@@ -245,7 +247,7 @@ export class Room {
       for (let l = 0; l < this.track.lanes; l++) {
         if (used.has(l)) continue;
         const liv = LIVS.find((x) => !livUsed.has(x)) || 'blanco'; livUsed.add(liv);
-        this.bots.push({ id: 'cpu' + l, lane: l, name: `${CPU_NAMES[k++ % CPU_NAMES.length]} · CPU`, liv, fin: null });
+        this.bots.push({ id: 'cpu' + l, lane: l, name: `${CPU_NAMES[k % CPU_NAMES.length]} · CPU`, liv, car: CAR_IDS[(k * 2 + 1) % CAR_IDS.length], fin: null }); k++;
       }
     }
     this.all(this.snapshot());
@@ -300,7 +302,7 @@ export class Room {
         const lane = this.freeLane();
         if (lane < 0) { this.send(ws, { t: 'error', msg: 'No quedan carriles libres en este circuito' }); return; }
         let name = clean(m.name, 16); if (name.length < 2 || isBad(name)) name = 'Piloto';
-        const p = { ws, name, liv: this.pickLiv(clean(m.liv, 12)), cls: m.cls === 'pro' ? 'pro' : 'iman', lane, ready: this.quick, host: this.players.size === 0, fin: null };
+        const p = { ws, name, liv: this.pickLiv(clean(m.liv, 12)), cls: m.cls === 'pro' ? 'pro' : 'iman', car: carOf(m.car), lane, ready: this.quick, host: this.players.size === 0, fin: null };
         this.players.set(id, p);
         if (this.quick && this.players.size >= Math.min(MAX, this.track.lanes)) this.scheduleAuto(4000);
         this.send(ws, { t: 'welcome', id });
@@ -350,7 +352,7 @@ export class Room {
       case 'cpu': if (me.host && this.phase === 'lobby' && !this.quick) { this.cpu = !!m.v; this.all(this.snapshot()); } return;
       case 'me': {
         if (this.phase !== 'lobby') return;
-        me.liv = this.pickLiv(clean(m.liv, 12), id); me.cls = m.cls === 'pro' ? 'pro' : 'iman';
+        me.liv = this.pickLiv(clean(m.liv, 12), id); me.cls = m.cls === 'pro' ? 'pro' : 'iman'; me.car = carOf(m.car);
         this.all(this.snapshot());
         return;
       }
