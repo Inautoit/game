@@ -897,9 +897,10 @@ const blobTex = (() => {
 // ---------------------------------------------------------------------------
 export const CARS = [
   { id: 'gt22', name: 'GT 22', type: 'Superdeportivo de carreras', credit: '«Fantastic Race Car 22 Gold» de YDEVASHISH' },
-  { id: 'abyss', name: 'Abyss GT7', type: 'Hiperdeportivo de carreras', credit: '«Tokii Abyss GT.7 V12» de Glas\'kavin' },
-  { id: 'goblin', name: 'Goblin V12', type: 'Superdeportivo', credit: '«Fictional supercar - V12 Goblin» de ollitei' },
-  { id: 'cheetah', name: 'Cheetah', type: 'Superdeportivo con alerón', credit: '«Generic Supercar "Cheetah"» de mk2design' },
+  { id: 'kiri', name: 'Kiri 94', type: 'Berlina de carreras', credit: '«Kiri \'94 Racemod - Low Poly model» de Daniel Zhabotinsky' },
+  { id: 'thunderbolt', name: 'Thunderbolt 96', type: 'Berlina deportiva', credit: '«Thunderbolt \'96 - Low Poly Model» de Daniel Zhabotinsky' },
+  { id: 'nomad', name: 'Nomad 90', type: 'Deportivo', credit: '«NFR \'90 - Low Poly model» de Daniel Zhabotinsky' },
+  { id: 'classic', name: 'Monoplaza clásico', type: 'Fórmula clásica', credit: '«Open Wheel Race Car» de Dylan Jade' },
   { id: 'f1', name: 'Monoplaza 22', type: 'Monoplaza de fórmula', credit: '«F1 Generic 2022» de TheoDev (sin logotipos)' },
 ];
 export const DEFAULT_CAR = 'gt22';

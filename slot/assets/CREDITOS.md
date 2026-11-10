@@ -21,9 +21,10 @@ Tipografía Fredoka, licencia SIL OFL.
 |---|---|---|---|---|
 | `models/car_gt22_*.glb` | GT 22 | «Fantastic Race Car 22 Gold» (materiales convertidos, carrocería lisa que pinta la decoración) | YDEVASHISH | https://sketchfab.com/3d-models/fantastic-race-car-22-gold-201b4b17e420429792ee628c72f44827 |
 | `models/car_f1_*.glb` | Monoplaza 22 | «F1 Generic 2022» (sin logotipos: fuera el logo de F1, Pirelli y patrocinadores; carrocería lisa) | TheoDev | https://sketchfab.com/3d-models/f1-generic-2022-3562a1c1935440bb8bdb4b1f04df0be1 |
-| `models/car_abyss_*.glb` | Abyss GT7 | «Tokii Abyss GT.7 V12» (carrocería, cristales y ruedas montados en un solo modelo; la pintura principal y la secundaria siguen la decoración) | Glas'kavin | https://sketchfab.com/3d-models/tokii-abyss-gt7-v12-c399568541104e0e903cf138b1e24908 |
-| `models/car_goblin_*.glb` | Goblin V12 | «Fictional supercar - V12 Goblin» | ollitei | https://sketchfab.com/3d-models/fictional-supercar-v12-goblin-0a20e49ad5774d778567cb5c3f345786 |
-| `models/car_cheetah_*.glb` | Cheetah | «Generic Supercar "Cheetah"» | mk2design | https://sketchfab.com/3d-models/generic-supercar-cheetah-f5420af7b30c4e8c874be33cc58724f2 |
+| `models/car_kiri_*.glb` | Kiri 94 | «Kiri '94 Racemod - Low Poly model» (sin emblemas ni matrículas) | Daniel Zhabotinsky | https://sketchfab.com/3d-models/kiri-94-racemod-low-poly-model-64d5d6f074a84717ac6d764f35c95285 |
+| `models/car_thunderbolt_*.glb` | Thunderbolt 96 | «Thunderbolt '96 - Low Poly Model» (sin emblemas ni matrículas) | Daniel Zhabotinsky | https://sketchfab.com/3d-models/thunderbolt-96-low-poly-model-25a4ff2002834ec1b4441c57ecd7ca9f |
+| `models/car_nomad_*.glb` | Nomad 90 | «NFR '90 - Low Poly model» (sin emblemas ni matrículas) | Daniel Zhabotinsky | https://sketchfab.com/3d-models/nfr-90-low-poly-model-776078e51fbe4ec9addbe45ba13e1aad |
+| `models/car_classic_*.glb` | Monoplaza clásico | «Open Wheel Race Car» (pintura lisa) | Dylan Jade | https://sketchfab.com/3d-models/open-wheel-race-car-4599e9608b6845aaafadc89f7d41fa3c |
 
 Todos modificados: reorientados, escalados a 1:32, mallas simplificadas en una versión ligera, texturas WebP y
 pintura cambiable según la decoración. Licencia: CC-BY 4.0 (http://creativecommons.org/licenses/by/4.0/).

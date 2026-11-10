@@ -247,7 +247,7 @@ T('ajustes: se guardan al recargar; créditos y contacto', async () => {
   await click(p, '#mSettings [data-open="mCredits"]'); await sleep(300);
   assert(await visible(p, '#mCredits'), 'no abren los créditos');
   const txt = await p.evaluate(() => document.querySelector('#mCredits .credits').textContent);
-  for (const w of ['Lexyc16', 'Márcio Meireles', 'TheoDev', 'YDEVASHISH', 'Quaternius', 'Poly Haven', 'ambientCG', 'BigSoundBank', 'three.js', 'Barlow']) assert(txt.includes(w), 'falta en créditos: ' + w);
+  for (const w of ['Daniel Zhabotinsky', 'Dylan Jade', 'TheoDev', 'YDEVASHISH', 'Quaternius', 'Poly Haven', 'ambientCG', 'BigSoundBank', 'three.js', 'Barlow']) assert(txt.includes(w), 'falta en créditos: ' + w);
   await p.evaluate(() => document.querySelector('#mCredits [data-close]').click()); await sleep(200);
   await click(p, '#openFeedback'); await sleep(300);
   await p.fill('#fbMsg', 'hey'); await click(p, '#fbGo'); await sleep(300);
