@@ -896,11 +896,16 @@ const blobTex = (() => {
 // Todos corren igual: la física no cambia de un coche a otro (gana el reglaje y el piloto).
 // ---------------------------------------------------------------------------
 export const CARS = [
-  { id: 'muscle', name: 'Clásico 70', type: 'Muscle car', price: 0, credit: '«Classic Muscle car» de Lexyc16' },
-  { id: 'sedan', name: 'Turismo GTS', type: 'Turismo', price: 600, credit: '«Generic Sedan Car» de Márcio Meireles' },
-  { id: 'f1', name: 'Monoplaza 22', type: 'Monoplaza de fórmula', price: 1800, credit: '«F1 Generic 2022» de TheoDev (sin logotipos)' },
-  { id: 'gt22', name: 'GT 22', type: 'Superdeportivo de carreras', price: 0, credit: '«Fantastic Race Car 22 Gold» de YDEVASHISH' },
+  { id: 'gt22', name: 'GT 22', type: 'Superdeportivo de carreras', credit: '«Fantastic Race Car 22 Gold» de YDEVASHISH' },
+  { id: 'abyss', name: 'Abyss GT7', type: 'Hiperdeportivo de carreras', credit: '«Tokii Abyss GT.7 V12» de Glas\'kavin' },
+  { id: 'goblin', name: 'Goblin V12', type: 'Superdeportivo', credit: '«Fictional supercar - V12 Goblin» de ollitei' },
+  { id: 'cheetah', name: 'Cheetah', type: 'Superdeportivo con alerón', credit: '«Generic Supercar "Cheetah"» de mk2design' },
+  { id: 'f1', name: 'Monoplaza 22', type: 'Monoplaza de fórmula', credit: '«F1 Generic 2022» de TheoDev (sin logotipos)' },
 ];
+export const DEFAULT_CAR = 'gt22';
+// Coche guardado de un jugador (los antiguos, ya retirados, pasan al de por defecto)
+const validCar = (id) => (CARS.some((c) => c.id === id) ? id : DEFAULT_CAR);
+const savedCar = (player = 0) => validCar(store.get(`car${player}`, DEFAULT_CAR));
 const carById = (id) => CARS.find((c) => c.id === id) || CARS[0];
 const CAR_LEN = 0.98;       // longitud del coche en unidades (≈ 12,5 cm; ≈ 6 cm de ancho)
 const NOSE_AHEAD = 0.16;    // la guía va 2 cm por detrás del morro
@@ -1270,7 +1275,7 @@ function loadCar(id) {
   carLoading[id] = Promise.all([fetchModel(`car_${id}_hi.glb`), fetchModel(`car_${id}_lo.glb`)]).then(([hi, lo]) => {
     carModels[id] = { hi: prepareModel(hi), lo: prepareModel(lo) };
     for (const c of cars) {
-      if ((c.carId || 'muscle') !== id) continue;
+      if ((c.carId || DEFAULT_CAR) !== id) continue;
       const old = c.mesh;
       c.mesh = makeCarMesh(c.liv, false, id);
       c.mesh.position.copy(old.position); c.mesh.rotation.copy(old.rotation);
@@ -1281,7 +1286,7 @@ function loadCar(id) {
   }).catch(() => { delete carLoading[id]; });
   return carLoading[id];
 }
-function loadCarModels() { return loadCar('muscle'); }
+function loadCarModels() { return loadCar(savedCar(0)); }
 function paintModel(src, liv, ghost, car) {
   const m = src.pivot.clone(true);
   const cache = new Map();
@@ -1319,7 +1324,7 @@ function paintModel(src, liv, ghost, car) {
   m.userData.wheels = wheels;
   return m;
 }
-function makeCarMesh(liv, ghost = false, carId = 'muscle') {
+function makeCarMesh(liv, ghost = false, carId = DEFAULT_CAR) {
   const model = carModels[carId];
   if (!model) loadCar(carId);
   if (model) {
@@ -1668,7 +1673,7 @@ function placeCar(mesh, s, d, th) {
   return p;
 }
 
-function makeCar({ liv, lane, human, player, name, setupRaw, skill, carId = 'muscle' }) {
+function makeCar({ liv, lane, human, player, name, setupRaw, skill, carId = DEFAULT_CAR }) {
   const mesh = makeCarMesh(liv, false, carId);
   carsGroup.add(mesh);
   const setup = resolveSetup(setupRaw);
@@ -1708,7 +1713,7 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
   const others = LIVERIES.filter((l) => !used.has(l.id));
   entries.forEach((e, i) => {
     const lane = online ? online.lane : humans === 2 ? i : (lanes === 2 ? 1 : Math.min(lanes - 1, 1));
-    makeCar({ liv: e.liv, lane, human: true, player: i, name: humans === 2 ? `Jugador ${i + 1}` : 'Tú', setupRaw: e.setupRaw, carId: e.carId || 'muscle' });
+    makeCar({ liv: e.liv, lane, human: true, player: i, name: humans === 2 ? `Jugador ${i + 1}` : 'Tú', setupRaw: e.setupRaw, carId: validCar(e.carId) });
   });
   for (const c of cars) if (c.human) buildBrakeMarks(c);
   // Online: los coches de los demás pilotos (se mueven con lo que llega por la red)
@@ -1716,17 +1721,17 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
     for (const p of online.players) {
       if (p.id === online.me) continue;
       const liv = LIVERIES.find((l) => l.id === p.liv) || LIVERIES[(p.lane + 1) % LIVERIES.length];
-      const c = makeCar({ liv, lane: p.lane, human: false, name: p.name, setupRaw: DEFAULT_SETUP, carId: CARS.some((x) => x.id === p.car) ? p.car : 'muscle' });
+      const c = makeCar({ liv, lane: p.lane, human: false, name: p.name, setupRaw: DEFAULT_SETUP, carId: validCar(p.car) });
       c.remote = p.id; c.net = [];
     }
     // CPU de la sala: el anfitrión los conduce (IA normal) y manda su estado; los demás los ven por la red
     for (const bt of online.bots || []) {
       const liv = LIVERIES.find((l) => l.id === bt.liv) || LIVERIES[(bt.lane + 2) % LIVERIES.length];
       if (online.amHost) {
-        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet }, skill: 0.9 + Math.random() * 0.05, carId: bt.car || 'muscle' });
+        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: { ...DEFAULT_SETUP, magnet: entries[0].setupRaw.magnet }, skill: 0.9 + Math.random() * 0.05, carId: validCar(bt.car) });
         c.botId = bt.id;
       } else {
-        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: DEFAULT_SETUP, carId: bt.car || 'muscle' });
+        const c = makeCar({ liv, lane: bt.lane, human: false, name: bt.name, setupRaw: DEFAULT_SETUP, carId: validCar(bt.car) });
         c.remote = bt.id; c.net = [];
       }
     }
@@ -1747,7 +1752,7 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
     const cls = classOf(entries[0].setupRaw);
     const data = store.get(ghostKey(def.id, cls), null);
     if (data) {
-      const gid = entries[0].carId || 'muscle';
+      const gid = validCar(entries[0].carId);
       const mesh = makeCarMesh(entries[0].liv, true, gid);
       carsGroup.add(mesh);
       ghost = { mesh, data, carId: gid };
@@ -2433,7 +2438,7 @@ function demoRace() {
   buildTrack(def);
   physTrack = { L: T.L, DSU: DS, pts: T.pts };
   clearCars();
-  const mine = store.get('car0', 'muscle');
+  const mine = savedCar(0);
   const order = [mine, ...CARS.map((c) => c.id).filter((id) => id !== mine)];
   for (let l = 0; l < T.offsets.length; l++) {
     // Imanes distintos: los de poco imán derrapan más (y alguno acabará fuera)
@@ -2998,7 +3003,7 @@ $('edTest').addEventListener('click', () => {
   const def = draftDef(draft, closed);
   const raw = { ...DEFAULT_SETUP, ...store.get('setup0', {}) };
   const liv = LIVERIES.find((l) => l.id === store.get('liv0', 'rojo')) || LIVERIES[0];
-  startRace({ def, mode: 'practica', entries: [{ liv, setupRaw: raw, carId: store.get('car0', 'muscle') }] });
+  startRace({ def, mode: 'practica', entries: [{ liv, setupRaw: raw, carId: savedCar(0) }] });
   race.editorTest = true;
 });
 $('edPublish').addEventListener('click', () => {
@@ -3055,7 +3060,7 @@ function onlineEntry() {
   if (!myEntry) {
     const raw = { ...DEFAULT_SETUP, ...store.get('setup0', {}) };
     const liv = LIVERIES.find((l) => l.id === store.get('liv0', 'rojo')) || LIVERIES[0];
-    myEntry = { liv, setupRaw: raw, carId: ownedCars().includes(store.get('car0', 'muscle')) ? store.get('car0', 'muscle') : 'muscle' };
+    myEntry = { liv, setupRaw: raw, carId: savedCar(0) };
   }
   return myEntry;
 }
@@ -3435,7 +3440,7 @@ function loadWorldRecord(r) {
     if (!res.ghost || !res.ghost.length || race !== r) return;
     if (wrGhost && wrGhost.mesh.parent) carsGroup.remove(wrGhost.mesh);
     const liv = LIVERIES.find((l) => l.id === g.liv) || LIVERIES[3];
-    const mesh = makeCarMesh(liv, 'gold', CARS.some((x) => x.id === g.car) ? g.car : 'muscle');
+    const mesh = makeCarMesh(liv, 'gold', validCar(g.car));
     mesh.visible = false;
     carsGroup.add(mesh);
     wrGhost = { race: r, mesh, s: res.ghost, d: res.d, name: g.name, time: g.time };
@@ -3585,7 +3590,7 @@ function showShop(from) {
 let shopFrom = 'menu';
 function renderShop() {
   const box = $('shList'); box.innerHTML = '';
-  const sel = store.get('car0', 'muscle');
+  const sel = savedCar(0);
   for (const car of CARS) {
     const card = document.createElement('div');
     card.className = 'shop-card owned';
@@ -3626,7 +3631,7 @@ function renderCarPick() {
 $('playShop').addEventListener('click', () => { initAudio(); sfx.click(); showShop('menu'); });
 $('shBack').addEventListener('click', () => {
   sfx.click();
-  if (shopFrom === 'garage') { state = 'garage'; const sel = store.get('car0', 'muscle'); if (editing && entries.length === 0) editing.carId = sel; renderGarage(); setScreen('garage'); }
+  if (shopFrom === 'garage') { state = 'garage'; const sel = savedCar(0); if (editing && entries.length === 0) editing.carId = sel; renderGarage(); setScreen('garage'); }
   else showMenu();
 });
 
@@ -3646,8 +3651,7 @@ function beginEntry() {
   const taken = entries.map((e) => e.liv.id);
   const livId = store.get(`liv${player}`, LIVERIES[player].id);
   const liv = LIVERIES.find((l) => l.id === livId && !taken.includes(l.id)) || LIVERIES.find((l) => !taken.includes(l.id));
-  const savedCar = store.get(`car${player}`, 'muscle');
-  editing = { liv, setupRaw: { ...DEFAULT_SETUP, ...(saved || {}) }, carId: ownedCars().includes(savedCar) ? savedCar : 'muscle' };
+  editing = { liv, setupRaw: { ...DEFAULT_SETUP, ...(saved || {}) }, carId: savedCar(player) };
   renderGarage();
 }
 function carIcon(liv) {

@@ -406,8 +406,8 @@ export default {
 const MAX = 4;
 const LIVS = ['rojo', 'azul', 'verde', 'amarillo', 'negro', 'blanco'];
 const CPU_NAMES = ['Ortega', 'Ferrer', 'Sanz', 'Vidal'];
-const CAR_IDS = ['muscle', 'sedan', 'f1', 'gt22'];
-const carOf = (c) => (CAR_IDS.includes(c) ? c : 'muscle');
+const CAR_IDS = ['gt22', 'abyss', 'goblin', 'cheetah', 'f1'];
+const carOf = (c) => (CAR_IDS.includes(c) ? c : 'gt22');
 const CHAMP_PTS = [10, 6, 4, 3];
 // Copas online (circuitos oficiales)
 const CUPS = {
