@@ -92,6 +92,23 @@ test('varios pisos: se sube hasta 3, cierra bajando al suelo y no deja pasar de 
   assert.ok(Math.max(...sample({ pieces: r.pieces, lanes: d.lanes }).pts.map((p) => p.y)) > 2.8, 'llega al tercer piso');
   assert.ok(!validateTrack({ pieces: [['S', 8.33, 3.8], ['S', 8.33, 0], ['C', 180, 3.8], ['S', 16.66], ['C', 180, 3.8]], lanes: 4 }).ok, 'demasiado alto');
 });
+test('rampas suaves: tres subidas seguidas son una sola subida continua (sin escalones) y no pasan del 9 %', () => {
+  const P = Object.fromEntries(PALETTE.map((p) => [p.id, p]));
+  const d = newDraft();
+  for (const id of ['s2', 'up', 'up', 'up', 'l90', 'l90', 'l90']) d.pieces.push(P[id].make(radiusOf(d), d));
+  const r = autoClose(d.pieces, 4, radiusOf(d));
+  assert.ok(r.pieces, r.error);
+  const S = sample({ pieces: r.pieces, lanes: 4 });
+  const sl = S.pts.map((p, i) => (S.pts[(i + 1) % S.pts.length].y - p.y) / DS);
+  let runs = 0; for (let i = 1; i < sl.length; i++) if (sl[i] > 0.002 && !(sl[i - 1] > 0.002)) runs++;
+  assert.strictEqual(runs, 1, 'subidas separadas: ' + runs);
+  assert.ok(Math.max(...sl.map(Math.abs)) < 0.09, 'demasiado empinada');
+});
+test('los circuitos con rampas antiguas no cambian (récords y fantasmas siguen valiendo)', () => {
+  const S = sample({ pieces: [['S', 2.77], ['S', 8.33, 0.95], ['C', 180, 3.8], ['S', 8.33, 0], ['C', 180, 3.8]], lanes: 4 });
+  const i = Math.round(2.77 / DS + 8.33 / DS / 2), t = (i * DS - 2.77) / 8.33;
+  assert.ok(Math.abs(S.pts[i].y - 0.95 * t * t * (3 - 2 * t)) < 0.02);
+});
 test('validateTrack rechaza basura', () => { assert.ok(!validateTrack({ pieces: [['X', 1]], lanes: 4 }).ok); assert.ok(!validateTrack({ pieces: 'a', lanes: 4 }).ok); assert.ok(!validateTrack({ pieces: [['S', 1e9], ['C', 90, 3], ['C', 90, 3]], lanes: 4 }).ok); });
 
 console.log('Sincronización');

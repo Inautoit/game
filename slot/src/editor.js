@@ -13,8 +13,8 @@ export const PALETTE = [
   { id: 'r45', label: '↱ 45°', sub: 'Derecha', make: (r) => ['C', 45, r] },
   { id: 'r90', label: '↱ 90°', sub: 'Derecha', make: (r) => ['C', 90, r] },
   // Rampas: suben un piso (para pasar por encima de otro tramo) o bajan uno. Se pueden apilar varios pisos
-  { id: 'up', label: 'Subir', sub: 'Rampa al piso 1', make: (r, d) => ['S', EDITOR.ramp, +((floorOf(d) + 1) * EDITOR.bridge).toFixed(2)], when: (d) => floorOf(d) < EDITOR.floors, subOf: (d) => (floorOf(d) < EDITOR.floors ? `Rampa al piso ${floorOf(d) + 1}` : `Máximo: ${EDITOR.floors} pisos`) },
-  { id: 'down', label: 'Bajar', sub: 'Rampa al suelo', make: (r, d) => ['S', EDITOR.ramp, +(Math.max(0, floorOf(d) - 1) * EDITOR.bridge).toFixed(2)], when: (d) => floorOf(d) > 0, subOf: (d) => (floorOf(d) <= 1 ? 'Rampa al suelo' : `Rampa al piso ${floorOf(d) - 1}`) },
+  { id: 'up', label: 'Subir', sub: 'Rampa al piso 1', make: (r, d) => ['S', EDITOR.ramp, +((floorOf(d) + 1) * EDITOR.bridge).toFixed(2), 1], when: (d) => floorOf(d) < EDITOR.floors, subOf: (d) => (floorOf(d) < EDITOR.floors ? `Rampa al piso ${floorOf(d) + 1}` : `Máximo: ${EDITOR.floors} pisos`) },
+  { id: 'down', label: 'Bajar', sub: 'Rampa al suelo', make: (r, d) => ['S', EDITOR.ramp, +(Math.max(0, floorOf(d) - 1) * EDITOR.bridge).toFixed(2), 1], when: (d) => floorOf(d) > 0, subOf: (d) => (floorOf(d) <= 1 ? 'Rampa al suelo' : `Rampa al piso ${floorOf(d) - 1}`) },
 ];
 export const RADII = [['cerrada', 'Cerrada'], ['media', 'Media'], ['abierta', 'Abierta']];
 

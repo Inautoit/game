@@ -136,25 +136,21 @@ export function solve(track) {
 export function sample(track) {
   const pieces = solve(track);
   const pts = [];
-  let x = 0, z = 0, h = 0, y = 0;
-  for (const p of pieces) {
+  let x = 0, z = 0, h = 0;
+  const plan = heightPlan(pieces);
+  pieces.forEach((p, pi) => {
     const isS = p[0] === 'S';
     const len = isS ? p[1] : (Math.abs(p[1]) * Math.PI / 180) * p[2];
     const k = isS ? 0 : Math.sign(p[1]) / p[2];
-    const yEnd = (isS ? p[2] : p[3]);
-    const y0 = y, y1 = yEnd == null ? y : yEnd;
     const n = Math.max(1, Math.round(len / DS));
     const step = len / n;
     for (let i = 0; i < n; i++) {
-      const t = i / n;
-      const sm = t * t * (3 - 2 * t);
-      pts.push({ x, z, h, k, y: y0 + (y1 - y0) * sm });
+      pts.push({ x, z, h, k, y: heightIn(plan[pi], i * step) });
       x += Math.cos(h + (k * step) / 2) * step;
       z += Math.sin(h + (k * step) / 2) * step;
       h += k * step;
     }
-    y = y1;
-  }
+  });
   const closure = Math.hypot(x, z);
   return { pts, length: pts.length * DS, closure, pieces };
 }
@@ -177,7 +173,8 @@ export const EDITOR = {
   scenery: ['verde', 'arena', 'noche'],
   bridge: 0.95,   // altura de un piso (unidades): pasa por encima de otro tramo
   floors: 3,      // pisos que se pueden apilar en el editor (subiendo rampa a rampa)
-  ramp: 0.35 / 0.126 * 3,   // una rampa son 3 rectas (1,05 m)
+  ramp: 0.35 / 0.126 * 5,   // una rampa suave son 5 rectas (1,75 m): ~8 % de pendiente
+  ease: 0.35 / 0.126 * 0.9, // tramo en el que la rampa empieza y acaba de subir poco a poco
 };
 // Altura final de una pieza (o undefined si sigue a la misma altura)
 const endH = (p) => (p[0] === 'S' ? p[2] : p[3]);
@@ -188,26 +185,55 @@ export function heightAtEnd(pieces) {
 }
 const SCALE_M = 0.126;
 
+// Alturas a lo largo del trazado.
+// Rampas antiguas: cada pieza sube con una S (empieza y acaba plana).
+// Rampas suaves del editor (['S', largo, altura, 1]): las que van seguidas en el mismo sentido forman
+// una sola subida continua, que solo se suaviza al empezar y al acabar (sin escalones entre pisos).
+const pieceLen = (p) => (p[0] === 'S' ? p[1] : (Math.abs(p[1]) * Math.PI / 180) * p[2]);
+const isSoftRamp = (p) => p[0] === 'S' && p[3] === 1;
+export function heightPlan(pieces) {
+  const plan = [];
+  let y = 0;
+  for (const p of pieces) { const h = endH(p); const y1 = Number.isFinite(h) ? h : y; plan.push({ y0: y, y1, len: pieceLen(p), soft: isSoftRamp(p) && Math.abs(y1 - y) > 1e-6 }); y = y1; }
+  for (let i = 0; i < plan.length; i++) {
+    if (!plan[i].soft || plan[i].chain) continue;
+    const dir = Math.sign(plan[i].y1 - plan[i].y0);
+    let j = i;
+    while (j + 1 < plan.length && plan[j + 1].soft && Math.sign(plan[j + 1].y1 - plan[j + 1].y0) === dir) j++;
+    const ch = { Y0: plan[i].y0, Y1: plan[j].y1, L: 0 };
+    for (let k = i; k <= j; k++) { plan[k].chain = ch; plan[k].off = ch.L; ch.L += plan[k].len; }
+    ch.a = Math.min(0.5, EDITOR.ease / Math.max(1e-6, ch.L));
+  }
+  return plan;
+}
+// Altura a una distancia s (unidades) dentro de la pieza
+export function heightIn(q, s) {
+  if (!q.chain) { const t = q.len > 0 ? Math.min(1, Math.max(0, s / q.len)) : 1; return q.y0 + (q.y1 - q.y0) * t * t * (3 - 2 * t); }
+  const c = q.chain, a = c.a, u = Math.min(1, Math.max(0, (q.off + s) / c.L));
+  // Pendiente que crece al principio, constante en medio y baja al final
+  const F = u < a ? (u * u) / (2 * a) : u > 1 - a ? 1 - a - ((1 - u) * (1 - u)) / (2 * a) : a / 2 + (u - a);
+  return c.Y0 + (c.Y1 - c.Y0) * (F / (1 - a));
+}
+
 // Recorre piezas sin cerrar (rectas con largo fijo) y devuelve el final y los puntos
 export function walkOpen(pieces, step = 0.2) {
   let x = 0, z = 0, h = 0, y = 0;
   const pts = [{ x, z, h, y }];
-  for (const p of pieces) {
+  const plan = heightPlan(pieces);
+  pieces.forEach((p, pi) => {
     const isS = p[0] === 'S';
     const len = isS ? p[1] : (Math.abs(p[1]) * Math.PI / 180) * p[2];
     const k = isS ? 0 : Math.sign(p[1]) / p[2];
     const n = Math.max(1, Math.ceil(len / step));
     const st = len / n;
-    const y0 = y, h1 = endH(p), y1 = Number.isFinite(h1) ? h1 : y;
     for (let i = 0; i < n; i++) {
       x += Math.cos(h + (k * st) / 2) * st;
       z += Math.sin(h + (k * st) / 2) * st;
       h += k * st;
-      const t = (i + 1) / n, sm = t * t * (3 - 2 * t);
-      pts.push({ x, z, h, y: y0 + (y1 - y0) * sm });
+      pts.push({ x, z, h, y: heightIn(plan[pi], (i + 1) * st) });
     }
-    y = y1;
-  }
+    y = plan[pi].y1;
+  });
   return { x, z, h, y, pts };
 }
 
@@ -254,7 +280,7 @@ export function validateTrack(def) {
   for (const p of def.pieces) {
     if (!Array.isArray(p)) return { ok: false, error: 'Pieza no válida' };
     if (p[0] === 'S') {
-      if (!(Number.isFinite(p[1]) && p[1] >= 0 && p[1] <= 80) || p.length > 3) return { ok: false, error: 'Recta no válida' };
+      if (!(Number.isFinite(p[1]) && p[1] >= 0 && p[1] <= 80) || p.length > 4 || (p.length === 4 && !(p[3] === 1 && Number.isFinite(p[2])))) return { ok: false, error: 'Recta no válida' };
     } else if (p[0] === 'C') {
       if (!(Number.isFinite(p[1]) && Math.abs(p[1]) >= 5 && Math.abs(p[1]) <= 360) || !(Number.isFinite(p[2]) && p[2] >= minR && p[2] <= 12) || p.length > 4) return { ok: false, error: 'Curva no válida' };
     } else return { ok: false, error: 'Pieza no válida' };
@@ -311,7 +337,7 @@ export function autoClose(pieces, lanes, radius) {
   // Si acaba en alto, rampas de bajada (una por piso) antes de cerrar
   for (let k = 0; k < 8 && heightAtEnd(base) > 0.01; k++) {
     const y = heightAtEnd(base), down = Math.max(0, Math.round(y / EDITOR.bridge) - 1) * EDITOR.bridge;
-    base.push(['S', EDITOR.ramp, +(down < y - 0.01 ? down : 0).toFixed(2)]);
+    base.push(['S', EDITOR.ramp, +(down < y - 0.01 ? down : 0).toFixed(2), 1]);
   }
   if (Math.abs(target) > 360) return { error: 'Has girado más de una vuelta completa: quita alguna curva' };
   // La curva que falta, en trozos de 90° como mucho
