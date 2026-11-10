@@ -175,7 +175,8 @@ export const EDITOR = {
   radii: { cerrada: 2.2, media: 3.2, abierta: 4.6 },   // radio de la línea central (unidades), 2 carriles
   radius4: 0.6,   // con 4 carriles las curvas son más abiertas
   scenery: ['verde', 'arena', 'noche'],
-  bridge: 0.95,   // altura de un puente (unidades): pasa por encima de otro tramo
+  bridge: 0.95,   // altura de un piso (unidades): pasa por encima de otro tramo
+  floors: 3,      // pisos que se pueden apilar en el editor (subiendo rampa a rampa)
   ramp: 0.35 / 0.126 * 3,   // una rampa son 3 rectas (1,05 m)
 };
 // Altura final de una pieza (o undefined si sigue a la misma altura)
@@ -258,7 +259,7 @@ export function validateTrack(def) {
       if (!(Number.isFinite(p[1]) && Math.abs(p[1]) >= 5 && Math.abs(p[1]) <= 360) || !(Number.isFinite(p[2]) && p[2] >= minR && p[2] <= 12) || p.length > 4) return { ok: false, error: 'Curva no válida' };
     } else return { ok: false, error: 'Pieza no válida' };
     const hh = endH(p);
-    if (hh !== undefined && hh !== null && !(Number.isFinite(hh) && hh >= 0 && hh <= 1.2)) return { ok: false, error: 'Altura no válida' };
+    if (hh !== undefined && hh !== null && !(Number.isFinite(hh) && hh >= 0 && hh <= EDITOR.floors * EDITOR.bridge + 0.25)) return { ok: false, error: 'Altura no válida' };
   }
   // Rampas: que no sean un muro (pendiente máxima ~17 %)
   {
@@ -307,8 +308,11 @@ export function autoClose(pieces, lanes, radius) {
     }
     if (Number.isFinite(p[3])) base[base.length - 1][3] = p[3];   // la altura, en el último trozo
   }
-  // Si acaba en alto, una rampa de bajada antes de cerrar
-  if (heightAtEnd(base) > 0.01) base.push(['S', EDITOR.ramp, 0]);
+  // Si acaba en alto, rampas de bajada (una por piso) antes de cerrar
+  for (let k = 0; k < 8 && heightAtEnd(base) > 0.01; k++) {
+    const y = heightAtEnd(base), down = Math.max(0, Math.round(y / EDITOR.bridge) - 1) * EDITOR.bridge;
+    base.push(['S', EDITOR.ramp, +(down < y - 0.01 ? down : 0).toFixed(2)]);
+  }
   if (Math.abs(target) > 360) return { error: 'Has girado más de una vuelta completa: quita alguna curva' };
   // La curva que falta, en trozos de 90° como mucho
   let rest = missing;

@@ -3,6 +3,8 @@
 import { walkOpen, autoClose, EDITOR, LANE_W, sample, heightAtEnd } from './tracks.js';
 
 const STRAIGHT = 0.35 / 0.126;   // una recta estándar de 35 cm, en unidades
+// Piso en el que acaba el trazado (0 = suelo)
+export const floorOf = (d) => Math.round(heightAtEnd(d.pieces) / EDITOR.bridge);
 export const PALETTE = [
   { id: 's1', label: 'Recta', sub: '35 cm', make: () => ['S', STRAIGHT] },
   { id: 's2', label: 'Recta larga', sub: '70 cm', make: () => ['S', STRAIGHT * 2] },
@@ -10,9 +12,9 @@ export const PALETTE = [
   { id: 'l90', label: '↰ 90°', sub: 'Izquierda', make: (r) => ['C', -90, r] },
   { id: 'r45', label: '↱ 45°', sub: 'Derecha', make: (r) => ['C', 45, r] },
   { id: 'r90', label: '↱ 90°', sub: 'Derecha', make: (r) => ['C', 90, r] },
-  // Rampas: suben a la altura de un puente (para cruzar por encima) o bajan al suelo
-  { id: 'up', label: 'Subir', sub: 'Rampa a puente', make: () => ['S', EDITOR.ramp, EDITOR.bridge], when: (d) => heightAtEnd(d.pieces) < 0.5 },
-  { id: 'down', label: 'Bajar', sub: 'Rampa al suelo', make: () => ['S', EDITOR.ramp, 0], when: (d) => heightAtEnd(d.pieces) > 0.5 },
+  // Rampas: suben un piso (para pasar por encima de otro tramo) o bajan uno. Se pueden apilar varios pisos
+  { id: 'up', label: 'Subir', sub: 'Rampa al piso 1', make: (r, d) => ['S', EDITOR.ramp, +((floorOf(d) + 1) * EDITOR.bridge).toFixed(2)], when: (d) => floorOf(d) < EDITOR.floors, subOf: (d) => (floorOf(d) < EDITOR.floors ? `Rampa al piso ${floorOf(d) + 1}` : `Máximo: ${EDITOR.floors} pisos`) },
+  { id: 'down', label: 'Bajar', sub: 'Rampa al suelo', make: (r, d) => ['S', EDITOR.ramp, +(Math.max(0, floorOf(d) - 1) * EDITOR.bridge).toFixed(2)], when: (d) => floorOf(d) > 0, subOf: (d) => (floorOf(d) <= 1 ? 'Rampa al suelo' : `Rampa al piso ${floorOf(d) - 1}`) },
 ];
 export const RADII = [['cerrada', 'Cerrada'], ['media', 'Media'], ['abierta', 'Abierta']];
 
@@ -92,9 +94,10 @@ export function drawEditor(cv, draft, closed) {
   // Primero el suelo y luego lo que va en alto (puentes), con sombra para que se vea encima
   const runs = [];
   let cur = null;
+  // Cada tramo se dibuja en su piso (0 = suelo); las rampas cuentan como el piso más alto que tocan
   for (const p of open.pts) {
-    const hi = (p.y || 0) > 0.3;
-    if (!cur || cur.hi !== hi) { cur = { hi, pts: cur ? [cur.pts[cur.pts.length - 1]] : [] }; runs.push(cur); }
+    const hi = Math.min(EDITOR.floors, Math.ceil(((p.y || 0) - 0.3) / EDITOR.bridge + 1e-6));
+    if (!cur || cur.hi !== hi) { cur = { hi: Math.max(0, hi), pts: cur ? [cur.pts[cur.pts.length - 1]] : [] }; runs.push(cur); }
     cur.pts.push(p);
   }
   const lanesOf = (pts) => {
@@ -104,9 +107,11 @@ export function drawEditor(cv, draft, closed) {
     }
   };
   for (const r of runs.filter((q) => !q.hi)) { stroke(r.pts, '#15171c', tw + 4); stroke(r.pts, '#3a3d45', tw); lanesOf(r.pts); }
-  for (const r of runs.filter((q) => q.hi)) {
-    stroke(r.pts.map((p) => ({ x: p.x + 0.35, z: p.z + 0.5 })), 'rgba(0,0,0,0.35)', tw + 8);
-    stroke(r.pts, '#c9ced6', tw + 6);
+  // Los pisos de abajo arriba: cuanto más alto, más sombra y más claro el borde
+  const EDGE = ['#c9ced6', '#ffd166', '#ff8fab'];
+  for (let f = 1; f <= EDITOR.floors; f++) for (const r of runs.filter((q) => q.hi === f)) {
+    stroke(r.pts.map((p) => ({ x: p.x + 0.35 * f, z: p.z + 0.5 * f })), 'rgba(0,0,0,0.35)', tw + 8);
+    stroke(r.pts, EDGE[f - 1] || EDGE[0], tw + 6);
     stroke(r.pts, '#4a4e58', tw);
     lanesOf(r.pts);
   }

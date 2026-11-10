@@ -2935,7 +2935,7 @@ function renderEditor() {
   $('edFinish').querySelector('.btn-sub').textContent = done ? 'Ya puedes probarlo o publicarlo' : closed.pieces ? 'Pone las piezas azules por ti' : 'Así no se puede cerrar: cambia alguna pieza';
   $('edPublish').querySelector('.btn-main').textContent = draft.published ? 'Publicado ✓' : 'Publicar';
   if (draft.published) $('edPublish').disabled = true;
-  PALETTE.forEach((it, i) => { const b = $('edPalette').children[i]; if (b) b.disabled = !!it.when && !it.when(draft); });
+  PALETTE.forEach((it, i) => { const b = $('edPalette').children[i]; if (!b) return; b.disabled = !!it.when && !it.when(draft); if (it.subOf) b.lastChild.textContent = it.subOf(draft); });
   segButtons($('edRadius'), RADII, draft.radius, (id) => { draft.radius = id; renderEditor(); });
   segButtons($('edScenery'), [['verde', 'Césped'], ['arena', 'Arena'], ['noche', 'Noche']], draft.scenery, (id) => { draft.scenery = id; renderEditor(); });
   $('edLaps').textContent = draft.laps;
@@ -2952,7 +2952,7 @@ for (const it of PALETTE) {
     sfx.click();
     if (draft.published) draft = { ...draft, lid: Math.random().toString(36).slice(2, 9), published: null };
     draft.before = null;
-    draft.pieces.push(it.make(radiusOf(draft)));
+    draft.pieces.push(it.make(radiusOf(draft), draft));
     renderEditor();
   });
   $('edPalette').appendChild(b);

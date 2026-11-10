@@ -6,6 +6,7 @@ import { step, newCarState, resolveSetup, DEFAULT_SETUP, DT, SCALE } from '../sr
 import { buildProfile, aiThrottle } from '../src/ai.js';
 import { replay, verifyLap, lapTimes } from '../src/verify.js';
 import { mergeProfile, otherStats, fitProfile, isSynced } from '../src/sync.js';
+import { PALETTE, newDraft, radiusOf } from '../src/editor.js';
 
 let fails = 0, passes = 0;
 const test = (name, fn) => { try { fn(); passes++; console.log('  ok  ', name); } catch (e) { fails++; console.log('  FALLO', name, '→', e.message); } };
@@ -78,6 +79,19 @@ for (const id of ['ovalo', 'resistencia', 'pico-xl', 'puerto-xl']) test(`${id}: 
 console.log('Editor');
 test('autoClose cierra una sola recta (circuito nuevo)', () => { const r = autoClose([['S', 0.35 / 0.126]], 4, 3.8); assert.ok(r.pieces, r.error); assert.ok(validateTrack({ pieces: r.pieces, lanes: 4 }).ok); });
 test('autoClose con puente', () => { const r = autoClose([['S', 2.77], ['S', 8.33, 0.95], ['C', 90, 3.8], ['C', 90, 3.8], ['C', 90, 3.8]], 4, 3.8); assert.ok(r.pieces || r.error); });
+test('varios pisos: se sube hasta 3, cierra bajando al suelo y no deja pasar de 3', () => {
+  const P = Object.fromEntries(PALETTE.map((p) => [p.id, p]));
+  const d = newDraft();
+  for (const id of ['s2', 'up', 'l90', 'l90', 's2', 'up', 'l90', 'l90', 's2', 'up', 'l90']) { assert.ok(!P[id].when || P[id].when(d), 'no deja poner ' + id); d.pieces.push(P[id].make(radiusOf(d), d)); }
+  assert.ok(!P.up.when(d), 'no debe dejar un cuarto piso');
+  assert.ok(P.down.when(d) && P.down.make(radiusOf(d), d)[2] === 1.9, 'bajar va al piso de abajo');
+  const r = autoClose(d.pieces, d.lanes, radiusOf(d));
+  assert.ok(r.pieces, r.error);
+  const v = validateTrack({ pieces: r.pieces, lanes: d.lanes });
+  assert.ok(v.ok, v.error);
+  assert.ok(Math.max(...sample({ pieces: r.pieces, lanes: d.lanes }).pts.map((p) => p.y)) > 2.8, 'llega al tercer piso');
+  assert.ok(!validateTrack({ pieces: [['S', 8.33, 3.8], ['S', 8.33, 0], ['C', 180, 3.8], ['S', 16.66], ['C', 180, 3.8]], lanes: 4 }).ok, 'demasiado alto');
+});
 test('validateTrack rechaza basura', () => { assert.ok(!validateTrack({ pieces: [['X', 1]], lanes: 4 }).ok); assert.ok(!validateTrack({ pieces: 'a', lanes: 4 }).ok); assert.ok(!validateTrack({ pieces: [['S', 1e9], ['C', 90, 3], ['C', 90, 3]], lanes: 4 }).ok); });
 
 console.log('Sincronización');
