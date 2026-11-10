@@ -94,6 +94,32 @@ const nombreMes = (m) => {
 // una segmentación). Puede tener nombre propio y una fecha "desde" para los commlogs.
 let indiceBbdd = {};
 const mesBase = (id) => id.slice(0, 7);
+
+// Campañas que salen de otra desde un momento: las instalaciones que están en las dos cuentan para «de»
+// antes de «desde» y para «camp» desde ese momento. Noviembre 2026: «Tmk 400» se empezó el jueves 05/11
+// a las 15:00 con instalaciones de «TMK» sin contactar o sin tratar.
+const CORTES = [{ mes: '2026-11', camp: 'Tmk 400', de: 'TMK', desde: '2026-11-05 15:00' }];
+// [desdePorId, hastaPorId] para calcular() de un conjunto de campañas de la BBDD (incluye la carga de TakeOver).
+function ventanas(bb, nombres) {
+  const desde = { ...(bb.cargas || {}) }, hasta = {};
+  for (const k of CORTES) {
+    if (mesBase(bb.mes || '') !== k.mes || !bb.campanas[k.camp] || !bb.campanas[k.de]) continue;
+    const conNueva = nombres.includes(k.camp), conVieja = nombres.includes(k.de);
+    if (conNueva === conVieja) continue; // las dos juntas: cuentan todos sus commlogs
+    if (conNueva) for (const id of bb.campanas[k.camp]) desde[id] = k.desde;
+    else {
+      const nuevas = new Set(bb.campanas[k.camp]);
+      for (const id of bb.campanas[k.de]) if (nuevas.has(id)) hasta[id] = k.desde;
+    }
+  }
+  return [desde, hasta];
+}
+// Campañas de la BBDD que forman una entrada de campanasComp (una campaña o un grupo «juntas»).
+function nombresDe(bb, etiqueta, ids) {
+  if (bb.campanas[etiqueta]) return [etiqueta];
+  const s = new Set(ids);
+  return Object.keys(bb.campanas).filter((c) => bb.campanas[c].every((id) => s.has(id)));
+}
 const nombreBbdd = (id) => indiceBbdd[id]?.nombre || nombreMes(mesBase(id));
 const ayerIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return isoDia(d); };
 function rangoBbdd(id, hoy) {
@@ -918,21 +944,22 @@ async function pintarReporte() {
     if (!dias.length) { cols.push({ mes, dias, vacio: true }); continue; }
     const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(dias[0], dias.at(-1)).map(logsParseados)]);
     const logs = [].concat(...porMes);
-    const grupos = {}, grupoDe = gruposRep(bb.campanas);
+    const grupos = {}, nombresGrupo = {}, grupoDe = gruposRep(bb.campanas);
     for (const [c, ids] of Object.entries(bb.campanas)) {
       const g = grupoDe[c];
       if (!g) continue;
+      for (const key of [g, g[0] + 'tot']) (nombresGrupo[key] ||= []).push(c);
       for (const key of [g, g[0] + 'tot']) (grupos[key] ||= new Set()); 
       for (const id of ids) { grupos[g].add(id); grupos[g[0] + 'tot'].add(id); }
     }
     const res = {};
     for (const [g, set] of Object.entries(grupos)) {
-      const ids = [...set];
-      const u = calcular(ids, logs, dias[0], dias.at(-1)).resumen, sd = sumaDiaria(ids, logs, dias[0], dias.at(-1));
+      const ids = [...set], v = ventanas(bb, nombresGrupo[g]);
+      const u = calcular(ids, logs, dias[0], dias.at(-1), ...v).resumen, sd = sumaDiaria(ids, logs, dias[0], dias.at(-1), ...v);
       res[g] = {
         trat: { c: sd.contactadasDia, t: sd.tratadasDia },
         unico: { c: u.contactadas, t: u.contactadas + u.ilocalizadas },
-        porDia: repModo === 'dias' ? dias.map((d) => { const r = delDia(ids, logs, d); return { c: r.contactadas, t: r.instLlamadas }; }) : null,
+        porDia: repModo === 'dias' ? dias.map((d) => { const r = delDia(ids, logs, d, ...v); return { c: r.contactadas, t: r.instLlamadas }; }) : null,
       };
     }
     cols.push({ mes, dias, res });
@@ -1307,7 +1334,7 @@ async function recalcular() {
   }
   cacheComp = {};
   resultados = {};
-  for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta, bbdd.cargas);
+  for (const [camp, ids] of Object.entries(bbdd.campanas)) resultados[camp] = calcular(ids, logs, desde, hasta, ...ventanas(bbdd, [camp]));
   const f = (d) => d.split('-').reverse().join('/');
   $('stCalc').textContent = `BBDD ${nombreBbdd(bbdd.mes)} · commlogs del ${f(desde)} al ${f(hasta)}`;
   $('res').classList.remove('hidden');
@@ -1621,7 +1648,7 @@ async function bbddAl(mes, dia) {
   const res = {};
   if (hasta >= desde) {
     const logs = [].concat(...(await Promise.all(mesesEntre(desde, hasta).map(logsParseados))));
-    for (const [camp, ids] of Object.entries(campanasComp(bb))) res[camp] = calcular(ids, logs, desde, hasta, bb.cargas).resumen;
+    for (const [camp, ids] of Object.entries(campanasComp(bb))) res[camp] = calcular(ids, logs, desde, hasta, ...ventanas(bb, nombresDe(bb, camp, ids))).resumen;
   }
   return (cacheComp[k] = res);
 }
@@ -1635,7 +1662,7 @@ async function estadoAl(mes, dia, modo, desdeElegido) {
   if (modo === 'dia') {
     const [bb, logsMes] = await Promise.all([bbddDe(mes), logsParseados(dia.slice(0, 7))]);
     const delDiaLogs = logsMes.filter((l) => l.fecha && isoDia(l.fecha) === dia);
-    for (const [camp, ids] of Object.entries(campanasComp(bb))) datos[camp] = delDia(ids, delDiaLogs, dia, bb.cargas);
+    for (const [camp, ids] of Object.entries(campanasComp(bb))) datos[camp] = delDia(ids, delDiaLogs, dia, ...ventanas(bb, nombresDe(bb, camp, ids)));
     return (cacheComp[k] = { datos, fueraVentana: dia < desde || dia > finMes, desde, finMes });
   }
   const hasta = dia > finMes ? finMes : dia;
@@ -1647,7 +1674,8 @@ async function estadoAl(mes, dia, modo, desdeElegido) {
   const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(desde, hasta).map(logsParseados)]);
   const logs = [].concat(...porMes);
   for (const [camp, ids] of Object.entries(campanasComp(bb))) {
-    datos[camp] = { ...calcular(ids, logs, desde, hasta, bb.cargas).resumen, ...sumaDiaria(ids, logs, desde, hasta, bb.cargas) };
+    const v = ventanas(bb, nombresDe(bb, camp, ids));
+    datos[camp] = { ...calcular(ids, logs, desde, hasta, ...v).resumen, ...sumaDiaria(ids, logs, desde, hasta, ...v) };
   }
   return (cacheComp[k] = { datos, desde, hasta, recortado: hasta !== dia });
 }

@@ -113,4 +113,18 @@ assert.equal(clasificarSA('R_RPV_75', ''), 'ignorar');
   assert.deepEqual(t, [1, 2]);
   assert.deepEqual(u, [1, 1]);
 }
+// Ventanas con hora: «Tmk 400» desde el 05/11 15:00; en «TMK» esas instalaciones solo antes
+{
+  const ls = [
+    { id: 'A', fecha: d('2026-11-05 14:59'), tipo: 'contacto' },
+    { id: 'A', fecha: d('2026-11-05 15:00'), tipo: 'no_contacto' },
+    { id: 'B', fecha: d('2026-11-05 16:00'), tipo: 'contacto' },
+  ];
+  const tmk = calcular(['A', 'B'], ls, '2026-11-01', '2026-11-30', {}, { A: '2026-11-05 15:00' });
+  assert.equal(tmk.detalle.find((x) => x.id === 'A').intentos, 1);   // solo el de las 14:59
+  assert.equal(tmk.resumen.contactadas, 2);
+  const t400 = calcular(['A'], ls, '2026-11-01', '2026-11-30', { A: '2026-11-05 15:00' });
+  assert.equal(t400.resumen.ilocalizadas, 1);                        // solo el de las 15:00
+  assert.deepEqual(sumaDiaria(['A'], ls, '2026-11-05', '2026-11-05', { A: '2026-11-05 15:00' }), { tratadasDia: 1, contactadasDia: 0 });
+}
 console.log('OK');
