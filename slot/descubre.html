@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Turbo Slot · Carreras de slot de verdad, en tu móvil</title>
+  <meta name="description" content="Simulador de slot 1:32 con física real. 12 circuitos, 6 coches, online con amigos, campeonatos y editor de circuitos de hasta 3 pisos. Juega gratis en el navegador; la app llega muy pronto.">
+  <meta name="theme-color" content="#0b0f18">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Turbo Slot · Carreras de slot de verdad, en tu móvil">
+  <meta property="og:description" content="Acelera, frena antes de la curva… ¡y que no se te salga el coche! Juega gratis ya en el navegador.">
+  <meta property="og:image" content="https://turbo-slot.inautoit.workers.dev/assets/promo/hero.jpg">
+  <meta property="og:url" content="https://turbo-slot.inautoit.workers.dev/descubre">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/barlow-condensed-700i.woff2" as="font" type="font/woff2" crossorigin>
+  <style>
+    @font-face { font-family: "Barlow"; src: url("/fonts/barlow-500.woff2") format("woff2"); font-weight: 400 500; font-display: swap; }
+    @font-face { font-family: "Barlow"; src: url("/fonts/barlow-600.woff2") format("woff2"); font-weight: 600 900; font-display: swap; }
+    @font-face { font-family: "Barlow Condensed"; src: url("/fonts/barlow-condensed-700.woff2") format("woff2"); font-weight: 600 900; font-display: swap; }
+    @font-face { font-family: "Barlow Condensed"; src: url("/fonts/barlow-condensed-700i.woff2") format("woff2"); font-weight: 400 900; font-style: italic; font-display: swap; }
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f18; --bg2: #121826; --panel: #161d2c; --line: rgba(255, 255, 255, .09);
+      --ink: #f5f6fb; --ink2: #aab1c4; --red: #ff3b30; --yellow: #ffcc00; --green: #2fd17d;
+      --fd: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+      --f: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 500 17px/1.6 var(--f); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+    a { color: inherit; }
+    img, video { display: block; max-width: 100%; }
+    .wrap { width: min(1160px, 100% - 32px); margin: 0 auto; }
+    .kicker { font: italic 800 15px/1 var(--fd); letter-spacing: .12em; text-transform: uppercase; color: var(--yellow); }
+    h1, h2, h3 { font-family: var(--fd); font-style: italic; font-weight: 800; text-transform: uppercase; line-height: .95; margin: 0; letter-spacing: .005em; }
+    h2 { font-size: clamp(34px, 5vw, 56px); }
+    h3 { font-size: 26px; }
+    p { margin: 0; }
+    .muted { color: var(--ink2); }
+
+    /* Cabecera */
+    header { position: fixed; inset: 0 0 auto; z-index: 20; transition: background .3s, box-shadow .3s; padding-top: env(safe-area-inset-top); }
+    header.solid { background: rgba(11, 15, 24, .88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 1px 0 var(--line); }
+    .bar { display: flex; align-items: center; gap: 24px; height: 68px; }
+    .bar .logo img { height: 34px; width: auto; }
+    .bar nav { display: flex; gap: 22px; margin-left: auto; }
+    .bar nav a { text-decoration: none; font: 700 16px/1 var(--fd); text-transform: uppercase; letter-spacing: .06em; color: var(--ink2); }
+    .bar nav a:hover { color: var(--ink); }
+    .btn { display: inline-flex; align-items: center; gap: 12px; border: 0; border-radius: 14px; text-decoration: none; font: italic 800 19px/1 var(--fd); text-transform: uppercase; letter-spacing: .03em; cursor: pointer; transition: transform .15s, box-shadow .2s, background .2s; }
+    .btn:active { transform: scale(.97); }
+    .btn.small { padding: 11px 18px; font-size: 16px; border-radius: 11px; }
+    .btn.play { background: linear-gradient(180deg, #ff5247, #e0241b); color: #fff; box-shadow: 0 10px 30px -8px rgba(255, 59, 48, .7), inset 0 1px 0 rgba(255, 255, 255, .25); }
+    .btn.play:hover { box-shadow: 0 14px 38px -8px rgba(255, 59, 48, .9), inset 0 1px 0 rgba(255, 255, 255, .25); }
+
+    /* Portada con vídeo */
+    .hero { position: relative; min-height: 100svh; display: flex; align-items: flex-end; overflow: hidden; isolation: isolate; }
+    .hero video, .hero .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+    .hero::after { content: ""; position: absolute; inset: 0; z-index: -1;
+      background: linear-gradient(180deg, rgba(11, 15, 24, .55) 0%, rgba(11, 15, 24, 0) 28%, rgba(11, 15, 24, .15) 55%, rgba(11, 15, 24, .92) 88%, var(--bg) 100%),
+                  linear-gradient(90deg, rgba(11, 15, 24, .75) 0%, rgba(11, 15, 24, 0) 60%); }
+    .hero .wrap { padding: 120px 0 64px; }
+    .hero .tag { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 99px; background: rgba(255, 255, 255, .1); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font: 700 14px/1 var(--fd); letter-spacing: .1em; text-transform: uppercase; }
+    .hero .tag i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 0 rgba(255, 59, 48, .7); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); } }
+    .hero h1 { font-size: clamp(52px, 9vw, 120px); margin: 18px 0 16px; max-width: 11ch; text-shadow: 0 6px 40px rgba(0, 0, 0, .5); }
+    .hero h1 em { color: var(--yellow); font-style: italic; }
+    .hero .lead { font-size: clamp(17px, 2vw, 21px); max-width: 560px; color: #dfe3ee; text-shadow: 0 2px 16px rgba(0, 0, 0, .6); }
+    .ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; align-items: stretch; }
+    .ctas .btn.play { padding: 18px 26px; font-size: 22px; }
+    .store { position: relative; display: inline-flex; align-items: center; gap: 12px; padding: 10px 18px 10px 14px; min-width: 196px; border-radius: 14px; background: #000; color: #fff; text-decoration: none; border: 1px solid rgba(255, 255, 255, .28); cursor: default; }
+    .store svg { width: 30px; height: 30px; flex: none; }
+    .store small { display: block; font: 600 12px/1.2 var(--f); color: #c9cfdd; }
+    .store b { display: block; font: 600 21px/1.1 var(--f); letter-spacing: -.01em; }
+    .store .soon { position: absolute; top: -9px; right: -8px; padding: 4px 8px; border-radius: 99px; background: var(--yellow); color: #141414; font: italic 800 12px/1 var(--fd); letter-spacing: .06em; text-transform: uppercase; transform: rotate(4deg); }
+    .hero .note { margin-top: 16px; font-size: 15px; color: #c3c9d8; }
+    .hero .note b { color: #fff; }
+    .scroll { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: 26px; height: 42px; border: 2px solid rgba(255, 255, 255, .45); border-radius: 14px; }
+    .scroll::after { content: ""; position: absolute; left: 50%; top: 8px; width: 4px; height: 8px; margin-left: -2px; border-radius: 2px; background: #fff; animation: wheel 1.8s infinite; }
+    @keyframes wheel { 0% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(14px); } }
+
+    /* Cifras */
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; margin-top: -8px; }
+    .stats div { background: var(--bg2); padding: 22px 16px; text-align: center; }
+    .stats b { display: block; font: italic 800 40px/1 var(--fd); color: var(--yellow); }
+    .stats span { font: 700 14px/1.2 var(--fd); letter-spacing: .08em; text-transform: uppercase; color: var(--ink2); }
+
+    section { padding: 110px 0 0; }
+    .head { max-width: 680px; margin-bottom: 44px; }
+    .head p { margin-top: 14px; color: var(--ink2); font-size: 19px; }
+
+    /* Características */
+    .feat { display: grid; grid-template-columns: 1.15fr 1fr; gap: 48px; align-items: center; margin-bottom: 90px; }
+    .feat.rev { grid-template-columns: 1fr 1.15fr; }
+    .feat.rev .shot { order: 2; }
+    .shot { position: relative; border-radius: 20px; overflow: hidden; background: var(--panel); box-shadow: 0 30px 80px -30px rgba(0, 0, 0, .8), 0 0 0 1px var(--line); aspect-ratio: 16 / 9; }
+    .shot img { width: 100%; height: 100%; object-fit: cover; }
+    .feat h3 { font-size: clamp(30px, 3.6vw, 44px); margin: 12px 0 14px; }
+    .feat p { color: var(--ink2); }
+    .feat ul { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 10px; }
+    .feat li { display: flex; gap: 10px; align-items: flex-start; }
+    .feat li::before { content: ""; flex: none; width: 18px; height: 18px; margin-top: 4px; border-radius: 6px; background: var(--red) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.2 4L19 7' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat; }
+
+    /* Más cosas */
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 26px 24px; }
+    .card .ico { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; background: rgba(255, 204, 0, .12); color: var(--yellow); margin-bottom: 16px; }
+    .card .ico svg { width: 26px; height: 26px; }
+    .card h3 { font-size: 25px; margin-bottom: 8px; }
+    .card p { color: var(--ink2); font-size: 16px; }
+
+    /* Coches */
+    .cars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .car { position: relative; border-radius: 18px; overflow: hidden; background: radial-gradient(ellipse at 50% 40%, #2b3650, #111723 75%); border: 1px solid var(--line); }
+    .car img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; transition: transform .5s; }
+    .car:hover img { transform: scale(1.05); }
+    .car div { position: absolute; left: 18px; bottom: 14px; }
+    .car b { display: block; font: italic 800 26px/1 var(--fd); text-transform: uppercase; }
+    .car span { font-size: 14px; color: var(--ink2); }
+
+    /* Instalar */
+    .install { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .install .card h3 { display: flex; align-items: center; gap: 10px; }
+    .install ol { margin: 14px 0 0; padding-left: 22px; color: var(--ink2); display: grid; gap: 8px; }
+    .install ol b { color: var(--ink); }
+
+    /* Llamada final */
+    .final { margin: 120px 0 0; position: relative; border-radius: 28px; overflow: hidden; padding: 72px 32px; text-align: center; isolation: isolate; border: 1px solid var(--line); }
+    .final img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; filter: saturate(1.1); }
+    .final::after { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at center, rgba(11, 15, 24, .55), rgba(11, 15, 24, .92) 75%); }
+    .final h2 { font-size: clamp(40px, 6vw, 72px); }
+    .final p { margin: 14px auto 0; max-width: 520px; color: #dfe3ee; }
+    .final .ctas { justify-content: center; }
+
+    footer { padding: 70px 0 calc(40px + env(safe-area-inset-bottom)); margin-top: 90px; border-top: 1px solid var(--line); color: var(--ink2); font-size: 15px; }
+    footer .row { display: flex; flex-wrap: wrap; gap: 18px 28px; align-items: center; justify-content: space-between; }
+    footer nav { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+    footer a { text-decoration: none; color: var(--ink2); }
+    footer a:hover { color: var(--ink); }
+
+    .reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s ease, transform .8s cubic-bezier(.2, .8, .2, 1); }
+    .reveal.on { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .scroll::after, .hero .tag i { animation: none; } }
+
+    @media (max-width: 900px) {
+      .bar nav { display: none; }
+      .bar .btn { margin-left: auto; }
+      .stats { grid-template-columns: repeat(3, 1fr); }
+      .stats div:nth-child(n+4) { grid-column: span 1; }
+      .feat, .feat.rev { grid-template-columns: 1fr; gap: 26px; margin-bottom: 70px; }
+      .feat.rev .shot { order: 0; }
+      .grid, .cars { grid-template-columns: 1fr 1fr; }
+      .install { grid-template-columns: 1fr; }
+      section { padding-top: 84px; }
+    }
+    @media (max-width: 560px) {
+      body { font-size: 16px; }
+      .hero .wrap { padding-bottom: 76px; }
+      .ctas .btn.play { width: 100%; justify-content: center; }
+      .store { flex: 1 1 0; min-width: 0; padding: 10px 12px; }
+      .store b { font-size: 17px; }
+      .store svg { width: 24px; height: 24px; }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .stats div:last-child { grid-column: span 2; }
+      .grid, .cars { grid-template-columns: 1fr; }
+      .final { padding: 56px 20px; border-radius: 22px; }
+      .scroll { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header id="top">
+    <div class="wrap bar">
+      <a class="logo" href="#" aria-label="Turbo Slot"><img src="/icons/logo.svg" alt="Turbo Slot" width="112" height="34"></a>
+      <nav aria-label="Secciones">
+        <a href="#juego">El juego</a>
+        <a href="#coches">Coches</a>
+        <a href="#instalar">Instalar</a>
+      </nav>
+      <a class="btn play small" href="/">Jugar gratis</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" style="padding:0" aria-label="Portada">
+      <img class="poster" src="/assets/promo/hero.jpg" alt="" aria-hidden="true">
+      <video id="heroVideo" autoplay muted loop playsinline preload="metadata" poster="/assets/promo/hero.jpg" aria-hidden="true">
+        <source src="/assets/promo/hero.mp4" type="video/mp4">
+      </video>
+      <div class="wrap">
+        <span class="tag"><i></i>Simulador de slot 1:32 · física real</span>
+        <h1>Carreras de slot <em>de verdad</em>, en tu móvil</h1>
+        <p class="lead">Acelera con el gatillo, frena antes de la curva… y que no se te salga el coche. Corre contra la CPU, contra tus amigos online o contra el récord del mundo.</p>
+        <div class="ctas">
+          <a class="btn play" href="/">
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>
+            Jugar ya en el navegador
+          </a>
+          <span class="store" aria-label="Próximamente en la App Store">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.2-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.5-3.6zM14.2 5.6c.6-.8 1.1-1.9 1-3-1 0-2.1.6-2.8 1.4-.6.7-1.1 1.8-1 2.9 1.1.1 2.1-.5 2.8-1.3z"/></svg>
+            <span><small>Muy pronto en la</small><b>App Store</b></span>
+            <em class="soon">Pronto</em>
+          </span>
+          <span class="store" aria-label="Próximamente en Google Play">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#34a853" d="M3.6 2.2c-.3.3-.4.7-.4 1.2v17.2c0 .5.1.9.4 1.2l9.7-9.8z"/><path fill="#fbbc04" d="M16.5 15.2l-3.2-3.2 3.2-3.2 3.9 2.2c1.1.6 1.1 1.6 0 2.2z"/><path fill="#ea4335" d="M16.5 15.2l-3.2-3.2-9.7 9.8c.4.4 1 .4 1.7 0z"/><path fill="#4285f4" d="M16.5 8.8L5.3 2.3c-.7-.4-1.3-.4-1.7 0l9.7 9.7z"/></svg>
+            <span><small>Muy pronto en</small><b>Google Play</b></span>
+            <em class="soon">Pronto</em>
+          </span>
+        </div>
+        <p class="note">La app para iPhone, iPad y Android llega <b>muy pronto</b>. Mientras tanto, <b>juega gratis ya en el navegador</b>: sin descargas, sin anuncios y con tu progreso guardado.</p>
+      </div>
+      <div class="scroll" aria-hidden="true"></div>
+    </section>
+
+    <div class="wrap">
+      <div class="stats reveal" role="list">
+        <div role="listitem"><b>12</b><span>Circuitos</span></div>
+        <div role="listitem"><b>6</b><span>Coches</span></div>
+        <div role="listitem"><b>4</b><span>Pilotos online</span></div>
+        <div role="listitem"><b>3</b><span>Pisos en el editor</span></div>
+        <div role="listitem"><b>1:32</b><span>Escala real</span></div>
+      </div>
+    </div>
+
+    <section id="juego">
+      <div class="wrap">
+        <div class="head reveal">
+          <span class="kicker">El juego</span>
+          <h2>Como una pista de club, pero en tu bolsillo</h2>
+          <p>Cada coche tiene motor eléctrico, imán, neumáticos y derrape calculados de verdad. Nada de ayudas: si entras pasado en la curva, el coche vuela.</p>
+        </div>
+
+        <div class="feat reveal">
+          <div class="shot"><img src="/assets/promo/carrera.webp" alt="Carrera con cuatro coches y cámara de televisión" loading="lazy" width="1280" height="720"></div>
+          <div>
+            <span class="kicker">Física real</span>
+            <h3>Un gatillo, mil formas de perder la carrera</h3>
+            <p>El gatillo es analógico, como el mando de una pista de verdad: cuanto más subes el dedo, más voltaje recibe el motor. Frena antes, acelera al salir y controla el derrape.</p>
+            <ul>
+              <li>Con imán o sin imán, la clase de los clubes</li>
+              <li>Telemetría con agarre, deriva y sectores</li>
+              <li>Cámaras de helicóptero, tele, persecución y a bordo</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feat rev reveal">
+          <div class="shot"><img src="/assets/promo/editor.webp" alt="Editor de circuitos con un trazado de varios pisos" loading="lazy" width="1280" height="720"></div>
+          <div>
+            <span class="kicker">Crea y comparte</span>
+            <h3>Diseña tu circuito, de hasta 3 pisos</h3>
+            <p>Pon rectas, curvas y rampas desde la salida. Sube piso a piso en espiral, cruza por encima de otros tramos y deja que el juego cierre el circuito por ti. Publícalo y que lo juegue todo el mundo.</p>
+            <ul>
+              <li>Rampas suaves que suben de un tirón</li>
+              <li>Pruébalo al momento antes de publicar</li>
+              <li>Ranking propio en cada circuito de la comunidad</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feat reveal">
+          <div class="shot"><img src="/assets/promo/premium.webp" alt="Circuito premium en la montaña" loading="lazy" width="1280" height="720"></div>
+          <div>
+            <span class="kicker">Premium de temporada</span>
+            <h3>Maquetas enormes que cambian cada temporada</h3>
+            <p>Los circuitos más largos del juego: más de 50 metros de pista que suben una montaña en espiral o recorren una ciudad portuaria. Llegan nuevos con cada temporada.</p>
+            <ul>
+              <li>Subida al Pico: espiral hasta la cima</li>
+              <li>Urbano del Puerto: entre edificios y barcos</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="card reveal">
+            <div class="ico"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="16.5" cy="9" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M2.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6M11 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
+            <h3>Online con amigos</h3>
+            <p>Crea una sala, comparte el código de 4 letras y corred a la vez, hasta 4 pilotos. O entra en partida rápida.</p>
+          </div>
+          <div class="card reveal">
+            <div class="ico"><svg viewBox="0 0 24 24"><path d="M7 3h10v3h3v2a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14.9V17h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 12H8a4 4 0 0 1-4-4V6h3Z" fill="currentColor"/></svg></div>
+            <h3>Campeonatos</h3>
+            <p>Copas de varias carreras con puntos, como en la tele. Solo o con otro jugador en el mismo móvil.</p>
+          </div>
+          <div class="card reveal">
+            <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3Z" fill="none" stroke="currentColor" stroke-width="2"/></svg></div>
+            <h3>Ranking mundial</h3>
+            <p>El servidor repite cada vuelta con la misma física para comprobarla. Sin trampas: el récord corre contigo como un fantasma dorado.</p>
+          </div>
+          <div class="card reveal">
+            <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 12h3M9 10.5v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="15.5" cy="11" r="1.2" fill="currentColor"/><circle cx="17.5" cy="13" r="1.2" fill="currentColor"/></svg></div>
+            <h3>2 jugadores y mando</h3>
+            <p>Dos pilotos en el mismo móvil o tablet, o con un mando de consola usando el gatillo analógico.</p>
+          </div>
+          <div class="card reveal">
+            <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17 3h4v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
+            <h3>Tu progreso, siempre</h3>
+            <p>Con una cuenta gratis tus récords, fantasmas y circuitos te siguen al móvil, a la tablet o al ordenador.</p>
+          </div>
+          <div class="card reveal">
+            <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8.5 12.2l2.4 2.3 4.6-4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <h3>Sin anuncios</h3>
+            <p>Sin anuncios ni rastreadores. Para jugar en familia, en el club o en el sofá.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="coches">
+      <div class="wrap">
+        <div class="head reveal">
+          <span class="kicker">El garaje</span>
+          <h2>Elige coche y píntalo a tu gusto</h2>
+          <p>Seis coches de carreras de marcas inventadas, de los superdeportivos a los monoplazas. Cambia la decoración y el reglaje: imán, desarrollo, neumáticos y freno.</p>
+        </div>
+        <div class="cars">
+          <div class="car reveal"><img src="/assets/cars/gt22.webp" alt="GT 22" loading="lazy" width="640" height="360"><div><b>GT 22</b><span>Superdeportivo de carreras</span></div></div>
+          <div class="car reveal"><img src="/assets/cars/f1.webp" alt="Monoplaza 22" loading="lazy" width="640" height="360"><div><b>Monoplaza 22</b><span>Fórmula moderna</span></div></div>
+          <div class="car reveal"><img src="/assets/cars/classic.webp" alt="Monoplaza clásico" loading="lazy" width="640" height="360"><div><b>Monoplaza clásico</b><span>Fórmula clásica</span></div></div>
+          <div class="car reveal"><img src="/assets/cars/kiri.webp" alt="Kiri 94" loading="lazy" width="640" height="360"><div><b>Kiri 94</b><span>Berlina de carreras</span></div></div>
+          <div class="car reveal"><img src="/assets/cars/thunderbolt.webp" alt="Thunderbolt 96" loading="lazy" width="640" height="360"><div><b>Thunderbolt 96</b><span>Berlina deportiva</span></div></div>
+          <div class="car reveal"><img src="/assets/cars/nomad.webp" alt="Nomad 90" loading="lazy" width="640" height="360"><div><b>Nomad 90</b><span>Deportivo</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="instalar">
+      <div class="wrap">
+        <div class="head reveal">
+          <span class="kicker">Mientras llega la app</span>
+          <h2>Tenlo como una app, ya</h2>
+          <p>Añade Turbo Slot a la pantalla de inicio y se abrirá a pantalla completa, como una app de verdad. Gratis y en un minuto.</p>
+        </div>
+        <div class="install">
+          <div class="card reveal">
+            <h3><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.2-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.5-3.6zM14.2 5.6c.6-.8 1.1-1.9 1-3-1 0-2.1.6-2.8 1.4-.6.7-1.1 1.8-1 2.9 1.1.1 2.1-.5 2.8-1.3z"/></svg>iPhone y iPad</h3>
+            <ol>
+              <li>Abre el juego en <b>Safari</b>.</li>
+              <li>Toca el botón <b>Compartir</b> (el cuadrado con la flecha).</li>
+              <li>Elige <b>Añadir a pantalla de inicio</b> y pulsa <b>Añadir</b>.</li>
+            </ol>
+          </div>
+          <div class="card reveal">
+            <h3><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="#34a853" d="M3.6 2.2c-.3.3-.4.7-.4 1.2v17.2c0 .5.1.9.4 1.2l9.7-9.8z"/><path fill="#fbbc04" d="M16.5 15.2l-3.2-3.2 3.2-3.2 3.9 2.2c1.1.6 1.1 1.6 0 2.2z"/><path fill="#ea4335" d="M16.5 15.2l-3.2-3.2-9.7 9.8c.4.4 1 .4 1.7 0z"/><path fill="#4285f4" d="M16.5 8.8L5.3 2.3c-.7-.4-1.3-.4-1.7 0l9.7 9.7z"/></svg>Android</h3>
+            <ol>
+              <li>Abre el juego en <b>Chrome</b>.</li>
+              <li>Toca el menú <b>⋮</b> de arriba a la derecha.</li>
+              <li>Elige <b>Añadir a pantalla de inicio</b> o <b>Instalar app</b>.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="wrap">
+      <div class="final reveal">
+        <img src="/assets/promo/mesa.webp" alt="" aria-hidden="true" loading="lazy">
+        <span class="kicker">Gratis · sin descargas</span>
+        <h2>¿Echamos una carrera?</h2>
+        <p>Abre el juego en el navegador y en unos segundos estás en la parrilla de salida.</p>
+        <div class="ctas"><a class="btn play" href="/"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>Jugar ahora</a></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="wrap row">
+      <div><img src="/icons/logo.svg" alt="Turbo Slot" width="96" height="29" style="height:29px;width:auto;margin-bottom:10px">© 2026 Turbo Slot · Todos los coches y marcas del juego son inventados.</div>
+      <nav aria-label="Información">
+        <a href="/">Jugar</a>
+        <a href="/soporte.html">Soporte</a>
+        <a href="/privacidad.html">Privacidad</a>
+        <a href="/normas.html">Normas</a>
+        <a href="mailto:soporte.turbosloot@outlook.es">Contacto</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // Cabecera opaca al bajar
+    const hd = document.getElementById('top');
+    const onScroll = () => hd.classList.toggle('solid', window.scrollY > 40);
+    addEventListener('scroll', onScroll, { passive: true }); onScroll();
+    // Aparición suave de cada bloque
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('on'); io.unobserve(e.target); } }), { threshold: 0.12 });
+      document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+    } else document.querySelectorAll('.reveal').forEach((el) => el.classList.add('on'));
+    // El vídeo de portada: si el móvil no lo reproduce solo (ahorro de datos), se queda la imagen
+    const v = document.getElementById('heroVideo');
+    if (v) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+  </script>
+</body>
+</html>

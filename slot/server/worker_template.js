@@ -14,7 +14,7 @@ function body(path, f) {
   if (!b) { b = Buffer.from(f[1], 'base64'); cache.set(path, b); }
   return b;
 }
-const TYPES = { zip: 'application/zip', glb: 'model/gltf-binary', hdr: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain; charset=utf-8', wav: 'audio/wav' };
+const TYPES = { mp4: 'video/mp4', zip: 'application/zip', glb: 'model/gltf-binary', hdr: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', txt: 'text/plain; charset=utf-8', wav: 'audio/wav' };
 const SCENERY = ['verde', 'arena', 'noche'];
 
 // La API se puede usar desde otras páginas (por ejemplo, la versión del juego dentro de Claude)
@@ -387,10 +387,21 @@ export default {
       const data = await env.ASSETS.get(url.pathname.slice(1), 'arrayBuffer');
       if (data) {
         const ext = url.pathname.split('.').pop();
-        return new Response(data, { headers: { 'content-type': TYPES[ext] || 'application/octet-stream', 'cache-control': 'public, max-age=604800', 'x-content-type-options': 'nosniff' } });
+        const headers = { 'content-type': TYPES[ext] || 'application/octet-stream', 'cache-control': 'public, max-age=604800', 'x-content-type-options': 'nosniff', 'accept-ranges': 'bytes' };
+        // Trozos (Range): Safari los pide para reproducir vídeo
+        const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get('range') || '');
+        if (m && (m[1] || m[2])) {
+          const size = data.byteLength;
+          let a = m[1] ? +m[1] : size - +m[2], b = m[1] && m[2] ? Math.min(+m[2], size - 1) : size - 1;
+          if (a < 0) a = 0;
+          if (a >= size || a > b) return new Response(null, { status: 416, headers: { 'content-range': `bytes */${size}` } });
+          return new Response(data.slice(a, b + 1), { status: 206, headers: { ...headers, 'content-range': `bytes ${a}-${b}/${size}`, 'content-length': String(b - a + 1) } });
+        }
+        return new Response(data, { headers });
       }
     }
-    const path = url.pathname === '/' ? '/' : url.pathname;
+    // Página de promoción: /descubre (y /web) muestran descubre.html
+    const path = url.pathname === '/descubre' || url.pathname === '/descubre/' || url.pathname === '/web' || url.pathname === '/web/' ? '/descubre.html' : url.pathname;
     const f = FILES[path];
     if (!f) return new Response('No encontrado', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     return new Response(body(path, f), {
