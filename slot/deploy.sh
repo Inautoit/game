@@ -11,7 +11,7 @@ KV_ID="${KV_ID:-d681275e45a34dbda40d050dd4372757}"
 ACC="$CLOUDFLARE_ACCOUNT_ID"
 API_KV="https://api.cloudflare.com/client/v4/accounts/$ACC/storage/kv/namespaces/$KV_ID/values"
 # 1) Subir assets al KV (clave = ruta, p. ej. assets/models/car_hi.glb)
-[ -n "${SKIP_KV:-}" ] || find assets -type f \( -name '*.glb' -o -name '*.hdr' -o -name '*.jpg' -o -name '*.png' -o -name '*.webp' -o -name '*.wav' \) | sort | while read -r f; do
+[ -n "${SKIP_KV:-}" ] || find assets -type f \( -name '*.glb' -o -name '*.hdr' -o -name '*.jpg' -o -name '*.png' -o -name '*.webp' -o -name '*.wav' -o -name '*.mp4' \) | sort | while read -r f; do
   key=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1], safe=''))" "$f")
   curl -fsS -X PUT "$API_KV/$key" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/octet-stream" --data-binary @"$f" > /dev/null
   echo "  KV ← $f ($(du -h "$f" | cut -f1))"
