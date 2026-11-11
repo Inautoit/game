@@ -34,11 +34,13 @@ export function clasificarSA(key4, key2) {
   return 'contacto';
 }
 
-// Ventana de una instalación: desde (incluido) y hasta (excluido), como día 'AAAA-MM-DD' o con hora 'AAAA-MM-DD HH:MM'.
+// Ventana de una instalación: desde (incluido), como día 'AAAA-MM-DD' o con hora 'AAAA-MM-DD HH:MM',
+// menos los tramos [de, a) de «fuera» ('' = sin límite por ese lado).
 const conHora = (f, dia) => `${dia} ${String(f.getHours()).padStart(2, '0')}:${String(f.getMinutes()).padStart(2, '0')}`;
-function fueraDeVentana(fecha, dia, desde, hasta) {
-  if (desde && (desde.length > 10 ? conHora(fecha, dia) : dia) < desde) return true;
-  if (hasta && (hasta.length > 10 ? conHora(fecha, dia) : dia) >= hasta) return true;
+const antes = (fecha, dia, lim) => (lim.length > 10 ? conHora(fecha, dia) : dia) < lim;
+function fueraDeVentana(fecha, dia, desde, fuera) {
+  if (desde && antes(fecha, dia, desde)) return true;
+  for (const [de, a] of fuera || []) if ((!de || !antes(fecha, dia, de)) && (!a || antes(fecha, dia, a))) return true;
   return false;
 }
 
@@ -86,16 +88,16 @@ export function rangoPorDefecto(mesBbdd, hoy = new Date()) {
  * @param desde,hasta 'YYYY-MM-DD' (ambos incluidos)
  * @param desdePorId opcional {id: 'YYYY-MM-DD' o 'YYYY-MM-DD HH:MM'}: cada instalación solo cuenta commlogs
  *        desde ese momento (p. ej. su día de carga en TakeOver)
- * @param hastaPorId opcional {id: 'YYYY-MM-DD HH:MM'}: y solo los anteriores a ese momento
- *        (p. ej. una instalación que pasa a otra campaña desde una fecha y hora)
+ * @param fueraPorId opcional {id: [[de, a], ...]}: tramos 'AAAA-MM-DD HH:MM' (de incluido, a excluido,
+ *        '' = sin límite) cuyos commlogs no cuentan (p. ej. mientras la instalación se llamó en otra campaña)
  */
-export function calcular(bbddIds, commlogs, desde, hasta, desdePorId, hastaPorId) {
+export function calcular(bbddIds, commlogs, desde, hasta, desdePorId, fueraPorId) {
   const inst = new Map();
   for (const raw of bbddIds) {
     const id = normId(raw);
-    if (id && !inst.has(id)) inst.set(id, { id, logs: [], desde: '', hasta: '' });
+    if (id && !inst.has(id)) inst.set(id, { id, logs: [], desde: '', fuera: null });
   }
-  for (const [lim, campo] of [[desdePorId, 'desde'], [hastaPorId, 'hasta']]) {
+  for (const [lim, campo] of [[desdePorId, 'desde'], [fueraPorId, 'fuera']]) {
     for (const [raw, d] of Object.entries(lim || {})) {
       const it = inst.get(normId(raw));
       if (it && d) it[campo] = d;
@@ -112,7 +114,7 @@ export function calcular(bbddIds, commlogs, desde, hasta, desdePorId, hastaPorId
     if (tipo === 'ignorar') continue;
     const it = inst.get(normId(c.id));
     if (!it) { logsFueraBbdd++; continue; }
-    if (fueraDeVentana(c.fecha, dia, it.desde, it.hasta)) continue;
+    if (fueraDeVentana(c.fecha, dia, it.desde, it.fuera)) continue;
     logsEnRango++;
     it.logs.push({ fecha: c.fecha, dia, tipo, key4: c.key4 });
   }
@@ -202,8 +204,8 @@ function bucket(vals, tope) {
  * Actividad de un único día: solo se usan los commlogs de ese día (nada acumulado).
  * Las instalaciones con exclusión ese día no cuentan en el resto de medidas.
  */
-export function delDia(bbddIds, commlogs, dia, desdePorId, hastaPorId) {
-  const r = calcular(bbddIds, commlogs, dia, dia, desdePorId, hastaPorId);
+export function delDia(bbddIds, commlogs, dia, desdePorId, fueraPorId) {
+  const r = calcular(bbddIds, commlogs, dia, dia, desdePorId, fueraPorId);
   const s = r.resumen;
   const d = r.porDia[0] || { contacto: 0, no_contacto: 0 };
   const instLlamadas = s.contactadas + s.ilocalizadas;
@@ -226,18 +228,18 @@ export function delDia(bbddIds, commlogs, dia, desdePorId, hastaPorId) {
  * cuenta una vez por cada día que se llamó (y como contactada los días con contacto válido);
  * los días que tiene una exclusión no cuenta. Contrasta con el contacto único de calcular().
  */
-export function sumaDiaria(bbddIds, commlogs, desde, hasta, desdePorId, hastaPorId) {
+export function sumaDiaria(bbddIds, commlogs, desde, hasta, desdePorId, fueraPorId) {
   const ids = new Set();
   for (const raw of bbddIds) ids.add(normId(raw));
   const desdeId = new Map(Object.entries(desdePorId || {}).map(([r, d]) => [normId(r), d]));
-  const hastaId = new Map(Object.entries(hastaPorId || {}).map(([r, d]) => [normId(r), d]));
+  const fueraId = new Map(Object.entries(fueraPorId || {}).map(([r, d]) => [normId(r), d]));
   const dias = new Map(); // 'id|día' -> bits: 1 llamada, 2 contacto, 4 exclusión
   for (const c of commlogs) {
     if (!c.fecha) continue;
     const dia = isoDia(c.fecha);
     if (dia < desde || dia > hasta) continue;
     const id = normId(c.id);
-    if (!ids.has(id) || fueraDeVentana(c.fecha, dia, desdeId.get(id) || '', hastaId.get(id) || '')) continue;
+    if (!ids.has(id) || fueraDeVentana(c.fecha, dia, desdeId.get(id) || '', fueraId.get(id))) continue;
     const tipo = c.tipo || clasificar(c.key4);
     if (tipo === 'ignorar') continue;
     const k = id + '|' + dia;

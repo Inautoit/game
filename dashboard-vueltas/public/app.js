@@ -95,24 +95,28 @@ const nombreMes = (m) => {
 let indiceBbdd = {};
 const mesBase = (id) => id.slice(0, 7);
 
-// Campañas que salen de otra desde un momento: las instalaciones que están en las dos cuentan para «de»
-// antes de «desde» y para «camp» desde ese momento. Noviembre 2026: «Tmk 400» se empezó el jueves 05/11
-// a las 15:00 con instalaciones de «TMK» sin contactar o sin tratar.
-const CORTES = [{ mes: '2026-11', camp: 'Tmk 400', de: 'TMK', desde: '2026-11-05 15:00' }];
-// [desdePorId, hastaPorId] para calcular() de un conjunto de campañas de la BBDD (incluye la carga de TakeOver).
+// Campañas que salen de otra durante unos tramos: las instalaciones que están en las dos cuentan para «camp»
+// dentro de los tramos [de, a) y para «de» fuera de ellos. Noviembre 2026: «Tmk 400» (sin OPC) se empezó el
+// jueves 05/11 a las 15:00 con instalaciones de «TMK» sin contactar o sin tratar, y el martes 10/11 desde
+// las 16:00 todo se volvió a emitir por TMK (93, con OPC).
+const CORTES = [{ mes: '2026-11', camp: 'Tmk 400', de: 'TMK', tramos: [['2026-11-05 15:00', '2026-11-10 16:00']] }];
+// [desdePorId, fueraPorId] para calcular() de un conjunto de campañas de la BBDD (incluye la carga de TakeOver).
 function ventanas(bb, nombres) {
-  const desde = { ...(bb.cargas || {}) }, hasta = {};
+  const desde = { ...(bb.cargas || {}) }, fuera = {};
   for (const k of CORTES) {
     if (mesBase(bb.mes || '') !== k.mes || !bb.campanas[k.camp] || !bb.campanas[k.de]) continue;
     const conNueva = nombres.includes(k.camp), conVieja = nombres.includes(k.de);
     if (conNueva === conVieja) continue; // las dos juntas: cuentan todos sus commlogs
-    if (conNueva) for (const id of bb.campanas[k.camp]) desde[id] = k.desde;
-    else {
-      const nuevas = new Set(bb.campanas[k.camp]);
-      for (const id of bb.campanas[k.de]) if (nuevas.has(id)) hasta[id] = k.desde;
-    }
+    const ambas = new Set(bb.campanas[k.de]);
+    // La nueva: fuera todo lo que no está en sus tramos. La vieja: fuera sus tramos.
+    const huecos = [];
+    let ini = '';
+    for (const [de, a] of k.tramos) { huecos.push([ini, de]); ini = a; }
+    huecos.push([ini, '']);
+    const f = conNueva ? huecos : k.tramos;
+    for (const id of bb.campanas[k.camp]) if (conNueva || ambas.has(id)) fuera[id] = f;
   }
-  return [desde, hasta];
+  return [desde, fuera];
 }
 // Campañas de la BBDD que forman una entrada de campanasComp (una campaña o un grupo «juntas»).
 function nombresDe(bb, etiqueta, ids) {
