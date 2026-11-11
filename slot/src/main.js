@@ -2452,7 +2452,7 @@ function demoRace() {
   $('liveTrack').textContent = def.name;
 }
 // Realizador: cambia de plano cada pocos segundos, como en una retransmisión
-let shot = null, lastShot = '';
+let shot = null, lastShot = '', forcedShot = null;
 const SHOTS = ['pista', 'lateral', 'persecucion', 'frontal', 'grua', 'aereo', 'tele', 'pista', 'lateral'];
 const tmpV = new THREE.Vector3();
 function newShot() {
@@ -2460,14 +2460,15 @@ function newShot() {
   if (!live.length) return false;
   let type;
   // El primer plano es el aéreo de presentación del circuito, como en una retransmisión
-  if (!shot) type = 'aereo';
+  if (forcedShot) type = forcedShot.type;   // (solo para grabar vídeos: se elige el plano)
+  else if (!shot) type = 'aereo';
   else do type = SHOTS[Math.floor(Math.random() * SHOTS.length)]; while (type === lastShot);
   lastShot = type;
   // Como un realizador de verdad: a menudo pincha el coche que va más cruzado o que está apretando
   const hot = live.slice().sort((a, b) => (Math.abs(cars[b].st.th) + (cars[b].mistake > 0 ? 0.3 : 0)) - (Math.abs(cars[a].st.th) + (cars[a].mistake > 0 ? 0.3 : 0)))[0];
   const ci = Math.random() < 0.35 ? hot : shot && live.length > 1 && Math.random() < 0.6 ? live.filter((i) => i !== shot.ci)[Math.floor(Math.random() * (live.length - 1))] : live[Math.floor(Math.random() * live.length)];
   const c = cars[ci];
-  shot = { type, ci, t: 0, dur: 7 + Math.random() * 3, side: Math.random() < 0.5 ? 1 : -1, a0: Math.random() * Math.PI * 2, fov: 30 };
+  shot = { type, ci, t: 0, dur: forcedShot ? forcedShot.dur : 7 + Math.random() * 3, side: Math.random() < 0.5 ? 1 : -1, a0: Math.random() * Math.PI * 2, fov: 30 };
   shot.fov = { pista: 22, tele: 17, lateral: 28, persecucion: 34, frontal: 30, grua: 36, aereo: 40 }[type];
   if (type === 'tele') {
     // Teleobjetivo a ras de pista, lejos y por delante: se ve al coche trazar las curvas
@@ -3963,4 +3964,5 @@ window.__slot = {
   get actx() { return actx; }, get slotBuf() { return slotBuf; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },
+  forceShot: (type, dur = 3) => { forcedShot = type ? { type, dur } : null; if (shot) shot.t = shot.dur; },
 };
