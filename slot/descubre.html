@@ -56,7 +56,11 @@
 
     /* Portada con vídeo */
     .hero { position: relative; min-height: 100svh; display: flex; align-items: flex-end; overflow: hidden; isolation: isolate; }
-    .hero video, .hero .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+    .hero video, .hero .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; pointer-events: none; }
+    /* El vídeo es solo fondo: nada de botones de reproducir ni controles; aparece cuando ya se está moviendo */
+    .hero video { opacity: 0; transition: opacity .8s; }
+    .hero video.on { opacity: 1; }
+    .hero video::-webkit-media-controls, .hero video::-webkit-media-controls-start-playback-button, .hero video::-webkit-media-controls-overlay-play-button, .hero video::-webkit-media-controls-panel { display: none !important; -webkit-appearance: none; opacity: 0 !important; }
     .hero::after { content: ""; position: absolute; inset: 0; z-index: -1;
       background: linear-gradient(180deg, rgba(11, 15, 24, .55) 0%, rgba(11, 15, 24, 0) 28%, rgba(11, 15, 24, .15) 55%, rgba(11, 15, 24, .92) 88%, var(--bg) 100%),
                   linear-gradient(90deg, rgba(11, 15, 24, .75) 0%, rgba(11, 15, 24, 0) 60%); }
@@ -185,7 +189,7 @@
   <main>
     <section class="hero" style="padding:0" aria-label="Portada">
       <img class="poster" src="/assets/promo/hero.jpg" alt="" aria-hidden="true">
-      <video id="heroVideo" autoplay muted loop playsinline preload="metadata" poster="/assets/promo/hero.jpg" aria-hidden="true">
+      <video id="heroVideo" autoplay muted loop playsinline webkit-playsinline disablepictureinpicture disableremoteplayback preload="auto" poster="/assets/promo/hero.jpg" aria-hidden="true" tabindex="-1">
         <source src="/assets/promo/hero.mp4" type="video/mp4">
       </video>
       <div class="wrap">
@@ -388,8 +392,20 @@
       document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
     } else document.querySelectorAll('.reveal').forEach((el) => el.classList.add('on'));
     // El vídeo de portada: si el móvil no lo reproduce solo (ahorro de datos), se queda la imagen
+    // Vídeo de fondo automático: siempre silenciado y en bucle. Si el móvil no deja que arranque solo
+    // (modo ahorro de batería), se ve la imagen fija y arranca en cuanto la persona toca o desliza.
     const v = document.getElementById('heroVideo');
-    if (v) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+    if (v) {
+      v.muted = true; v.defaultMuted = true; v.controls = false;
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+      v.addEventListener('playing', () => v.classList.add('on'));
+      const go = () => { if (!v.paused) return; const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+      go();
+      v.addEventListener('canplay', go);
+      ['touchstart', 'pointerdown', 'scroll', 'keydown'].forEach((ev) => addEventListener(ev, go, { passive: true }));
+      // Si se va a otra pestaña y vuelve, sigue moviéndose
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) go(); });
+    }
   </script>
 </body>
 </html>
