@@ -101,8 +101,8 @@ const mesBase = (id) => id.slice(0, 7);
 // las 16:00 todo se volvió a emitir por TMK (93, con OPC).
 const CORTES = [{ mes: '2026-11', camp: 'Tmk 400', de: 'TMK', tramos: [['2026-11-05 15:00', '2026-11-10 16:00']] }];
 // [desdePorId, fueraPorId, grupos] para calcular() de un conjunto de campañas de la BBDD (incluye la carga de
-// TakeOver). En TakeOver las campañas de Cesión solo cuentan commlogs de Cesión (key2 …007) y las de Referido,
-// de Referido (…008); juntas, los dos.
+// TakeOver). En TakeOver las campañas de Cesión solo cuentan commlogs de Cesión (key2 R_LEA007 / R_SEG007) y las de
+// Referido, de Referido (R_LEA008 / R_SEG008); juntas, los dos.
 const grupoTO = (c) => (/^\s*CESI[OÓ]N/i.test(c) ? 'cesion' : /^\s*REFERIDO/i.test(c) ? 'referido' : '');
 function ventanas(bb, nombres) {
   const desde = { ...(bb.cargas || {}) }, fuera = {};
@@ -1201,7 +1201,7 @@ if (ESP === 'up') {
 const aLog = (l) => {
   const [id, ts, key4, txt, key3, key2] = l;
   if (PROG === 'to') {
-    // TakeOver: solo los commlogs con key2 R_…007 (Cesión) o R_…008 (Referido).
+    // TakeOver: solo los commlogs con key2 R_LEA007 / R_SEG007 (Cesión) o R_LEA008 / R_SEG008 (Referido).
     const { tipo, grupo } = clasificarTO(key4, key2);
     return { id, fecha: parseFecha(ts), key4, tipo, grupo };
   }

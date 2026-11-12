@@ -132,11 +132,14 @@ assert.equal(clasificarSA('R_RPV_75', ''), 'ignorar');
   // TakeOver sigue igual: desde el día de carga
   assert.equal(calcular(['A'], ls, '2026-11-01', '2026-11-30', { A: '2026-11-06' }).detalle[0].intentos, 1);
 }
-// TakeOver: key2 …007 = Cesión, …008 = Referido; key4 R_ILOC01/02 no contacto, R_NOU_04 exclusión
+// TakeOver: key2 R_LEA007 / R_SEG007 = Cesión, R_LEA008 / R_SEG008 = Referido; key4 R_ILOC01/02 no contacto, R_NOU_04 exclusión
 assert.deepEqual(clasificarTO('R_ACE001', 'R_SEG007'), { tipo: 'contacto', grupo: 'cesion' });
 assert.deepEqual(clasificarTO('R_ILOC02', 'R_LEA008'), { tipo: 'no_contacto', grupo: 'referido' });
 assert.deepEqual(clasificarTO('R_NOU_04', 'R_LEA007'), { tipo: 'exclusion', grupo: 'cesion' });
 assert.equal(clasificarTO('R_ACE001', 'R_TLC006').tipo, 'ignorar');
+assert.equal(clasificarTO('R_ACE001', 'R_TLC007').tipo, 'ignorar');
+assert.equal(clasificarTO('R_ACE001', 'R_MPA007').tipo, 'ignorar');
+assert.equal(clasificarTO('R_ACE001', 'R_ZTC008').tipo, 'ignorar');
 {
   const ls = [
     { id: 'A', fecha: d('2026-10-01'), tipo: 'no_contacto', grupo: 'cesion' },

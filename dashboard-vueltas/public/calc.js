@@ -26,11 +26,12 @@ export function clasificarUpsell(key4, txt, key3) {
 // Second Attempt: solo cuentan los commlogs con estas key2 (el resto se ignora). De esos,
 // R_ILOC01 y R_ILOC02 son no contacto, R_NOU_04 exclusión y todo lo demás contacto válido.
 export const KEY2_SA = [...Array.from({ length: 16 }, (_, i) => 'R_TLC' + String(i + 1).padStart(3, '0')), 'R_REFE09'];
-// TakeOver: la key2 dice a qué campaña es el commlog (R_…007 = Cesión, R_…008 = Referido; el resto no cuenta).
+// TakeOver: la key2 dice a qué campaña es el commlog (R_LEA007 / R_SEG007 = Cesión, R_LEA008 / R_SEG008 = Referido;
+// el resto no cuenta).
 // De esos, R_ILOC01 y R_ILOC02 son no contacto, R_NOU_04 exclusión y todo lo demás contacto válido.
 export function clasificarTO(key4, key2) {
   const k2 = String(key2 ?? '').trim().toUpperCase();
-  const grupo = /^R_.*007$/.test(k2) ? 'cesion' : /^R_.*008$/.test(k2) ? 'referido' : '';
+  const grupo = k2 === 'R_LEA007' || k2 === 'R_SEG007' ? 'cesion' : k2 === 'R_LEA008' || k2 === 'R_SEG008' ? 'referido' : '';
   if (!grupo) return { tipo: 'ignorar', grupo };
   const k = String(key4 ?? '').trim().toUpperCase();
   return { tipo: k === 'R_NOU_04' ? 'exclusion' : k === 'R_ILOC01' || k === 'R_ILOC02' ? 'no_contacto' : 'contacto', grupo };
