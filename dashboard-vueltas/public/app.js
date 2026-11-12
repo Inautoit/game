@@ -474,6 +474,9 @@ $('accTabla').addEventListener('change', () => {
   const sinNT = /(^|[\s-])[NT]\s|service|servicio/i;
   $('accAgente').innerHTML = '<option value="">(ninguna)</option>' +
     ops(busca(/employee|empleado|matr[ií]cula|id[\s_]*agent/i, sinNT) || busca(/agent|agente|gestor|usuario|user/i, sinNT));
+  // Nombre del gestor (para verlo en el ranking): «Agent Name», «Nombre»…
+  $('accNombre').innerHTML = '<option value="">(ninguna)</option>' +
+    ops(busca(/agent.?name|nombre|name/i, /employee|empleado|matr[ií]cula|(^|[\s_])id([\s_]|$)|service|servicio|(^|[\s-])[NT]\s/i));
   tipoAccess();
   pintarSkills();
   prepararAccess();
@@ -501,7 +504,7 @@ function pintarSkills() {
     `<label style="display:inline-flex; gap:4px; align-items:center; font-weight:400"><input type="checkbox" value="${escapeHtml(v)}"${!up.length || up.includes(v) ? ' checked' : ''}> ${escapeHtml(v || '(vacío)')} <span style="color:var(--muted)">(${fmt(cuenta[v])})</span></label>`).join('');
   $('accSkillVals').querySelectorAll('input').forEach((i) => i.addEventListener('change', prepararAccess));
 }
-for (const id of ['accDia', 'accHora', 'accTT', 'accUni', 'accLlam', 'accAgente']) $(id).addEventListener('change', prepararAccess);
+for (const id of ['accDia', 'accHora', 'accTT', 'accUni', 'accLlam', 'accAgente', 'accNombre']) $(id).addEventListener('change', prepararAccess);
 $('accTipo').addEventListener('change', () => { tipoAccess(); pintarSkills(); prepararAccess(); });
 $('accSkill').addEventListener('change', () => { pintarSkills(); prepararAccess(); });
 function prepararAccess() {
@@ -555,12 +558,12 @@ const campDeSkill = (v) => {
 // en total y separadas por campaña según el skill.
 function prepararLlamadas() {
   const n = $('accTabla').value, cd = $('accDia').value, ch = $('accHora').value, cl = $('accLlam').value, cs = $('accSkill').value;
-  const ca = $('accAgente').value;
+  const ca = $('accAgente').value, cn = $('accNombre').value;
   if (!accDb || !n || !cd || !ch) return;
   $('stAcc').textContent = `Leyendo la tabla ${n}…`;
   try {
     const marcados = cs ? new Set([...$('accSkillVals').querySelectorAll('input:checked')].map((i) => i.value)) : null;
-    const filas = accDb.getTable(n).getData({ columns: [...new Set([cd, ch, cl, cs, ca].filter(Boolean))] });
+    const filas = accDb.getTable(n).getData({ columns: [...new Set([cd, ch, cl, cs, ca, cn].filter(Boolean))] });
     const dias = {}, porCamp = { Vencimiento: {}, '4PRO': {} }, porGestor = {};
     let malas = 0, fuera = 0;
     for (const r of filas) {
@@ -573,7 +576,9 @@ function prepararLlamadas() {
       const f = franjaDe(m);
       (dias[d] ||= {})[f] = ((dias[d] ||= {})[f] || 0) + v;
       if (camp) (porCamp[camp][d] ||= {})[f] = (porCamp[camp][d][f] || 0) + v;
-      const g = ca ? String(r[ca] ?? '').trim() : '';
+      // Clave del gestor: «matrícula · nombre» (si se eligió la columna del nombre).
+      const nom = cn && cn !== ca ? String(r[cn] ?? '').trim() : '';
+      const g = ca ? String(r[ca] ?? '').trim().replace(/\.0+$/, '') + (nom ? ' · ' + nom : '') : '';
       if (g) (porGestor[d] ||= {})[g] = (porGestor[d][g] || 0) + v;
     }
     const lista = Object.keys(dias).sort();
@@ -841,12 +846,19 @@ async function pintarFranjas(desde, hasta, logs) {
     v.inf = Object.fromEntries(inf.franjas.map((f) => [f.franja, f]));
   }
   // Llamadas por gestor (informe de llamadas, si se subió con la columna del gestor) y commlogs de Upsell por gestor (cre_us).
-  // Gestores: siempre el mes en curso (del día 1 a hoy), elijas lo que elijas arriba.
-  const hoyG = isoDia(new Date()), mesG = hoyG.slice(0, 7), d0G = mesG + '-01';
+  // Gestores: un mes entero (por defecto el último mes completo), elijas lo que elijas arriba.
+  const hoyG = isoDia(new Date());
+  const mesesConG = (await api('/api/conexiones?tipo=llamg').catch(() => [])).filter((i) => i.dias > 0).map((i) => i.mes);
+  const mesAnt = (() => { const d = new Date(); d.setDate(0); return isoDia(d).slice(0, 7); })();
+  const mesG = frGestMes && (mesesConG.includes(frGestMes) || frGestMes === hoyG.slice(0, 7)) ? frGestMes : mesAnt;
+  const d0G = mesG + '-01';
+  const finG = (() => { const [y, m] = mesG.split('-').map(Number); return isoDia(new Date(y, m, 0)); })();
   const [llamG, llamTot, logsMes] = await Promise.all([llamDeMes(mesG, 'llamg'), llamDeMes(mesG, 'llam'), logsParseados(mesG).catch(() => [])]);
   const bbG = bbdd.mes === mesG ? bbdd : indiceBbdd[mesG] ? await bbddDe(mesG).catch(() => bbdd) : bbdd;
   const idsG = new Set(Object.values(bbG.campanas).flat().map((x) => String(x).trim().replace(/^0+/, '')));
-  const gest = { ...porGestor(d0G, hoyG, logsMes, llamG, llamTot, idsG), d0: d0G, d1: hoyG, mes: mesG, bbMes: bbG.mes };
+  const d1G = finG < hoyG ? finG : hoyG;
+  const gest = { ...porGestor(d0G, d1G, logsMes, llamG, llamTot, idsG), d0: d0G, d1: d1G, mes: mesG, bbMes: bbG.mes,
+    meses: [...new Set([...mesesConG, mesAnt, hoyG.slice(0, 7)])].sort().reverse() };
   // Mismas franjas (eje X) y misma escala en los dos días para poder compararlos.
   const nombres = [...new Set(vistas.flatMap((v) => [...v.franjas.filter((f) => f.segundos || f.commlogs).map((f) => f.franja),
     ...Object.values(v.inf).filter((f) => f.segundos).map((f) => f.franja)]))].sort();
@@ -976,14 +988,15 @@ const normGestor = (g) => String(g ?? '').normalize('NFD').replace(/[\u0300-\u03
 function porGestor(d0, d1, logs, llamG, llamTot, ids) {
   const diasLl = new Set(Object.keys(llamTot).filter((d) => Object.keys(llamTot[d]).length));
   const gestLl = new Set();
-  for (const [d, ag] of Object.entries(llamG)) if (d >= d0 && d <= d1) for (const g of Object.keys(ag)) gestLl.add(normGestor(g));
+  for (const [d, ag] of Object.entries(llamG)) if (d >= d0 && d <= d1) for (const g of Object.keys(ag)) gestLl.add(normGestor(g.split(' · ')[0]));
   if (gestLl.size) ids = null;
   const enRango = (d) => d0 && d1 && d >= d0 && d <= d1 && (!diasLl.size || diasLl.has(d));
   const g = {}, fila = (k, nombre) => (g[k] ||= { nombre, llamadas: 0, commlogs: 0, contactos: 0 });
-  let commlogs = 0, conGestor = 0, llamadas = 0, diasLlamG = 0;
+  let commlogs = 0, conGestor = 0, llamadas = 0, diasLlamG = 0, hayGestor = false;
   for (const c of logs) {
     if (!c.fecha || c.tipo === 'ignorar') continue;
     if (!enRango(isoDia(c.fecha)) || (ids && !ids.has(String(c.id).trim().replace(/^0+/, '')))) continue;
+    if (c.gestor) hayGestor = true;
     if (gestLl.size && !gestLl.has(normGestor(c.gestor))) continue;
     commlogs++;
     if (!c.gestor) continue;
@@ -996,24 +1009,32 @@ function porGestor(d0, d1, logs, llamG, llamTot, ids) {
   for (const [d, ag] of Object.entries(llamG)) {
     if (!enRango(d)) continue;
     diasLlamG++;
-    for (const [nombre, n] of Object.entries(ag)) fila(normGestor(nombre), nombre).llamadas += n;
+    for (const [clave, n] of Object.entries(ag)) {
+      const [mat, ...resto] = clave.split(' · ');
+      const x = fila(normGestor(mat), mat);
+      x.llamadas += n;
+      if (resto.length) x.nom = resto.join(' · ');
+    }
   }
   const lista = Object.values(g).map((x) => ({ ...x, pct: x.llamadas ? (100 * x.commlogs) / x.llamadas : null }));
   const dias = new Set();
   for (const d of diasLl) if (enRango(d)) dias.add(d);
-  return { commlogs, conGestor, llamadas, diasLlamG, lista, nDias: dias.size, porGestorLl: gestLl.size > 0 };
+  return { commlogs, conGestor, llamadas, diasLlamG, lista, nDias: dias.size, porGestorLl: gestLl.size > 0, hayGestor };
 }
-let frGestOrden = 'pct';
+let frGestOrden = 'pct', frGestMes = (() => { try { return localStorage.getItem('vueltas.gest.mes') || ''; } catch { return ''; } })();
+$('frGest').addEventListener('change', (e) => { if (e.target.id === 'frGestMes') { frGestMes = e.target.value; store('gest.mes', frGestMes); repintarFr(); } });
 function bloqueGestores(v, i) {
   const G = v;
   if (!G) return '';
   const pc = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '—');
-  const hayLlamG = G.diasLlamG > 0, hayGest = G.conGestor > 0;
+  const hayLlamG = G.diasLlamG > 0, hayGest = G.hayGestor;
   const orden = { pct: (a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity) || b.llamadas - a.llamadas,
     commlogs: (a, b) => a.commlogs - b.commlogs, llamadas: (a, b) => b.llamadas - a.llamadas }[hayLlamG ? frGestOrden : 'commlogs'];
   const lista = [...G.lista].sort(orden);
   const th = (k, txt) => `<th class="n"${hayLlamG ? ` data-gord="${k}" style="cursor:pointer"` : ''}>${txt}${frGestOrden === k && hayLlamG ? ' ▾' : ''}</th>`;
-  return `<h3 class="chart-t" style="margin-top:22px">Llamadas y commlogs por gestor · ${nombreMes(v.mes)} <small>· todo Upsell (4PRO y Vencimiento), del ${fDia(v.d0)} a hoy; siempre el mes en curso</small></h3>
+  return `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:22px">
+      <h3 class="chart-t" style="margin:0">Llamadas y commlogs por gestor <small>· todo Upsell (4PRO y Vencimiento), del ${fDia(v.d0)} al ${fDia(v.d1)}</small></h3>
+      <label style="font-size:13px">Mes <select id="frGestMes">${v.meses.map((m) => `<option value="${m}"${m === v.mes ? ' selected' : ''}>${escapeHtml(nombreMes(m))}</option>`).join('')}</select></label></div>
     <div class="hero" style="margin:6px 0 10px">
       <div class="hk"><div class="l">Llamadas emitidas</div><div class="v">${G.llamadas ? fmt(G.llamadas) : '—'}</div><div class="s">informe de llamadas (skills de Upsell)</div></div>
       <div class="hk"><div class="l">Commlogs de Upsell</div><div class="v">${fmt(G.commlogs)}</div><div class="s">${G.porGestorLl ? 'de los gestores del informe de llamadas' : `de instalaciones de la BBDD de ${escapeHtml(nombreMes(v.bbMes))}`}${G.nDias ? `, los ${fmt(G.nDias)} días con informe de llamadas` : ''}</div></div>
@@ -1021,15 +1042,15 @@ function bloqueGestores(v, i) {
     </div>
     ${!hayGest ? '<p class="status">Los commlogs guardados no traen el gestor: vuelve a subir el Excel de commlogs (con la columna cre_us) y saldrá el ranking.</p>' : ''}
     ${!hayLlamG ? `<p class="status">No hay llamadas por gestor de ${escapeHtml(nombreMes(v.mes))}: sube el informe de llamadas de este mes eligiendo la «Columna del gestor» (la matrícula). Mientras, el ranking es solo por commlogs de las instalaciones de la BBDD.</p>` : ''}
-    ${lista.length ? `<div class="tablewrap" style="max-height:420px; overflow:auto"><table id="frG_${i}"><thead><tr><th>#</th><th>Gestor</th>${th('llamadas', 'Llamadas')}${th('commlogs', 'Commlogs')}
+    ${lista.length ? `<div class="tablewrap" style="max-height:420px; overflow:auto"><table id="frG_${i}"><thead><tr><th>#</th><th>Matrícula</th><th>Nombre</th>${th('llamadas', 'Llamadas')}${th('commlogs', 'Commlogs')}
       ${th('pct', 'Commlogs ÷ llamadas')}<th class="n">Contactos</th><th class="n">% contacto (÷ commlogs)</th></tr></thead><tbody>` +
-      lista.map((x, k) => `<tr><td>${k + 1}</td><td>${escapeHtml(x.nombre)}</td><td class="n">${x.llamadas ? fmt(x.llamadas) : '—'}</td><td class="n">${fmt(x.commlogs)}</td>
+      lista.map((x, k) => `<tr><td>${k + 1}</td><td>${escapeHtml(x.nombre)}</td><td>${escapeHtml(x.nom || '—')}</td><td class="n">${x.llamadas ? fmt(x.llamadas) : '—'}</td><td class="n">${fmt(x.commlogs)}</td>
         <td class="n"><b>${x.pct == null ? '—' : fmt(x.pct, 1) + ' %'}</b></td><td class="n">${fmt(x.contactos)}</td><td class="n">${pc(x.contactos, x.commlogs)}</td></tr>`).join('') +
       '</tbody></table></div>' : ''}
     <p class="status" style="margin:4px 0 0">${hayLlamG ? 'Ordenado por commlogs ÷ llamadas, de menos a más: arriba los que menos codifican. Pulsa en una cabecera para cambiar el orden.' : 'Ordenado por commlogs, de menos a más.'}
       El gestor del commlog es cre_us; el de las llamadas, la columna elegida del informe. Si un gestor sale en dos filas (una con llamadas y otra con commlogs), es que no se llama igual en los dos ficheros.</p>`;
 }
-$('frPaneles').addEventListener('click', (e) => {
+$('frGest').addEventListener('click', (e) => {
   const th = e.target.closest('th[data-gord]');
   if (th) { frGestOrden = th.dataset.gord; repintarFr(); }
 });
