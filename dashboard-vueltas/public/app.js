@@ -621,7 +621,7 @@ const cacheLlam = {};
 const llamDeMes = (m, tipo = 'llam') => (cacheLlam[tipo + '|' + m] ||= api(`/api/conexiones?tipo=${tipo}&mes=${m}`).catch(() => ({})));
 // Filtros de la sección: acumulado del rango del dashboard, un día o comparar dos días;
 // y campaña: las dos juntas, solo 4PRO o solo Vencimiento.
-let frModo = 'acum', frCamp = '', frGraf = 'pctl', frUnico = false, frArgs = null;
+let frModo = 'acum', frCamp = '', frGraf = 'pctl', frArgs = null;
 const repintarFr = () => frArgs && pintarFranjas(...frArgs);
 for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) {
   $(btn).addEventListener('click', () => { frModo = m; repintarFr(); });
@@ -629,8 +629,6 @@ for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']
 for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) {
   $(btn).addEventListener('click', () => { frCamp = c; repintarFr(); });
 }
-// Contactos en base a tratado (cada commlog de contacto) o contacto único (cada instalación una vez, en la franja de su primer contacto).
-for (const [btn, u] of [['frCtT', false], ['frCtU', true]]) $(btn).addEventListener('click', () => { frUnico = u; repintarFr(); });
 for (const [btn, g] of [['frGPctL', 'pctl'], ['frGPct', 'pct']]) {
   $(btn).addEventListener('click', () => { frGraf = g; repintarFr(); });
 }
@@ -738,7 +736,6 @@ async function pintarFranjas(desde, hasta, logs) {
   for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) $(btn).classList.toggle('sec', frModo !== m);
   for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) $(btn).classList.toggle('sec', frCamp !== c);
   for (const [btn, g] of [['frGPctL', 'pctl'], ['frGPct', 'pct']]) $(btn).classList.toggle('sec', frGraf !== g);
-  for (const [btn, u] of [['frCtT', false], ['frCtU', true]]) $(btn).classList.toggle('sec', frUnico !== u);
   $('frDiaLbl').classList.toggle('hidden', frModo === 'acum');
   $('frDesdeLbl').classList.toggle('hidden', frModo !== 'acum');
   $('frHastaLbl').classList.toggle('hidden', frModo !== 'acum');
@@ -812,7 +809,7 @@ async function pintarFranjas(desde, hasta, logs) {
     const tramos = await tramosDe(v.d0, v.d1);
     v.bb = tramos[0]?.bb || bbdd;
     v.mesesSinBbdd = frModo === 'acum' && v.d0 && v.d1 ? mesesEntre(v.d0, v.d1).filter((m) => m !== bbdd.mes && !indiceBbdd[m]) : [];
-    Object.assign(v, sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, conex, t.d0, t.d1, { unico: frUnico }))));
+    Object.assign(v, sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, conex, t.d0, t.d1))));
     v.nLogs = v.franjas.reduce((n, f) => n + f.commlogs, 0);
     // Contacto único sobre tratado único: cada instalación de la BBDD una sola vez en todo el periodo
     // (todos los días del rango, tengan o no conexiones). Con varios meses, cada mes con su BBDD.
@@ -824,7 +821,7 @@ async function pintarFranjas(desde, hasta, logs) {
       for (const d of r.detalle) x.det.push([c, d.id, d.estado, d.intentos, d.primerContacto, d.ultimoLog, t.bb.mes]);
     }
     // Mismo cálculo con las llamadas del informe en lugar del tiempo: solo cuentan los días que tienen llamadas.
-    const inf = sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, llamInf, t.d0, t.d1, { unico: frUnico })));
+    const inf = sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, llamInf, t.d0, t.d1)));
     v.diasLlam = inf.dias;
     v.inf = Object.fromEntries(inf.franjas.map((f) => [f.franja, f]));
   }
@@ -904,8 +901,7 @@ async function pintarFranjas(desde, hasta, logs) {
     : vistas.map((v) => (v.etq ? v.etq + ' ' : 'Día ') + (v.d0 ? fDia(v.d0) : '—')).join(' · '));
   $('frNota').innerHTML = (vistas[0].mesesSinBbdd?.length ? `<b>Ojo:</b> no cuentan los días de ${vistas[0].mesesSinBbdd.map(nombreMes).join(', ')} porque no hay BBDD de ese mes. ` : '') +
     (frModo === 'acum' ? 'En el acumulado cada día se cruza con la BBDD de su mes. ' : '') +
-    (frUnico ? '<b>Contacto único en la gráfica:</b> cada instalación cuenta como contacto una sola vez, en la franja de su primer contacto del periodo; las llamadas y las horas logadas son las de siempre, así que el % es «instalaciones nuevas contactadas por cada 100 llamadas». '
-      : '<b>Contacto en base a tratado:</b> cuenta cada commlog de contacto. ') +
+    '<b>Gráfica en base a tratado:</b> cuenta cada commlog de contacto. ' +
     vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmtR(pct(v.mejor))} contactos por hora logada). `).join('') +
     '% contactación = contactos de la franja ÷ llamadas de la franja según el informe de llamadas (agent skill 30 minutes). ' +
     'Contactos por hora logada = contactos de la franja ÷ horas logadas de la franja (suma del Total Time de los gestores), así se comparan igual franjas con 2 o con 10 gestores. ' +
@@ -927,10 +923,10 @@ function tablaUnico(v, i, camps) {
   }
   const pc = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '—');
   const periodo = v.d0 === v.d1 ? 'el ' + fDia(v.d0) : `del ${fDia(v.d0)} al ${fDia(v.d1)}`;
-  return `<h3 class="chart-t">Contacto único sobre tratado único <small>· cada instalación de la BBDD cuenta una vez, ${periodo}</small></h3>
+  return `<h3 class="chart-t">Instalaciones contactadas <small>· cada instalación de la BBDD cuenta una vez, da igual los intentos, ${periodo}</small></h3>
     <div class="tablewrap"><table class="tUni"><thead><tr><th>Campaña</th><th class="n">Instalaciones BBDD</th><th class="n">Excluidas</th>
       <th class="n">Tratadas</th><th class="n">Contactadas</th><th class="n">Tratadas sin contacto</th><th class="n">Sin tratar</th>
-      <th class="n">% contacto único<br><small>contactadas ÷ tratadas</small></th><th class="n">% BBDD contactada<br><small>contactadas ÷ gestionables</small></th></tr></thead><tbody>` +
+      <th class="n">% contactadas<br><small>contactadas ÷ tratadas</small></th><th class="n">% BBDD contactada<br><small>contactadas ÷ gestionables</small></th></tr></thead><tbody>` +
     filas.map(([c, x]) => {
       const trat = x.cont + x.noc, gest = x.total - x.excl;
       return `<tr${c === 'Total' ? ' style="font-weight:600"' : ''}><td>${escapeHtml(c)}</td><td class="n">${fmt(x.total)}</td><td class="n">${fmt(x.excl)}</td>
@@ -952,7 +948,7 @@ $('frPaneles').addEventListener('click', (e) => {
     ...det.map((d) => [d[0], d[1], ESTADO_UNI[d[2]] || d[2], d[3], d[4], d[5], nombreBbdd(d[6])].join(';'))];
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv' }));
-  a.download = `contacto_unico_${c.replace(/\W+/g, '_')}_${v.d0}_${v.d1}.csv`;
+  a.download = `instalaciones_contactadas_${c.replace(/\W+/g, '_')}_${v.d0}_${v.d1}.csv`;
   a.click();
 });
 
