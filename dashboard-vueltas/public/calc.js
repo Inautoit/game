@@ -288,7 +288,7 @@ export function porFranja(campanas, commlogs, conexiones, desde, hasta, { unico 
   const dias = Object.keys(conexiones).filter((d) => d >= desde && d <= hasta).sort();
   const enDias = new Set(dias);
   const fr = {};
-  const fila = (f) => (fr[f] ||= { franja: f, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, porCamp: {} });
+  const fila = (f) => (fr[f] ||= { franja: f, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, instTrat: 0, instCont: 0, porCamp: {} });
   for (const d of dias) for (const [f, seg] of Object.entries(conexiones[d])) fila(f).segundos += seg;
   const validos = [];
   for (const c of commlogs) {
@@ -300,6 +300,22 @@ export function porFranja(campanas, commlogs, conexiones, desde, hasta, { unico 
   // Contacto único: cada instalación cuenta como contacto una sola vez, en la franja de su primer contacto del periodo.
   if (unico) validos.sort((a, b) => a.c.fecha - b.c.fecha);
   const yaContactada = new Set();
+  // Instalaciones por franja: cada instalación una vez por día y franja (tratada si tiene contacto o ilocalizado;
+  // contactada si alguno es contacto), da igual cuántos intentos tenga.
+  const instFr = new Map();
+  for (const { c, camp, tipo } of validos) {
+    if (tipo === 'exclusion') continue;
+    const k = normId(c.id) + '|' + isoDia(c.fecha) + '|' + franjaDe(c.fecha.getHours() * 60 + c.fecha.getMinutes());
+    const x = instFr.get(k) || { camp, cont: false };
+    if (tipo === 'contacto') x.cont = true;
+    instFr.set(k, x);
+  }
+  for (const [k, { camp, cont }] of instFr) {
+    const r = fila(k.split('|')[2]);
+    const pc = (r.porCamp[camp] ||= { commlogs: 0, contactos: 0, iloc: 0, excl: 0, instTrat: 0, instCont: 0 });
+    r.instTrat++; pc.instTrat++;
+    if (cont) { r.instCont++; pc.instCont++; }
+  }
   for (const { c, camp, tipo } of validos) {
     if (unico && tipo === 'contacto') {
       const id = normId(c.id);
@@ -307,7 +323,7 @@ export function porFranja(campanas, commlogs, conexiones, desde, hasta, { unico 
       yaContactada.add(id);
     }
     const r = fila(franjaDe(c.fecha.getHours() * 60 + c.fecha.getMinutes()));
-    const pc = (r.porCamp[camp] ||= { commlogs: 0, contactos: 0, iloc: 0, excl: 0 });
+    const pc = (r.porCamp[camp] ||= { commlogs: 0, contactos: 0, iloc: 0, excl: 0, instTrat: 0, instCont: 0 });
     const k = tipo === 'contacto' ? 'contactos' : tipo === 'exclusion' ? 'excl' : 'iloc';
     r.commlogs++; pc.commlogs++;
     r[k]++; pc[k]++;

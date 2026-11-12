@@ -621,7 +621,8 @@ const cacheLlam = {};
 const llamDeMes = (m, tipo = 'llam') => (cacheLlam[tipo + '|' + m] ||= api(`/api/conexiones?tipo=${tipo}&mes=${m}`).catch(() => ({})));
 // Filtros de la sección: acumulado del rango del dashboard, un día o comparar dos días;
 // y campaña: las dos juntas, solo 4PRO o solo Vencimiento.
-let frModo = 'acum', frCamp = '', frGraf = 'pctl', frArgs = null;
+// frMed: 'trat' = contacto en base a tratado (cada commlog); 'inst' = instalaciones contactadas ÷ tratadas por franja.
+let frModo = 'acum', frCamp = '', frGraf = 'pctl', frMed = 'trat', frArgs = null;
 const repintarFr = () => frArgs && pintarFranjas(...frArgs);
 for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) {
   $(btn).addEventListener('click', () => { frModo = m; repintarFr(); });
@@ -632,6 +633,7 @@ for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Venci
 for (const [btn, g] of [['frGPctL', 'pctl'], ['frGPct', 'pct']]) {
   $(btn).addEventListener('click', () => { frGraf = g; repintarFr(); });
 }
+for (const [btn, m] of [['frMedT', 'trat'], ['frMedI', 'inst']]) $(btn).addEventListener('click', () => { frMed = m; repintarFr(); });
 $('frDia').addEventListener('change', repintarFr);
 $('frDesde').addEventListener('change', repintarFr);
 $('frHasta').addEventListener('change', repintarFr);
@@ -736,6 +738,8 @@ async function pintarFranjas(desde, hasta, logs) {
   for (const [btn, m] of [['frAcum', 'acum'], ['frUno', 'dia'], ['frComp', 'comp']]) $(btn).classList.toggle('sec', frModo !== m);
   for (const [btn, c] of [['frCampJ', ''], ['frCamp4', '4PRO'], ['frCampV', 'Vencimiento']]) $(btn).classList.toggle('sec', frCamp !== c);
   for (const [btn, g] of [['frGPctL', 'pctl'], ['frGPct', 'pct']]) $(btn).classList.toggle('sec', frGraf !== g);
+  for (const [btn, m] of [['frMedT', 'trat'], ['frMedI', 'inst']]) $(btn).classList.toggle('sec', frMed !== m);
+  $('frGSeg').classList.toggle('hidden', frMed === 'inst');
   $('frDiaLbl').classList.toggle('hidden', frModo === 'acum');
   $('frDesdeLbl').classList.toggle('hidden', frModo !== 'acum');
   $('frHastaLbl').classList.toggle('hidden', frModo !== 'acum');
@@ -795,11 +799,11 @@ async function pintarFranjas(desde, hasta, logs) {
     for (const r of rs) {
       dias.push(...r.dias);
       for (const f of r.franjas) {
-        const x = (fr[f.franja] ||= { franja: f.franja, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, porCamp: {} });
-        for (const k of ['segundos', 'commlogs', 'contactos', 'iloc', 'excl']) x[k] += f[k];
+        const x = (fr[f.franja] ||= { franja: f.franja, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, instTrat: 0, instCont: 0, porCamp: {} });
+        for (const k of ['segundos', 'commlogs', 'contactos', 'iloc', 'excl', 'instTrat', 'instCont']) x[k] += f[k];
         for (const [c, pc] of Object.entries(f.porCamp)) {
-          const y = (x.porCamp[c] ||= { commlogs: 0, contactos: 0, iloc: 0, excl: 0 });
-          for (const k of Object.keys(y)) y[k] += pc[k];
+          const y = (x.porCamp[c] ||= { commlogs: 0, contactos: 0, iloc: 0, excl: 0, instTrat: 0, instCont: 0 });
+          for (const k of Object.keys(y)) y[k] += pc[k] || 0;
         }
       }
     }
@@ -830,7 +834,7 @@ async function pintarFranjas(desde, hasta, logs) {
     ...Object.values(v.inf).filter((f) => f.segundos).map((f) => f.franja)]))].sort();
   for (const v of vistas) {
     const por = Object.fromEntries(v.franjas.map((f) => [f.franja, f]));
-    v.filas = nombres.map((n) => ({ ...(por[n] || { franja: n, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, porCamp: {} }), inf: v.inf[n] || null }));
+    v.filas = nombres.map((n) => ({ ...(por[n] || { franja: n, segundos: 0, commlogs: 0, contactos: 0, iloc: 0, excl: 0, instTrat: 0, instCont: 0, porCamp: {} }), inf: v.inf[n] || null }));
     const totSeg = v.filas.reduce((s, f) => s + f.segundos, 0);
     v.mejor = v.filas.filter((f) => f.segundos >= totSeg * 0.02 && cont(f)).sort((a, b) => pct(b) - pct(a))[0];
   }
@@ -851,17 +855,27 @@ async function pintarFranjas(desde, hasta, logs) {
   const linea = { valor: llam, color: 'var(--text-2)', ymax: maxLlam };
   const keyLinea = '<span><i style="background:var(--text-2); height:2px; width:14px; vertical-align:3px"></i>Intentos (contactos + ilocalizados) · eje derecho</span>';
 
+  // Instalaciones contactadas ÷ tratadas en la franja (cada instalación una vez por día y franja).
+  const iTrat = (f) => suma(f, 'instTrat'), iCont = (f) => suma(f, 'instCont');
+  const pctI = (f) => (iTrat(f) ? (100 * iCont(f)) / iTrat(f) : null);
+  const maxITrat = Math.max(1, ...vistas.flatMap((v) => v.filas.map(iTrat)));
+  const maxPctI = Math.max(1, ...vistas.flatMap((v) => v.filas.filter((f) => iTrat(f) >= maxITrat * 0.05).map((f) => pctI(f) || 0)));
+  const lineaInst = { valor: iTrat, color: 'var(--text-2)', ymax: maxITrat };
+  const keyLineaInst = '<span><i style="background:var(--text-2); height:2px; width:14px; vertical-align:3px"></i>Instalaciones tratadas · eje derecho</span>';
   const juntas = camps.length > 1;
   $('frPaneles').innerHTML = vistas.map((v, i) => `<div class="fr-panel">
       ${frModo !== 'acum' ? `<h3 class="dia">${v.etq ? v.etq + ' · ' : ''}${v.d0 ? fDia(v.d0) : '—'} · BBDD ${escapeHtml(nombreBbdd(v.bb.mes))}${v.dias.length ? '' : ' · sin conexiones'}</h3>` : ''}
       ${v.dias.length && v.nLogs < 30 ? `<p class="status">Ojo: ese día solo hay ${fmt(v.nLogs)} commlogs de instalaciones de esta BBDD${ultLog && v.d1 > ultLog ? ` (los commlogs de Upsell llegan hasta el ${fDia(ultLog)})` : ''}, por eso salen tan pocas franjas.</p>` : ''}
       ${tablaUnico(v, i, camps)}
-      ${frGraf === 'pctl' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas del informe de llamadas</small></h3>
+      ${frMed === 'inst' ? `<h3 class="chart-t">% instalaciones contactadas por franja <small>· instalaciones contactadas ÷ instalaciones tratadas en la franja (cada una una vez, da igual los intentos)</small></h3>
+      <div class="leyenda"><span><i style="background:var(--c3)"></i>% instalaciones contactadas · eje izquierdo</span>${keyLineaInst}</div>
+      <div class="chart" id="frC5_${i}"></div>` : ''}
+      ${frMed === 'trat' && frGraf === 'pctl' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas del informe de llamadas</small></h3>
       ${v.diasLlam.length ? `${juntas ? '' : llSeparadas ? `<p class="status">Llamadas solo del servicio de ${escapeHtml(frCamp)} (${frCamp === '4PRO' ? 'Vencimiento_genérico' : 'Upselling_tecnicos'}).</p>`
         : '<p class="status">Ojo: las llamadas guardadas no están separadas por skill (vuelve a subir el informe de llamadas), así que con una sola campaña el % sale más bajo.</p>'}
       <div class="leyenda"><span><i style="background:var(--c3)"></i>% contactación · eje izquierdo</span>${keyLineaI}</div>
       <div class="chart" id="frC4_${i}"></div>` : '<p class="status">No hay llamadas del informe de llamadas para estas fechas. Súbelo en <a href="#origenes" style="color:var(--brand)">＋ Añadir orígenes</a> (Access con la tabla «agent skill 30 minutes»).</p>'}` : ''}
-      ${frGraf === 'pct' ? `<h3 class="chart-t">Contactación por franja <small>· contactos ÷ horas logadas en la franja</small></h3>
+      ${frMed === 'trat' && frGraf === 'pct' ? `<h3 class="chart-t">Contactación por franja <small>· contactos ÷ horas logadas en la franja</small></h3>
       ${juntas ? '' : '<p class="status">Ojo: las horas logadas son de todos los gestores (el tiempo no se separa por campaña), así que con una sola campaña sale más bajo.</p>'}
       <div class="leyenda"><span><i style="background:var(--c3)"></i>Contactos por hora logada · eje izquierdo</span>${keyLinea}</div>
       <div class="chart" id="frC2_${i}"></div>` : ''}
@@ -873,12 +887,17 @@ async function pintarFranjas(desde, hasta, logs) {
   vistas.forEach((v, i) => {
     if (!v.dias.length) return;
     const gest = (f) => f.segundos / 1800 / v.dias.length;
-    if (frGraf === 'pctl' && v.diasLlam.length) graficaFranjas($('frC4_' + i), v.filas, [{ c: 'pctl', color: 'var(--c3)' }], {
+    if (frMed === 'inst') graficaFranjas($('frC5_' + i), v.filas, [{ c: 'inst', color: 'var(--c3)' }], {
+      valor: (f) => pctI(f) || 0, ymax: maxPctI, fmtEje: (x) => fmt(x) + ' %', linea: lineaInst,
+      etiqueta: (f) => (pctI(f) == null ? '' : fmt(pctI(f), pctI(f) < 10 ? 1 : 0) + '%'),
+      tooltip: (f) => `${tramo(f.franja)}\n${pctI(f) == null ? 'Sin instalaciones tratadas' : fmt(pctI(f), 1) + ' % de instalaciones contactadas'}\n${fmt(iCont(f))} contactadas ÷ ${fmt(iTrat(f))} tratadas`,
+    });
+    if (frMed === 'trat' && frGraf === 'pctl' && v.diasLlam.length) graficaFranjas($('frC4_' + i), v.filas, [{ c: 'pctl', color: 'var(--c3)' }], {
       valor: (f) => pctL(f) || 0, ymax: maxPctL, fmtEje: (x) => fmt(x) + ' %', linea: lineaI,
       etiqueta: (f) => (pctL(f) == null ? '' : fmt(pctL(f), pctL(f) < 10 ? 1 : 0) + '%'),
       tooltip: (f) => `${tramo(f.franja)}\n${pctL(f) == null ? 'Sin llamadas en el informe' : fmt(pctL(f), 1) + ' % de contactación'}\n${fmt(contI(f))} contactos ÷ ${fmt(llamI(f))} llamadas`,
     });
-    if (frGraf === 'pct') graficaFranjas($('frC2_' + i), v.filas, [{ c: 'pct', color: 'var(--c3)' }], {
+    if (frMed === 'trat' && frGraf === 'pct') graficaFranjas($('frC2_' + i), v.filas, [{ c: 'pct', color: 'var(--c3)' }], {
       valor: (f) => pct(f) || 0, ymax: maxPct, fmtEje: (x) => fmt(x, x % 1 ? 2 : 0), linea, marca: (f) => f === v.mejor,
       etiqueta: (f) => (pct(f) == null ? '' : fmt(pct(f), 1)),
       tooltip: (f) => `${tramo(f.franja)}\n${pct(f) == null ? 'Sin gestores logados' : fmtR(pct(f)) + ' contactos por hora logada'}\n${fmt(cont(f))} contactos ÷ ${fmt(horasLog(f), 1)} h logadas` +
@@ -886,13 +905,14 @@ async function pintarFranjas(desde, hasta, logs) {
     });
     $('frT_' + i).innerHTML = `<thead><tr><th>Franja</th><th class="n">Tiempo conectado</th><th class="n">Gestores de media</th>
       <th class="n">Llamadas</th><th class="n">Contactos</th>${juntas ? camps.map((c) => `<th class="n">Contactos ${escapeHtml(c)}</th>`).join('') : ''}
-      <th class="n">Llamadas (informe)</th><th class="n">% contactación (÷ llamadas)</th><th class="n">Horas logadas</th><th class="n">Contactación (contactos ÷ h logadas)</th><th class="n">% sobre intentos</th></tr></thead><tbody>` + v.filas.map((f) => `<tr${f === v.mejor ? ' class="sel"' : ''}>
+      <th class="n">Llamadas (informe)</th><th class="n">% contactación (÷ llamadas)</th><th class="n">Horas logadas</th><th class="n">Contactación (contactos ÷ h logadas)</th><th class="n">% sobre intentos</th><th class="n">Instalaciones tratadas</th><th class="n">Instalaciones contactadas</th><th class="n">% instalaciones contactadas</th></tr></thead><tbody>` + v.filas.map((f) => `<tr${f === v.mejor ? ' class="sel"' : ''}>
         <td>${f === v.mejor ? '★ ' : ''}${tramo(f.franja)}</td><td class="n">${hm(f.segundos)}</td><td class="n">${fmt(gest(f), 1)}</td>
         <td class="n">${fmt(llam(f))}</td><td class="n">${fmt(cont(f))}</td>
         ${juntas ? camps.map((c) => `<td class="n">${fmt(f.porCamp[c]?.contactos || 0)}</td>`).join('') : ''}
         <td class="n">${f.inf ? fmt(llamI(f)) : '—'}</td><td class="n"><b>${pctL(f) == null ? '—' : fmt(pctL(f), 1) + ' %'}</b></td>
         <td class="n">${fmt(horasLog(f), 1)}</td><td class="n"><b>${pct(f) == null ? '—' : fmtR(pct(f))}</b></td>
-        <td class="n">${pctInt(f) == null ? '—' : fmt(pctInt(f), 1) + ' %'}</td></tr>`).join('') + '</tbody>';
+        <td class="n">${pctInt(f) == null ? '—' : fmt(pctInt(f), 1) + ' %'}</td>
+        <td class="n">${fmt(iTrat(f))}</td><td class="n">${fmt(iCont(f))}</td><td class="n"><b>${pctI(f) == null ? '—' : fmt(pctI(f), 1) + ' %'}</b></td></tr>`).join('') + '</tbody>';
   });
 
   const v0 = vistas[0];
@@ -901,7 +921,8 @@ async function pintarFranjas(desde, hasta, logs) {
     : vistas.map((v) => (v.etq ? v.etq + ' ' : 'Día ') + (v.d0 ? fDia(v.d0) : '—')).join(' · '));
   $('frNota').innerHTML = (vistas[0].mesesSinBbdd?.length ? `<b>Ojo:</b> no cuentan los días de ${vistas[0].mesesSinBbdd.map(nombreMes).join(', ')} porque no hay BBDD de ese mes. ` : '') +
     (frModo === 'acum' ? 'En el acumulado cada día se cruza con la BBDD de su mes. ' : '') +
-    '<b>Gráfica en base a tratado:</b> cuenta cada commlog de contacto. ' +
+    (frMed === 'inst' ? '<b>Instalaciones contactadas:</b> en cada franja, instalaciones con algún contacto ÷ instalaciones llamadas (con contacto o ilocalizado); cada instalación cuenta una vez por día y franja, da igual los intentos. '
+      : '<b>Contacto en base a tratado:</b> cuenta cada commlog de contacto. ') +
     vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmtR(pct(v.mejor))} contactos por hora logada). `).join('') +
     '% contactación = contactos de la franja ÷ llamadas de la franja según el informe de llamadas (agent skill 30 minutes). ' +
     'Contactos por hora logada = contactos de la franja ÷ horas logadas de la franja (suma del Total Time de los gestores), así se comparan igual franjas con 2 o con 10 gestores. ' +
