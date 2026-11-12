@@ -470,6 +470,10 @@ $('accTabla').addEventListener('change', () => {
     busca(/llamad|calls|handled|atendid|contestad|salient|dialed|marcad/i, /(^|[\s-])T\s|service|servicio/i);
   $('accLlam').innerHTML = '<option value="">(contar filas)</option>' + ops(llamCol);
   $('accSkill').innerHTML = '<option value="">(todas)</option>' + ops(busca(/service|servicio|skill/i, /(^|[\s-])[NT]\s/));
+  // Gestor: mejor el identificador (Employee ID / matrícula), que es lo que suele venir en los commlogs (cre_us).
+  const sinNT = /(^|[\s-])[NT]\s|service|servicio/i;
+  $('accAgente').innerHTML = '<option value="">(ninguna)</option>' +
+    ops(busca(/employee|empleado|matr[ií]cula|id[\s_]*agent/i, sinNT) || busca(/agent|agente|gestor|usuario|user/i, sinNT));
   tipoAccess();
   pintarSkills();
   prepararAccess();
@@ -497,7 +501,7 @@ function pintarSkills() {
     `<label style="display:inline-flex; gap:4px; align-items:center; font-weight:400"><input type="checkbox" value="${escapeHtml(v)}"${!up.length || up.includes(v) ? ' checked' : ''}> ${escapeHtml(v || '(vacío)')} <span style="color:var(--muted)">(${fmt(cuenta[v])})</span></label>`).join('');
   $('accSkillVals').querySelectorAll('input').forEach((i) => i.addEventListener('change', prepararAccess));
 }
-for (const id of ['accDia', 'accHora', 'accTT', 'accUni', 'accLlam']) $(id).addEventListener('change', prepararAccess);
+for (const id of ['accDia', 'accHora', 'accTT', 'accUni', 'accLlam', 'accAgente']) $(id).addEventListener('change', prepararAccess);
 $('accTipo').addEventListener('change', () => { tipoAccess(); pintarSkills(); prepararAccess(); });
 $('accSkill').addEventListener('change', () => { pintarSkills(); prepararAccess(); });
 function prepararAccess() {
@@ -551,12 +555,13 @@ const campDeSkill = (v) => {
 // en total y separadas por campaña según el skill.
 function prepararLlamadas() {
   const n = $('accTabla').value, cd = $('accDia').value, ch = $('accHora').value, cl = $('accLlam').value, cs = $('accSkill').value;
+  const ca = $('accAgente').value;
   if (!accDb || !n || !cd || !ch) return;
   $('stAcc').textContent = `Leyendo la tabla ${n}…`;
   try {
     const marcados = cs ? new Set([...$('accSkillVals').querySelectorAll('input:checked')].map((i) => i.value)) : null;
-    const filas = accDb.getTable(n).getData({ columns: [...new Set([cd, ch, cl, cs].filter(Boolean))] });
-    const dias = {}, porCamp = { Vencimiento: {}, '4PRO': {} };
+    const filas = accDb.getTable(n).getData({ columns: [...new Set([cd, ch, cl, cs, ca].filter(Boolean))] });
+    const dias = {}, porCamp = { Vencimiento: {}, '4PRO': {} }, porGestor = {};
     let malas = 0, fuera = 0;
     for (const r of filas) {
       if (marcados && !marcados.has(String(r[cs] ?? '').trim())) { fuera++; continue; }
@@ -568,11 +573,14 @@ function prepararLlamadas() {
       const f = franjaDe(m);
       (dias[d] ||= {})[f] = ((dias[d] ||= {})[f] || 0) + v;
       if (camp) (porCamp[camp][d] ||= {})[f] = (porCamp[camp][d][f] || 0) + v;
+      const g = ca ? String(r[ca] ?? '').trim() : '';
+      if (g) (porGestor[d] ||= {})[g] = (porGestor[d][g] || 0) + v;
     }
     const lista = Object.keys(dias).sort();
     if (!lista.length) throw new Error(`no saco ninguna llamada de las columnas elegidas (${fmt(malas)} filas sin día u hora válidos${fuera ? `, ${fmt(fuera)} de otros skills` : ''})`);
     const sumaDias = (x) => Object.values(x).reduce((s, fr) => s + Object.values(fr).reduce((a, b) => a + b, 0), 0);
-    conexAcc = { tipo: 'llam', dias, extra: cs ? [['llamv', porCamp.Vencimiento], ['llam4', porCamp['4PRO']]] : [] };
+    conexAcc = { tipo: 'llam', dias, extra: [...(cs ? [['llamv', porCamp.Vencimiento], ['llam4', porCamp['4PRO']]] : []), ...(ca ? [['llamg', porGestor]] : [])] };
+    const nGest = new Set(Object.values(porGestor).flatMap((x) => Object.keys(x))).size;
     const tot = sumaDias(dias);
     const porFr = {};
     for (const d of lista) for (const [f, v] of Object.entries(dias[d])) porFr[f] = (porFr[f] || 0) + v;
@@ -580,6 +588,7 @@ function prepararLlamadas() {
     $('stAcc').textContent = `${fmt(lista.length)} días (${fDia(lista[0])} – ${fDia(lista.at(-1))}) · ${fmt(tot)} llamadas (${fmt(tot / lista.length)} al día).` +
       ` Franja con más llamadas: ${fPunta} con ${fmt(vPunta / lista.length)} de media.` +
       (cs ? ` Por campaña: Vencimiento ${fmt(sumaDias(porCamp.Vencimiento))} · 4PRO ${fmt(sumaDias(porCamp['4PRO']))}.` : ' (Sin columna de skill no se pueden separar por campaña.)') +
+      (ca ? ` ${fmt(nGest)} gestores.` : ' (Sin columna de gestor no sale el ranking por gestor.)') +
       (fuera ? ` (${fmt(fuera)} filas de otros skills fuera)` : '') + (malas ? ` (${fmt(malas)} filas sin día u hora ignoradas)` : '');
     $('btnGuardarAcc').disabled = false;
   } catch (err) {
@@ -812,6 +821,7 @@ async function pintarFranjas(desde, hasta, logs) {
   for (const v of vistas) {
     const tramos = await tramosDe(v.d0, v.d1);
     v.bb = tramos[0]?.bb || bbdd;
+    v.idsBbdd = new Set(tramos.flatMap((t) => Object.values(t.bb.campanas).flat()).map((x) => String(x).trim().replace(/^0+/, '')));
     v.mesesSinBbdd = frModo === 'acum' && v.d0 && v.d1 ? mesesEntre(v.d0, v.d1).filter((m) => m !== bbdd.mes && !indiceBbdd[m]) : [];
     Object.assign(v, sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, conex, t.d0, t.d1))));
     v.nLogs = v.franjas.reduce((n, f) => n + f.commlogs, 0);
@@ -819,7 +829,8 @@ async function pintarFranjas(desde, hasta, logs) {
     // (todos los días del rango, tengan o no conexiones). Con varios meses, cada mes con su BBDD.
     v.uni = {};
     for (const t of tramos) for (const [c, ids] of Object.entries(t.bb.campanas)) {
-      const r = calcular(ids, todosLogs, t.d0, t.d1), x = (v.uni[c] ||= { total: 0, excl: 0, cont: 0, noc: 0, sin: 0, det: [] });
+      const r = calcular(ids, todosLogs, t.d0, t.d1), x = (v.uni[c] ||= { total: 0, excl: 0, cont: 0, noc: 0, sin: 0, det: [], enIntento: [0, 0, 0, 0, 0] });
+      r.contactoEnIntento.forEach((b, k) => { x.enIntento[k] += b.n; });
       x.total += r.resumen.total; x.excl += r.resumen.excluidas; x.cont += r.resumen.contactadas;
       x.noc += r.resumen.ilocalizadas; x.sin += r.resumen.sinIntentos;
       for (const d of r.detalle) x.det.push([c, d.id, d.estado, d.intentos, d.primerContacto, d.ultimoLog, t.bb.mes]);
@@ -829,6 +840,11 @@ async function pintarFranjas(desde, hasta, logs) {
     v.diasLlam = inf.dias;
     v.inf = Object.fromEntries(inf.franjas.map((f) => [f.franja, f]));
   }
+  // Llamadas por gestor (informe de llamadas, si se subió con la columna del gestor) y commlogs de Upsell por gestor (cre_us).
+  const mesesG = [...new Set(vistas.flatMap((v) => (v.d0 && v.d1 ? mesesEntre(v.d0, v.d1) : [])))];
+  const llamG = Object.assign({}, ...(await Promise.all(mesesG.map((m) => llamDeMes(m, 'llamg')))));
+  const llamTot = Object.assign({}, ...(await Promise.all(mesesG.map((m) => llamDeMes(m, 'llam')))));
+  for (const v of vistas) v.gest = porGestor(v.d0, v.d1, todosLogs, llamG, llamTot, v.idsBbdd);
   // Mismas franjas (eje X) y misma escala en los dos días para poder compararlos.
   const nombres = [...new Set(vistas.flatMap((v) => [...v.franjas.filter((f) => f.segundos || f.commlogs).map((f) => f.franja),
     ...Object.values(v.inf).filter((f) => f.segundos).map((f) => f.franja)]))].sort();
@@ -881,6 +897,8 @@ async function pintarFranjas(desde, hasta, logs) {
       <div class="chart" id="frC2_${i}"></div>` : ''}
       <details style="margin-top:10px"><summary style="cursor:pointer; font-size:13px; color:var(--text-2)">Ver tabla por franja</summary>
         <div class="tablewrap"><table id="frT_${i}"></table></div></details>
+      ${bloqueIntentos(v, camps)}
+      ${bloqueGestores(v, i)}
     </div>`).join('');
 
   frVistas = vistas;
@@ -929,6 +947,85 @@ async function pintarFranjas(desde, hasta, logs) {
     'Solo cuentan los días con conexiones y las instalaciones de la BBDD elegida.' +
     (frModo === 'comp' ? ' Los dos días usan la misma escala para poder compararlos.' : '');
 }
+
+// Contactadas según el intento del primer contacto (como en RBE), por campaña: cada instalación una vez.
+function bloqueIntentos(v, camps) {
+  const filas = camps.filter((c) => v.uni[c]).map((c) => [c, v.uni[c].enIntento, v.uni[c].cont]);
+  if (!filas.length) return '';
+  if (filas.length > 1) filas.push(['Total', filas.reduce((a, [, e]) => a.map((x, k) => x + e[k]), [0, 0, 0, 0, 0]), filas.reduce((s, f) => s + f[2], 0)]);
+  const tot = filas.at(-1);
+  const pc = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '—');
+  const tarjetas = [['1er intento', tot[1][0], 'a la primera llamada'], ['2º intento', tot[1][1], 'tras 1 ilocalizado'],
+    ['3er intento o más', tot[1][2] + tot[1][3] + tot[1][4], 'tras 2 o más ilocalizados']];
+  return `<h3 class="chart-t" style="margin-top:18px">¿En qué intento contactamos? <small>· instalaciones contactadas según el intento del primer contacto (cada una una vez)</small></h3>
+    <div class="hero" style="margin:6px 0 10px">${tarjetas.map(([l, n, sub]) => `<div class="hk"><div class="l">Contactadas en el ${l}</div>
+      <div class="v">${fmt(n)}</div><div class="s">${pc(n, tot[2])} de las contactadas · ${sub}</div>
+      <div class="meter"><i style="width:${tot[2] ? (100 * n) / tot[2] : 0}%"></i></div></div>`).join('')}</div>
+    <div class="tablewrap"><table><thead><tr><th>Campaña</th><th class="n">Contactadas</th>${['1º', '2º', '3º', '4º', '5º o más'].map((x) => `<th class="n">${x} intento</th>`).join('')}</tr></thead><tbody>` +
+    filas.map(([c, e, n]) => `<tr${c === 'Total' ? ' style="font-weight:600"' : ''}><td>${escapeHtml(c)}</td><td class="n">${fmt(n)}</td>${
+      e.map((x) => `<td class="n">${fmt(x)} <small style="color:var(--muted)">${pc(x, n)}</small></td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+}
+
+// Llamadas y commlogs por gestor en [d0, d1]: total y ranking (los que menos codifican primero).
+const normGestor = (g) => String(g ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ').replace(/\.0+$/, '');
+// Solo commlogs de instalaciones de la BBDD y, si hay informe de llamadas, solo los días que lo tienen
+// (así commlogs y llamadas son de los mismos días).
+function porGestor(d0, d1, logs, llamG, llamTot, ids) {
+  const diasLl = new Set(Object.keys(llamTot).filter((d) => Object.keys(llamTot[d]).length));
+  const enRango = (d) => d0 && d1 && d >= d0 && d <= d1 && (!diasLl.size || diasLl.has(d));
+  const g = {}, fila = (k, nombre) => (g[k] ||= { nombre, llamadas: 0, commlogs: 0, contactos: 0 });
+  let commlogs = 0, conGestor = 0, llamadas = 0, diasLlamG = 0;
+  for (const c of logs) {
+    if (!c.fecha || c.tipo === 'ignorar') continue;
+    if (!enRango(isoDia(c.fecha)) || (ids && !ids.has(String(c.id).trim().replace(/^0+/, '')))) continue;
+    commlogs++;
+    if (!c.gestor) continue;
+    conGestor++;
+    const x = fila(normGestor(c.gestor), String(c.gestor).trim());
+    x.commlogs++;
+    if (c.tipo === 'contacto') x.contactos++;
+  }
+  for (const [d, fr] of Object.entries(llamTot)) if (enRango(d)) llamadas += Object.values(fr).reduce((a, b) => a + b, 0);
+  for (const [d, ag] of Object.entries(llamG)) {
+    if (!enRango(d)) continue;
+    diasLlamG++;
+    for (const [nombre, n] of Object.entries(ag)) fila(normGestor(nombre), nombre).llamadas += n;
+  }
+  const lista = Object.values(g).map((x) => ({ ...x, pct: x.llamadas ? (100 * x.commlogs) / x.llamadas : null }));
+  const dias = new Set();
+  for (const d of diasLl) if (enRango(d)) dias.add(d);
+  return { commlogs, conGestor, llamadas, diasLlamG, lista, nDias: dias.size };
+}
+let frGestOrden = 'pct';
+function bloqueGestores(v, i) {
+  const G = v.gest;
+  if (!G) return '';
+  const pc = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '—');
+  const hayLlamG = G.diasLlamG > 0, hayGest = G.conGestor > 0;
+  const orden = { pct: (a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity) || b.llamadas - a.llamadas,
+    commlogs: (a, b) => a.commlogs - b.commlogs, llamadas: (a, b) => b.llamadas - a.llamadas }[hayLlamG ? frGestOrden : 'commlogs'];
+  const lista = [...G.lista].sort(orden);
+  const th = (k, txt) => `<th class="n"${hayLlamG ? ` data-gord="${k}" style="cursor:pointer"` : ''}>${txt}${frGestOrden === k && hayLlamG ? ' ▾' : ''}</th>`;
+  return `<h3 class="chart-t" style="margin-top:18px">Llamadas y commlogs por gestor <small>· todo Upsell (4PRO y Vencimiento), ${v.d0 === v.d1 ? 'el ' + fDia(v.d0) : `del ${fDia(v.d0)} al ${fDia(v.d1)}`}</small></h3>
+    <div class="hero" style="margin:6px 0 10px">
+      <div class="hk"><div class="l">Llamadas emitidas</div><div class="v">${G.llamadas ? fmt(G.llamadas) : '—'}</div><div class="s">informe de llamadas (skills de Upsell)</div></div>
+      <div class="hk"><div class="l">Commlogs de Upsell</div><div class="v">${fmt(G.commlogs)}</div><div class="s">de instalaciones de la BBDD${G.nDias ? `, los ${fmt(G.nDias)} días con informe de llamadas` : ''}</div></div>
+      <div class="hk"><div class="l">Commlogs ÷ llamadas</div><div class="v">${pc(G.commlogs, G.llamadas)}</div><div class="s">qué parte de las llamadas se ha codificado</div></div>
+    </div>
+    ${!hayGest ? '<p class="status">Los commlogs guardados no traen el gestor: vuelve a subir el Excel de commlogs (con la columna cre_us) y saldrá el ranking.</p>' : ''}
+    ${!hayLlamG ? '<p class="status">No hay llamadas por gestor para estas fechas: vuelve a subir el informe de llamadas eligiendo la «Columna del gestor». Mientras, el ranking es solo por commlogs.</p>' : ''}
+    ${lista.length ? `<div class="tablewrap" style="max-height:420px; overflow:auto"><table id="frG_${i}"><thead><tr><th>#</th><th>Gestor</th>${th('llamadas', 'Llamadas')}${th('commlogs', 'Commlogs')}
+      ${th('pct', 'Commlogs ÷ llamadas')}<th class="n">Contactos</th><th class="n">% contacto (÷ commlogs)</th></tr></thead><tbody>` +
+      lista.map((x, k) => `<tr><td>${k + 1}</td><td>${escapeHtml(x.nombre)}</td><td class="n">${x.llamadas ? fmt(x.llamadas) : '—'}</td><td class="n">${fmt(x.commlogs)}</td>
+        <td class="n"><b>${x.pct == null ? '—' : fmt(x.pct, 1) + ' %'}</b></td><td class="n">${fmt(x.contactos)}</td><td class="n">${pc(x.contactos, x.commlogs)}</td></tr>`).join('') +
+      '</tbody></table></div>' : ''}
+    <p class="status" style="margin:4px 0 0">${hayLlamG ? 'Ordenado por commlogs ÷ llamadas, de menos a más: arriba los que menos codifican. Pulsa en una cabecera para cambiar el orden.' : 'Ordenado por commlogs, de menos a más.'}
+      El gestor del commlog es cre_us; el de las llamadas, la columna elegida del informe. Si un gestor sale en dos filas (una con llamadas y otra con commlogs), es que no se llama igual en los dos ficheros.</p>`;
+}
+$('frPaneles').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-gord]');
+  if (th) { frGestOrden = th.dataset.gord; repintarFr(); }
+});
 
 // Cuadro «contacto único sobre tratado único» de una vista: de las instalaciones de la BBDD, cuántas se han
 // tratado (al menos un intento), cuántas se han contactado y cuántas no, con el listado para descargar.
@@ -1226,7 +1323,8 @@ const aLog = (l) => {
     const { tipo, grupo } = clasificarTO(key4, key2);
     return { id, fecha: parseFecha(ts), key4, tipo, grupo };
   }
-  const tipo = ESP === 'up' ? clasificarUpsell(key4, txt, key3) : PROG === 'sa' && l.length >= 6 ? clasificarSA(key4, key2) : undefined;
+  if (ESP === 'up') return { id, fecha: parseFecha(ts), key4, tipo: clasificarUpsell(key4, txt, key3), gestor: l[6] || '' };
+  const tipo = PROG === 'sa' && l.length >= 6 ? clasificarSA(key4, key2) : undefined;
   return { id, fecha: parseFecha(ts), key4, tipo };
 };
 let hayLogs = false;
@@ -1286,6 +1384,9 @@ function mapaCabecera(arr) {
   if (id < 0 || fecha < 0 || key4 < 0) return null;
   const m = { id, fecha, key4 };
   const txt = n.findIndex((c) => c === 'key4txt'), key3 = n.findIndex((c) => c === 'key3'), key2 = n.findIndex((c) => c === 'key2');
+  // Gestor que tipifica el commlog: cre_us (si no está, cre_us_ln).
+  const gestor = [n.indexOf('creus'), n.indexOf('creusln'), n.indexOf('gestor'), n.indexOf('agente')].find((i) => i >= 0) ?? -1;
+  if (gestor >= 0) m.gestor = gestor;
   if (txt >= 0) m.txt = txt;
   if (key3 >= 0) m.key3 = key3;
   if (key2 >= 0) m.key2 = key2;
@@ -1322,14 +1423,15 @@ async function procesarFicheros(files) {
       if (faltan.length) throw new Error(`no encuentro la(s) columna(s) ${faltan.join(', ')} en ${f.name}. Columnas que veo: ${cols.slice(0, 8).join(', ')}`);
       // Un CSV es una sola tabla: va al dashboard en el que estás.
       const ct = cols.find((c) => normCol(c) === 'key4txt'), c3 = cols.find((c) => normCol(c) === 'key3');
-      const conv = leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck], txt: ct ? x[ct] : '', key3: c3 ? x[c3] : '' }));
+      const cg = cols.find((c) => normCol(c) === 'creus') || cols.find((c) => normCol(c) === 'creusln');
+      const conv = leidas.map((x) => ({ id: x[ci], fecha: x[cf], key4: x[ck], txt: ct ? x[ct] : '', key3: c3 ? x[c3] : '', gestor: cg ? x[cg] : '' }));
       if (ESP === 'up') filasUp = filasUp.concat(conv); else filas = filas.concat(conv);
     }
   }
   const partes = [];
   // RBE también guarda la key3 (si el fichero la trae), solo como información: no cambia la clasificación.
   if (filas.length) partes.push(await guardarLogs(filas, 'id', 'fecha', 'key4', '', null, 'key3', filas.some((r) => 'key2' in r) ? 'key2' : null));
-  if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up', 'txt', 'key3'));
+  if (filasUp.length) partes.push(await guardarLogs(filasUp, 'id', 'fecha', 'key4', 'up', 'txt', 'key3', null, filasUp.some((r) => r.gestor) ? 'gestor' : null));
   $('stSubida').textContent = 'Listo: ' + partes.join(' · ');
   await cargarIndiceLogs();
   recalcular();
@@ -1422,7 +1524,8 @@ if (soportaVinculo) {
 }
 
 // ct, c3, c2: columnas del key4txt, la key3 y la key2 (Upsell clasifica con key4txt/key3; Second Attempt, con la key2).
-async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null, c2 = null) {
+// Upsell con gestor: [id, ts, key4, txt, key3, '', gestor].
+async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null, c2 = null, cg = null) {
   const etq = esp === 'up' ? 'Upsell' : 'Winback (RBE)';
   const porMes = {};
   let malas = 0;
@@ -1434,7 +1537,9 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null, c
     const l = [id, ts, String(r[ck] ?? '').trim()];
     const txt = ct ? String(r[ct] ?? '').trim() : '', key3 = c3 ? String(r[c3] ?? '').trim() : '';
     // Con key2 en el fichero se guardan siempre las seis posiciones: así se sabe que el commlog trae key2 (aunque venga vacía).
+    const gestor = cg ? String(r[cg] ?? '').trim().replace(/\.0+$/, '') : '';
     if (c2) l.push(txt, key3, String(r[c2] ?? '').trim());
+    else if (gestor) l.push(txt, key3, '', gestor);
     else if (key3) l.push(txt, key3);
     else if (txt) l.push(txt);
     (porMes[ts.slice(0, 7)] ||= []).push(l);
@@ -1460,7 +1565,7 @@ async function guardarLogs(filas, ci, cf, ck, esp = ESP, ct = null, c3 = null, c
     if (esp === ESP) { delete cacheLogs[mes]; for (const k of Object.keys(cacheParsed)) if (k.endsWith('|' + mes)) delete cacheParsed[k]; }
   }
   return `${etq}: ${fmt(filas.length - malas)} commlogs leídos, ${fmt(nuevos)} nuevos guardados` +
-    (completados ? `, ${fmt(completados)} completados con key2/key3/key4txt` : '') +
+    (completados ? `, ${fmt(completados)} completados con key2/key3/key4txt/gestor` : '') +
     (malas ? ` (${fmt(malas)} filas sin instalación o fecha ignoradas)` : '');
 }
 
