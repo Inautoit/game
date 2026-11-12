@@ -256,7 +256,7 @@ function leerAvisosTO(wb, nombreFichero) {
     campanas[TO_CESION] = new Set([...campanas[TO_AVISOS[0].camp], ...campanas[TO_AVISOS[1].camp]]);
   }
   // Mes de la BBDD: el del nombre del fichero (AvisosOctubre…) o el de la última fecha.
-  const mes = mesDeNombre(nombreFichero) || max.slice(0, 7);
+  const mes = mesDeNombre(String(nombreFichero).replace(/avisos/i, ' ')) || max.slice(0, 7);
   const todas = new Set(Object.values(campanas).flatMap((x) => [...x]));
   return { [mes]: { ids: todas, cargas, desde: min, nombre: `${nombreMes(mes)} (avisos ${fDia(min).slice(0, 5)}–${fDia(max).slice(0, 5)})`,
     campanas: Object.fromEntries(Object.entries(campanas).map(([c, x]) => [c, [...x]])) } };
@@ -294,7 +294,9 @@ $('fBbdd').addEventListener('change', async (e) => {
     $('stCarga').textContent = 'Leyendo…';
     try {
       cargaTO = await leerTakeOver(f);
-      $('stCarga').textContent = 'Sustituirá todo TakeOver con una BBDD por mes de carga: ' +
+      $('stCarga').textContent = (Object.values(cargaTO).some((x) => x.campanas)
+        ? `Sustituirá la BBDD de TakeOver de ${Object.keys(cargaTO).map(nombreMes).join(', ')} (los demás meses se quedan): `
+        : 'Sustituirá todo TakeOver con una BBDD por mes de carga: ') +
         Object.entries(cargaTO).sort().map(([m, x]) => `${x.nombre || nombreMes(m)} ${x.campanas
           ? Object.entries(x.campanas).map(([c, v]) => `${c} ${fmt(v.length)}`).join(', ') : fmt(x.ids.size)}`).join(' · ');
       $('btnGuardar').disabled = false;
@@ -1136,13 +1138,15 @@ $('btnGuardar').addEventListener('click', async () => {
           body: JSON.stringify({ mes: m, hastaHoy: true, campanas: cargaTO[m].campanas || { TakeOver: [...cargaTO[m].ids] }, cargas: cargaTO[m].cargas,
             desde: cargaTO[m].desde, nombre: cargaTO[m].nombre }) });
       }
-      // El Excel de TakeOver sustituye todo lo anterior: se borran los meses que ya no vienen.
-      const viejos = (await api(urlBbdd('', 'to'))).map((i) => i.mes).filter((m) => !meses.includes(m));
+      // El Excel antiguo (acumulado) sustituye todo lo anterior: se borran los meses que ya no vienen.
+      // El de avisos (BENEFINA / BENEFIOK / BBDD TAKOS VACÍA) es de un mes: solo sustituye ese mes.
+      const avisos = meses.some((m) => cargaTO[m].campanas);
+      const viejos = avisos ? [] : (await api(urlBbdd('', 'to'))).map((i) => i.mes).filter((m) => !meses.includes(m));
       for (const m of viejos) {
         delete cacheBbdd['to|' + m];
         await api(urlBbdd('mes=' + m, 'to'), { method: 'DELETE' });
       }
-      $('stCarga').textContent = `TakeOver sustituido: ${meses.length} BBDD (${nombreMes(meses[0])} – ${nombreMes(meses[meses.length - 1])})` +
+      $('stCarga').textContent = (avisos ? `TakeOver de ${meses.map(nombreMes).join(', ')} sustituido` : `TakeOver sustituido: ${meses.length} BBDD (${nombreMes(meses[0])} – ${nombreMes(meses[meses.length - 1])})`) +
         (viejos.length ? ` · borradas ${viejos.length} que ya no venían en el Excel (${viejos.map(nombreMes).join(', ')})` : '') + '.';
       cargaTO = null;
       $('fBbdd').value = '';
