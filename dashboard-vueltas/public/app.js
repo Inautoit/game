@@ -599,7 +599,7 @@ const pasoBonito = (max) => { const m = Math.max(1e-9, max) / 4, p = 10 ** Math.
 // Barras (apiladas si hay varias series) por franja, en SVG. Cada franja tiene su zona de hover.
 // ymax fija la escala (para que dos días se comparen con la misma).
 // linea: {valor, color, ymax} -> una línea con su propio eje a la derecha (p. ej. nº de intentos).
-function graficaFranjas(el, franjas, series, { valor, tooltip, marca, ymax: yfija, fmtEje = (v) => fmt(v), linea }) {
+function graficaFranjas(el, franjas, series, { valor, tooltip, marca, ymax: yfija, fmtEje = (v) => fmt(v), linea, etiqueta }) {
   const W = Math.max(320, el.clientWidth || 900), H = 210, ml = 40, mr = linea ? 44 : 6, mt = 18, mb = 26;
   const n = Math.max(1, franjas.length), bw = (W - ml - mr) / n, w = Math.max(3, Math.min(28, bw * 0.68));
   const tot = franjas.map((f) => series.reduce((s, se) => s + (valor(f, se) || 0), 0));
@@ -625,6 +625,11 @@ function graficaFranjas(el, franjas, series, { valor, tooltip, marca, ymax: yfij
       base += v;
     });
     if (marca && marca(f)) g += `<text x="${x + w / 2}" y="${y(tot[i]) - 6}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text)">★ ${fmtEje(tot[i])}</text>`;
+    // Valor encima de la barra (si cabe: con barras muy estrechas, p. ej. en el móvil, solo en el tooltip).
+    else if (etiqueta && tot[i] > 0 && bw >= 22) {
+      const txt = etiqueta(f);
+      if (txt) g += `<text x="${x + w / 2}" y="${Math.max(11, y(tot[i]) - 4)}" text-anchor="middle" font-size="${bw >= 30 ? 10.5 : 9}" font-weight="600" fill="var(--text)">${txt}</text>`;
+    }
     if (f.franja.endsWith(':00') && (n <= 24 || +f.franja.slice(0, 2) % 2 === 0)) {
       g += `<text x="${ml + bw * i + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--muted)">${f.franja}</text>`;
     }
@@ -758,6 +763,15 @@ async function pintarFranjas(desde, hasta, logs) {
     v.mesesSinBbdd = frModo === 'acum' && v.d0 && v.d1 ? mesesEntre(v.d0, v.d1).filter((m) => m !== bbdd.mes && !indiceBbdd[m]) : [];
     Object.assign(v, sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, conex, t.d0, t.d1, { unico: frUnico }))));
     v.nLogs = v.franjas.reduce((n, f) => n + f.commlogs, 0);
+    // Contacto único sobre tratado único: cada instalación de la BBDD una sola vez en todo el periodo
+    // (todos los días del rango, tengan o no conexiones). Con varios meses, cada mes con su BBDD.
+    v.uni = {};
+    for (const t of tramos) for (const [c, ids] of Object.entries(t.bb.campanas)) {
+      const r = calcular(ids, todosLogs, t.d0, t.d1), x = (v.uni[c] ||= { total: 0, excl: 0, cont: 0, noc: 0, sin: 0, det: [] });
+      x.total += r.resumen.total; x.excl += r.resumen.excluidas; x.cont += r.resumen.contactadas;
+      x.noc += r.resumen.ilocalizadas; x.sin += r.resumen.sinIntentos;
+      for (const d of r.detalle) x.det.push([c, d.id, d.estado, d.intentos, d.primerContacto, d.ultimoLog, t.bb.mes]);
+    }
     // Mismo cálculo con las llamadas del informe en lugar del tiempo: solo cuentan los días que tienen llamadas.
     const inf = sumaFranjas(tramos.map((t) => porFranja(t.bb.campanas, todosLogs, llamInf, t.d0, t.d1, { unico: frUnico })));
     v.diasLlam = inf.dias;
@@ -793,6 +807,7 @@ async function pintarFranjas(desde, hasta, logs) {
   $('frPaneles').innerHTML = vistas.map((v, i) => `<div class="fr-panel">
       ${frModo !== 'acum' ? `<h3 class="dia">${v.etq ? v.etq + ' · ' : ''}${v.d0 ? fDia(v.d0) : '—'} · BBDD ${escapeHtml(nombreBbdd(v.bb.mes))}${v.dias.length ? '' : ' · sin conexiones'}</h3>` : ''}
       ${v.dias.length && v.nLogs < 30 ? `<p class="status">Ojo: ese día solo hay ${fmt(v.nLogs)} commlogs de instalaciones de esta BBDD${ultLog && v.d1 > ultLog ? ` (los commlogs de Upsell llegan hasta el ${fDia(ultLog)})` : ''}, por eso salen tan pocas franjas.</p>` : ''}
+      ${tablaUnico(v, i, camps)}
       ${frGraf === 'pctl' ? `<h3 class="chart-t">% contactación por franja <small>· contactos ÷ llamadas del informe de llamadas</small></h3>
       ${v.diasLlam.length ? `${juntas ? '' : llSeparadas ? `<p class="status">Llamadas solo del servicio de ${escapeHtml(frCamp)} (${frCamp === '4PRO' ? 'Vencimiento_genérico' : 'Upselling_tecnicos'}).</p>`
         : '<p class="status">Ojo: las llamadas guardadas no están separadas por skill (vuelve a subir el informe de llamadas), así que con una sola campaña el % sale más bajo.</p>'}
@@ -806,15 +821,18 @@ async function pintarFranjas(desde, hasta, logs) {
         <div class="tablewrap"><table id="frT_${i}"></table></div></details>
     </div>`).join('');
 
+  frVistas = vistas;
   vistas.forEach((v, i) => {
     if (!v.dias.length) return;
     const gest = (f) => f.segundos / 1800 / v.dias.length;
     if (frGraf === 'pctl' && v.diasLlam.length) graficaFranjas($('frC4_' + i), v.filas, [{ c: 'pctl', color: 'var(--c3)' }], {
       valor: (f) => pctL(f) || 0, ymax: maxPctL, fmtEje: (x) => fmt(x) + ' %', linea: lineaI,
+      etiqueta: (f) => (pctL(f) == null ? '' : fmt(pctL(f), pctL(f) < 10 ? 1 : 0) + '%'),
       tooltip: (f) => `${tramo(f.franja)}\n${pctL(f) == null ? 'Sin llamadas en el informe' : fmt(pctL(f), 1) + ' % de contactación'}\n${fmt(contI(f))} contactos ÷ ${fmt(llamI(f))} llamadas`,
     });
     if (frGraf === 'pct') graficaFranjas($('frC2_' + i), v.filas, [{ c: 'pct', color: 'var(--c3)' }], {
       valor: (f) => pct(f) || 0, ymax: maxPct, fmtEje: (x) => fmt(x, x % 1 ? 2 : 0), linea, marca: (f) => f === v.mejor,
+      etiqueta: (f) => (pct(f) == null ? '' : fmt(pct(f), 1)),
       tooltip: (f) => `${tramo(f.franja)}\n${pct(f) == null ? 'Sin gestores logados' : fmtR(pct(f)) + ' contactos por hora logada'}\n${fmt(cont(f))} contactos ÷ ${fmt(horasLog(f), 1)} h logadas` +
         `\n${fmt(llam(f))} intentos: ${fmt(cont(f))} contactos + ${fmt(suma(f, 'iloc'))} ilocalizados`,
     });
@@ -835,7 +853,7 @@ async function pintarFranjas(desde, hasta, logs) {
     : vistas.map((v) => (v.etq ? v.etq + ' ' : 'Día ') + (v.d0 ? fDia(v.d0) : '—')).join(' · '));
   $('frNota').innerHTML = (vistas[0].mesesSinBbdd?.length ? `<b>Ojo:</b> no cuentan los días de ${vistas[0].mesesSinBbdd.map(nombreMes).join(', ')} porque no hay BBDD de ese mes. ` : '') +
     (frModo === 'acum' ? 'En el acumulado cada día se cruza con la BBDD de su mes. ' : '') +
-    (frUnico ? '<b>Contacto único:</b> cada instalación cuenta como contacto una sola vez, en la franja de su primer contacto del periodo. '
+    (frUnico ? '<b>Contacto único en la gráfica:</b> cada instalación cuenta como contacto una sola vez, en la franja de su primer contacto del periodo; las llamadas y las horas logadas son las de siempre, así que el % es «instalaciones nuevas contactadas por cada 100 llamadas». '
       : '<b>Contacto en base a tratado:</b> cuenta cada commlog de contacto. ') +
     vistas.filter((v) => v.mejor).map((v) => `<b>${v.etq ? v.etq + ': f' : 'F'}ranja más productiva ${tramo(v.mejor.franja)}</b> (${fmtR(pct(v.mejor))} contactos por hora logada). `).join('') +
     '% contactación = contactos de la franja ÷ llamadas de la franja según el informe de llamadas (agent skill 30 minutes). ' +
@@ -843,6 +861,49 @@ async function pintarFranjas(desde, hasta, logs) {
     'Solo cuentan los días con conexiones y las instalaciones de la BBDD elegida.' +
     (frModo === 'comp' ? ' Los dos días usan la misma escala para poder compararlos.' : '');
 }
+
+// Cuadro «contacto único sobre tratado único» de una vista: de las instalaciones de la BBDD, cuántas se han
+// tratado (al menos un intento), cuántas se han contactado y cuántas no, con el listado para descargar.
+let frVistas = [];
+const ESTADO_UNI = { contactada: 'Contactada', ilocalizada: 'Tratada sin contacto', sin_intentos: 'Sin tratar', excluida: 'Excluida' };
+function tablaUnico(v, i, camps) {
+  const filas = camps.filter((c) => v.uni[c]).map((c) => [c, v.uni[c]]);
+  if (!filas.length) return '';
+  if (filas.length > 1) {
+    const t = { total: 0, excl: 0, cont: 0, noc: 0, sin: 0 };
+    for (const [, x] of filas) for (const k of Object.keys(t)) t[k] += x[k];
+    filas.push(['Total', t]);
+  }
+  const pc = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '—');
+  const periodo = v.d0 === v.d1 ? 'el ' + fDia(v.d0) : `del ${fDia(v.d0)} al ${fDia(v.d1)}`;
+  return `<h3 class="chart-t">Contacto único sobre tratado único <small>· cada instalación de la BBDD cuenta una vez, ${periodo}</small></h3>
+    <div class="tablewrap"><table class="tUni"><thead><tr><th>Campaña</th><th class="n">Instalaciones BBDD</th><th class="n">Excluidas</th>
+      <th class="n">Tratadas</th><th class="n">Contactadas</th><th class="n">Tratadas sin contacto</th><th class="n">Sin tratar</th>
+      <th class="n">% contacto único<br><small>contactadas ÷ tratadas</small></th><th class="n">% BBDD contactada<br><small>contactadas ÷ gestionables</small></th></tr></thead><tbody>` +
+    filas.map(([c, x]) => {
+      const trat = x.cont + x.noc, gest = x.total - x.excl;
+      return `<tr${c === 'Total' ? ' style="font-weight:600"' : ''}><td>${escapeHtml(c)}</td><td class="n">${fmt(x.total)}</td><td class="n">${fmt(x.excl)}</td>
+        <td class="n">${fmt(trat)}</td><td class="n">${fmt(x.cont)}</td><td class="n">${fmt(x.noc)}</td><td class="n">${fmt(x.sin)}</td>
+        <td class="n"><b>${pc(x.cont, trat)}</b></td><td class="n">${pc(x.cont, gest)}</td></tr>`;
+    }).join('') + '</tbody></table></div>' +
+    `<div style="display:flex; flex-wrap:wrap; margin:8px 0 4px; gap:6px; align-items:center"><span class="status">Descargar listado de instalaciones (CSV):</span>${
+      filas.map(([c]) => `<button class="sec" data-uni="${i}" data-camp="${escapeHtml(c)}">${escapeHtml(c === 'Total' ? 'Todas' : c)}</button>`).join('')}</div>` +
+    '<p class="status" style="margin:0 0 10px">Tratada = al menos un commlog de contacto o de ilocalizado en el periodo. El listado trae cada instalación con su estado: contactada, tratada sin contacto, sin tratar o excluida.</p>';
+}
+// Descarga del listado de instalaciones de una campaña (o de todas con «Total»).
+$('frPaneles').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-uni]');
+  if (!b) return;
+  const v = frVistas[+b.dataset.uni], c = b.dataset.camp;
+  if (!v) return;
+  const det = Object.entries(v.uni).filter(([k]) => c === 'Total' || k === c).flatMap(([, x]) => x.det);
+  const lines = ['Campaña;Instalación;Estado;Intentos;Primer contacto;Último commlog;BBDD',
+    ...det.map((d) => [d[0], d[1], ESTADO_UNI[d[2]] || d[2], d[3], d[4], d[5], nombreBbdd(d[6])].join(';'))];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv' }));
+  a.download = `contacto_unico_${c.replace(/\W+/g, '_')}_${v.d0}_${v.d1}.csv`;
+  a.click();
+});
 
 // ---------- reporte de contactación (RBE): el cuadro que se reporta ----------
 // Cada BBDD empieza a llamarse el último lunes del mes anterior; la semana k va de ese lunes + 7·(k-1)
