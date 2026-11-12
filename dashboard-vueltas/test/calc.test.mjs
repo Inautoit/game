@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria, clasificarSA } from '../public/calc.js';
+import { calcular, rangoPorDefecto, parseFecha, delDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria, clasificarSA, clasificarTO } from '../public/calc.js';
 
 const d = (s) => parseFecha(s);
 const logs = [
@@ -131,5 +131,20 @@ assert.equal(clasificarSA('R_RPV_75', ''), 'ignorar');
   assert.deepEqual(sumaDiaria(['A'], ls, '2026-11-05', '2026-11-05', {}, { A: [['', T[0][0]], [T[0][1], '']] }), { tratadasDia: 1, contactadasDia: 0 });
   // TakeOver sigue igual: desde el día de carga
   assert.equal(calcular(['A'], ls, '2026-11-01', '2026-11-30', { A: '2026-11-06' }).detalle[0].intentos, 1);
+}
+// TakeOver: key2 …007 = Cesión, …008 = Referido; key4 R_ILOC01/02 no contacto, R_NOU_04 exclusión
+assert.deepEqual(clasificarTO('R_ACE001', 'R_SEG007'), { tipo: 'contacto', grupo: 'cesion' });
+assert.deepEqual(clasificarTO('R_ILOC02', 'R_LEA008'), { tipo: 'no_contacto', grupo: 'referido' });
+assert.deepEqual(clasificarTO('R_NOU_04', 'R_LEA007'), { tipo: 'exclusion', grupo: 'cesion' });
+assert.equal(clasificarTO('R_ACE001', 'R_TLC006').tipo, 'ignorar');
+{
+  const ls = [
+    { id: 'A', fecha: d('2026-10-01'), tipo: 'no_contacto', grupo: 'cesion' },
+    { id: 'A', fecha: d('2026-10-02'), tipo: 'contacto', grupo: 'referido' },
+  ];
+  assert.equal(calcular(['A'], ls, '2026-10-01', '2026-10-31', {}, {}, new Set(['cesion'])).resumen.ilocalizadas, 1);
+  assert.equal(calcular(['A'], ls, '2026-10-01', '2026-10-31', {}, {}, new Set(['referido'])).resumen.contactadas, 1);
+  assert.equal(calcular(['A'], ls, '2026-10-01', '2026-10-31').resumen.contactadas, 1);
+  assert.deepEqual(sumaDiaria(['A'], ls, '2026-10-01', '2026-10-31', {}, {}, new Set(['cesion'])), { tratadasDia: 1, contactadasDia: 0 });
 }
 console.log('OK');

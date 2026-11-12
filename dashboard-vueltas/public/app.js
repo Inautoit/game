@@ -1,4 +1,4 @@
-import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria, clasificarSA } from './calc.js';
+import { calcular, delDia, parseFecha, rangoPorDefecto, isoDia, clasificarUpsell, porFranja, franjaDe, sumaDiaria, clasificarSA, clasificarTO } from './calc.js';
 import { leerColumnasXlsx } from './xlsxstream.js';
 
 const $ = (id) => document.getElementById(id);
@@ -100,9 +100,13 @@ const mesBase = (id) => id.slice(0, 7);
 // jueves 05/11 a las 15:00 con instalaciones de «TMK» sin contactar o sin tratar, y el martes 10/11 desde
 // las 16:00 todo se volvió a emitir por TMK (93, con OPC).
 const CORTES = [{ mes: '2026-11', camp: 'Tmk 400', de: 'TMK', tramos: [['2026-11-05 15:00', '2026-11-10 16:00']] }];
-// [desdePorId, fueraPorId] para calcular() de un conjunto de campañas de la BBDD (incluye la carga de TakeOver).
+// [desdePorId, fueraPorId, grupos] para calcular() de un conjunto de campañas de la BBDD (incluye la carga de
+// TakeOver). En TakeOver las campañas de Cesión solo cuentan commlogs de Cesión (key2 …007) y las de Referido,
+// de Referido (…008); juntas, los dos.
+const grupoTO = (c) => (/^\s*CESI[OÓ]N/i.test(c) ? 'cesion' : /^\s*REFERIDO/i.test(c) ? 'referido' : '');
 function ventanas(bb, nombres) {
   const desde = { ...(bb.cargas || {}) }, fuera = {};
+  const gr = PROG === 'to' ? new Set(nombres.map(grupoTO).filter(Boolean)) : null;
   for (const k of CORTES) {
     if (mesBase(bb.mes || '') !== k.mes || !bb.campanas[k.camp] || !bb.campanas[k.de]) continue;
     const conNueva = nombres.includes(k.camp), conVieja = nombres.includes(k.de);
@@ -116,7 +120,7 @@ function ventanas(bb, nombres) {
     const f = conNueva ? huecos : k.tramos;
     for (const id of bb.campanas[k.camp]) if (conNueva || ambas.has(id)) fuera[id] = f;
   }
-  return [desde, fuera];
+  return [desde, fuera, gr && gr.size ? gr : undefined];
 }
 // Campañas de la BBDD que forman una entrada de campanasComp (una campaña o un grupo «juntas»).
 function nombresDe(bb, etiqueta, ids) {
@@ -215,8 +219,52 @@ $('progCarga').addEventListener('change', () => $('fBbdd').files[0] && $('fBbdd'
 // TakeOver: un único Excel acumulado; se separa por mes de Fecha_Carga y se guarda
 // la fecha de carga de cada instalación (Ins_no_padre), desde la que cuentan sus commlogs.
 let cargaTO = null;
+// Excel de avisos de TakeOver (pestañas BENEFINA, BENEFIOK y BBDD TAKOS VACÍA): una BBDD con
+//   Cesión · BENEFINA (Ins No, desde Fecha apertura), Cesión · BBDD TAKOS VACÍA (Ins_no_padre, desde Fecha_Carga),
+//   Cesión (BENEFINA + TAKOS VACÍA) y Referido · BENEFIOK (Ins No, desde Fecha apertura).
+// Cada instalación cuenta desde su fecha (si está en varias pestañas, la primera).
+const TO_AVISOS = [
+  { hoja: /^\s*BENEFINA\s*$/i, camp: 'Cesión · BENEFINA', id: 'insno', fecha: 'fechaapertura' },
+  { hoja: /^\s*BBDD\s*TAKOS/i, camp: 'Cesión · BBDD TAKOS VACÍA', id: 'insnopadre', fecha: 'fechacarga' },
+  { hoja: /^\s*BENEFIOK\s*$/i, camp: 'Referido · BENEFIOK', id: 'insno', fecha: 'fechaapertura' },
+];
+const TO_CESION = 'Cesión (BENEFINA + TAKOS VACÍA)';
+function leerAvisosTO(wb, nombreFichero) {
+  const campanas = {}, cargas = {};
+  let min = '', max = '';
+  for (const a of TO_AVISOS) {
+    const hoja = wb.SheetNames.find((n) => a.hoja.test(n));
+    if (!hoja) continue;
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { defval: '', raw: true });
+    const cols = Object.keys(rows[0] || {});
+    const ci = cols.find((c) => normCol(c) === a.id), cf = cols.find((c) => normCol(c) === a.fecha);
+    if (!ci || !cf) throw new Error(`en la pestaña ${hoja} no encuentro las columnas de instalación y fecha`);
+    const ids = new Set();
+    for (const r of rows) {
+      const id = String(r[ci] ?? '').replace(/\u00a0/g, '').trim().replace(/\.0+$/, ''), d = parseFecha(r[cf]);
+      if (!id || !d) continue;
+      const dia = isoDia(d);
+      ids.add(id);
+      if (!cargas[id] || dia < cargas[id]) cargas[id] = dia;
+      if (!min || dia < min) min = dia;
+      if (dia > max) max = dia;
+    }
+    campanas[a.camp] = ids;
+  }
+  if (!Object.keys(campanas).length) return null;
+  if (campanas[TO_AVISOS[0].camp] && campanas[TO_AVISOS[1].camp]) {
+    campanas[TO_CESION] = new Set([...campanas[TO_AVISOS[0].camp], ...campanas[TO_AVISOS[1].camp]]);
+  }
+  // Mes de la BBDD: el del nombre del fichero (AvisosOctubre…) o el de la última fecha.
+  const mes = mesDeNombre(nombreFichero) || max.slice(0, 7);
+  const todas = new Set(Object.values(campanas).flatMap((x) => [...x]));
+  return { [mes]: { ids: todas, cargas, desde: min, nombre: `${nombreMes(mes)} (avisos ${fDia(min).slice(0, 5)}–${fDia(max).slice(0, 5)})`,
+    campanas: Object.fromEntries(Object.entries(campanas).map(([c, x]) => [c, [...x]])) } };
+}
 async function leerTakeOver(f) {
   const wb = XLSX.read(await f.arrayBuffer(), { dense: true, cellDates: true });
+  const avisos = leerAvisosTO(wb, f.name);
+  if (avisos) return avisos;
   for (const nombre of wb.SheetNames) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { defval: '', raw: true });
     const cols = Object.keys(rows[0] || {});
@@ -232,7 +280,7 @@ async function leerTakeOver(f) {
     }
     return porMes;
   }
-  throw new Error('no encuentro las columnas Ins_no_padre y Fecha_Carga');
+  throw new Error('no encuentro las pestañas BENEFINA / BENEFIOK / BBDD TAKOS VACÍA ni las columnas Ins_no_padre y Fecha_Carga');
 }
 
 $('fBbdd').addEventListener('change', async (e) => {
@@ -247,7 +295,8 @@ $('fBbdd').addEventListener('change', async (e) => {
     try {
       cargaTO = await leerTakeOver(f);
       $('stCarga').textContent = 'Sustituirá todo TakeOver con una BBDD por mes de carga: ' +
-        Object.entries(cargaTO).sort().map(([m, x]) => `${nombreMes(m)} ${fmt(x.ids.size)}`).join(' · ');
+        Object.entries(cargaTO).sort().map(([m, x]) => `${x.nombre || nombreMes(m)} ${x.campanas
+          ? Object.entries(x.campanas).map(([c, v]) => `${c} ${fmt(v.length)}`).join(', ') : fmt(x.ids.size)}`).join(' · ');
       $('btnGuardar').disabled = false;
     } catch (err) {
       $('stCarga').textContent = 'Error leyendo el fichero: ' + err.message;
@@ -1084,7 +1133,8 @@ $('btnGuardar').addEventListener('click', async () => {
         $('stCarga').textContent = `Guardando ${nombreMes(m)} (${i + 1}/${meses.length})…`;
         delete cacheBbdd['to|' + m];
         await api(urlBbdd('mes=' + m, 'to'), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mes: m, hastaHoy: true, campanas: { TakeOver: [...cargaTO[m].ids] }, cargas: cargaTO[m].cargas }) });
+          body: JSON.stringify({ mes: m, hastaHoy: true, campanas: cargaTO[m].campanas || { TakeOver: [...cargaTO[m].ids] }, cargas: cargaTO[m].cargas,
+            desde: cargaTO[m].desde, nombre: cargaTO[m].nombre }) });
       }
       // El Excel de TakeOver sustituye todo lo anterior: se borran los meses que ya no vienen.
       const viejos = (await api(urlBbdd('', 'to'))).map((i) => i.mes).filter((m) => !meses.includes(m));
@@ -1150,6 +1200,11 @@ if (ESP === 'up') {
 // Second Attempt solo cuenta los que tienen una de sus key2 (los guardados sin key2 se cuentan como en RBE).
 const aLog = (l) => {
   const [id, ts, key4, txt, key3, key2] = l;
+  if (PROG === 'to') {
+    // TakeOver: solo los commlogs con key2 R_…007 (Cesión) o R_…008 (Referido).
+    const { tipo, grupo } = clasificarTO(key4, key2);
+    return { id, fecha: parseFecha(ts), key4, tipo, grupo };
+  }
   const tipo = ESP === 'up' ? clasificarUpsell(key4, txt, key3) : PROG === 'sa' && l.length >= 6 ? clasificarSA(key4, key2) : undefined;
   return { id, fecha: parseFecha(ts), key4, tipo };
 };

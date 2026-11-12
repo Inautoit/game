@@ -26,6 +26,15 @@ export function clasificarUpsell(key4, txt, key3) {
 // Second Attempt: solo cuentan los commlogs con estas key2 (el resto se ignora). De esos,
 // R_ILOC01 y R_ILOC02 son no contacto, R_NOU_04 exclusión y todo lo demás contacto válido.
 export const KEY2_SA = [...Array.from({ length: 16 }, (_, i) => 'R_TLC' + String(i + 1).padStart(3, '0')), 'R_REFE09'];
+// TakeOver: la key2 dice a qué campaña es el commlog (R_…007 = Cesión, R_…008 = Referido; el resto no cuenta).
+// De esos, R_ILOC01 y R_ILOC02 son no contacto, R_NOU_04 exclusión y todo lo demás contacto válido.
+export function clasificarTO(key4, key2) {
+  const k2 = String(key2 ?? '').trim().toUpperCase();
+  const grupo = /^R_.*007$/.test(k2) ? 'cesion' : /^R_.*008$/.test(k2) ? 'referido' : '';
+  if (!grupo) return { tipo: 'ignorar', grupo };
+  const k = String(key4 ?? '').trim().toUpperCase();
+  return { tipo: k === 'R_NOU_04' ? 'exclusion' : k === 'R_ILOC01' || k === 'R_ILOC02' ? 'no_contacto' : 'contacto', grupo };
+}
 export function clasificarSA(key4, key2) {
   if (!KEY2_SA.includes(String(key2 ?? '').trim().toUpperCase())) return 'ignorar';
   const k = String(key4 ?? '').trim().toUpperCase();
@@ -90,8 +99,9 @@ export function rangoPorDefecto(mesBbdd, hoy = new Date()) {
  *        desde ese momento (p. ej. su día de carga en TakeOver)
  * @param fueraPorId opcional {id: [[de, a], ...]}: tramos 'AAAA-MM-DD HH:MM' (de incluido, a excluido,
  *        '' = sin límite) cuyos commlogs no cuentan (p. ej. mientras la instalación se llamó en otra campaña)
+ * @param grupos opcional Set: solo cuentan los commlogs cuyo «grupo» está en él (TakeOver: cesion / referido)
  */
-export function calcular(bbddIds, commlogs, desde, hasta, desdePorId, fueraPorId) {
+export function calcular(bbddIds, commlogs, desde, hasta, desdePorId, fueraPorId, grupos) {
   const inst = new Map();
   for (const raw of bbddIds) {
     const id = normId(raw);
@@ -111,7 +121,7 @@ export function calcular(bbddIds, commlogs, desde, hasta, desdePorId, fueraPorId
     const dia = isoDia(c.fecha);
     if (dia < desde || dia > hasta) continue;
     const tipo = c.tipo || clasificar(c.key4);
-    if (tipo === 'ignorar') continue;
+    if (tipo === 'ignorar' || (grupos && !grupos.has(c.grupo))) continue;
     const it = inst.get(normId(c.id));
     if (!it) { logsFueraBbdd++; continue; }
     if (fueraDeVentana(c.fecha, dia, it.desde, it.fuera)) continue;
@@ -204,8 +214,8 @@ function bucket(vals, tope) {
  * Actividad de un único día: solo se usan los commlogs de ese día (nada acumulado).
  * Las instalaciones con exclusión ese día no cuentan en el resto de medidas.
  */
-export function delDia(bbddIds, commlogs, dia, desdePorId, fueraPorId) {
-  const r = calcular(bbddIds, commlogs, dia, dia, desdePorId, fueraPorId);
+export function delDia(bbddIds, commlogs, dia, desdePorId, fueraPorId, grupos) {
+  const r = calcular(bbddIds, commlogs, dia, dia, desdePorId, fueraPorId, grupos);
   const s = r.resumen;
   const d = r.porDia[0] || { contacto: 0, no_contacto: 0 };
   const instLlamadas = s.contactadas + s.ilocalizadas;
@@ -228,7 +238,7 @@ export function delDia(bbddIds, commlogs, dia, desdePorId, fueraPorId) {
  * cuenta una vez por cada día que se llamó (y como contactada los días con contacto válido);
  * los días que tiene una exclusión no cuenta. Contrasta con el contacto único de calcular().
  */
-export function sumaDiaria(bbddIds, commlogs, desde, hasta, desdePorId, fueraPorId) {
+export function sumaDiaria(bbddIds, commlogs, desde, hasta, desdePorId, fueraPorId, grupos) {
   const ids = new Set();
   for (const raw of bbddIds) ids.add(normId(raw));
   const desdeId = new Map(Object.entries(desdePorId || {}).map(([r, d]) => [normId(r), d]));
@@ -241,7 +251,7 @@ export function sumaDiaria(bbddIds, commlogs, desde, hasta, desdePorId, fueraPor
     const id = normId(c.id);
     if (!ids.has(id) || fueraDeVentana(c.fecha, dia, desdeId.get(id) || '', fueraId.get(id))) continue;
     const tipo = c.tipo || clasificar(c.key4);
-    if (tipo === 'ignorar') continue;
+    if (tipo === 'ignorar' || (grupos && !grupos.has(c.grupo))) continue;
     const k = id + '|' + dia;
     dias.set(k, (dias.get(k) || 0) | (tipo === 'exclusion' ? 4 : tipo === 'contacto' ? 3 : 1));
   }
