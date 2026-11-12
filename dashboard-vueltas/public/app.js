@@ -841,10 +841,12 @@ async function pintarFranjas(desde, hasta, logs) {
     v.inf = Object.fromEntries(inf.franjas.map((f) => [f.franja, f]));
   }
   // Llamadas por gestor (informe de llamadas, si se subió con la columna del gestor) y commlogs de Upsell por gestor (cre_us).
-  const mesesG = [...new Set(vistas.flatMap((v) => (v.d0 && v.d1 ? mesesEntre(v.d0, v.d1) : [])))];
-  const llamG = Object.assign({}, ...(await Promise.all(mesesG.map((m) => llamDeMes(m, 'llamg')))));
-  const llamTot = Object.assign({}, ...(await Promise.all(mesesG.map((m) => llamDeMes(m, 'llam')))));
-  for (const v of vistas) v.gest = porGestor(v.d0, v.d1, todosLogs, llamG, llamTot, v.idsBbdd);
+  // Gestores: siempre el mes en curso (del día 1 a hoy), elijas lo que elijas arriba.
+  const hoyG = isoDia(new Date()), mesG = hoyG.slice(0, 7), d0G = mesG + '-01';
+  const [llamG, llamTot, logsMes] = await Promise.all([llamDeMes(mesG, 'llamg'), llamDeMes(mesG, 'llam'), logsParseados(mesG).catch(() => [])]);
+  const bbG = bbdd.mes === mesG ? bbdd : indiceBbdd[mesG] ? await bbddDe(mesG).catch(() => bbdd) : bbdd;
+  const idsG = new Set(Object.values(bbG.campanas).flat().map((x) => String(x).trim().replace(/^0+/, '')));
+  const gest = { ...porGestor(d0G, hoyG, logsMes, llamG, llamTot, idsG), d0: d0G, d1: hoyG, mes: mesG, bbMes: bbG.mes };
   // Mismas franjas (eje X) y misma escala en los dos días para poder compararlos.
   const nombres = [...new Set(vistas.flatMap((v) => [...v.franjas.filter((f) => f.segundos || f.commlogs).map((f) => f.franja),
     ...Object.values(v.inf).filter((f) => f.segundos).map((f) => f.franja)]))].sort();
@@ -898,10 +900,10 @@ async function pintarFranjas(desde, hasta, logs) {
       <details style="margin-top:10px"><summary style="cursor:pointer; font-size:13px; color:var(--text-2)">Ver tabla por franja</summary>
         <div class="tablewrap"><table id="frT_${i}"></table></div></details>
       ${bloqueIntentos(v, camps)}
-      ${bloqueGestores(v, i)}
     </div>`).join('');
 
   frVistas = vistas;
+  $('frGest').innerHTML = bloqueGestores(gest, 0);
   vistas.forEach((v, i) => {
     if (!v.dias.length) return;
     const gest = (f) => f.segundos / 1800 / v.dias.length;
@@ -970,14 +972,19 @@ function bloqueIntentos(v, camps) {
 const normGestor = (g) => String(g ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ').replace(/\.0+$/, '');
 // Solo commlogs de instalaciones de la BBDD y, si hay informe de llamadas, solo los días que lo tienen
 // (así commlogs y llamadas son de los mismos días).
+// Con llamadas por gestor, solo cuentan los gestores del informe de llamadas (los de Upsell), con todos sus commlogs.
 function porGestor(d0, d1, logs, llamG, llamTot, ids) {
   const diasLl = new Set(Object.keys(llamTot).filter((d) => Object.keys(llamTot[d]).length));
+  const gestLl = new Set();
+  for (const [d, ag] of Object.entries(llamG)) if (d >= d0 && d <= d1) for (const g of Object.keys(ag)) gestLl.add(normGestor(g));
+  if (gestLl.size) ids = null;
   const enRango = (d) => d0 && d1 && d >= d0 && d <= d1 && (!diasLl.size || diasLl.has(d));
   const g = {}, fila = (k, nombre) => (g[k] ||= { nombre, llamadas: 0, commlogs: 0, contactos: 0 });
   let commlogs = 0, conGestor = 0, llamadas = 0, diasLlamG = 0;
   for (const c of logs) {
     if (!c.fecha || c.tipo === 'ignorar') continue;
     if (!enRango(isoDia(c.fecha)) || (ids && !ids.has(String(c.id).trim().replace(/^0+/, '')))) continue;
+    if (gestLl.size && !gestLl.has(normGestor(c.gestor))) continue;
     commlogs++;
     if (!c.gestor) continue;
     conGestor++;
@@ -994,11 +1001,11 @@ function porGestor(d0, d1, logs, llamG, llamTot, ids) {
   const lista = Object.values(g).map((x) => ({ ...x, pct: x.llamadas ? (100 * x.commlogs) / x.llamadas : null }));
   const dias = new Set();
   for (const d of diasLl) if (enRango(d)) dias.add(d);
-  return { commlogs, conGestor, llamadas, diasLlamG, lista, nDias: dias.size };
+  return { commlogs, conGestor, llamadas, diasLlamG, lista, nDias: dias.size, porGestorLl: gestLl.size > 0 };
 }
 let frGestOrden = 'pct';
 function bloqueGestores(v, i) {
-  const G = v.gest;
+  const G = v;
   if (!G) return '';
   const pc = (a, b) => (b ? fmt((100 * a) / b, 1) + ' %' : '—');
   const hayLlamG = G.diasLlamG > 0, hayGest = G.conGestor > 0;
@@ -1006,14 +1013,14 @@ function bloqueGestores(v, i) {
     commlogs: (a, b) => a.commlogs - b.commlogs, llamadas: (a, b) => b.llamadas - a.llamadas }[hayLlamG ? frGestOrden : 'commlogs'];
   const lista = [...G.lista].sort(orden);
   const th = (k, txt) => `<th class="n"${hayLlamG ? ` data-gord="${k}" style="cursor:pointer"` : ''}>${txt}${frGestOrden === k && hayLlamG ? ' ▾' : ''}</th>`;
-  return `<h3 class="chart-t" style="margin-top:18px">Llamadas y commlogs por gestor <small>· todo Upsell (4PRO y Vencimiento), ${v.d0 === v.d1 ? 'el ' + fDia(v.d0) : `del ${fDia(v.d0)} al ${fDia(v.d1)}`}</small></h3>
+  return `<h3 class="chart-t" style="margin-top:22px">Llamadas y commlogs por gestor · ${nombreMes(v.mes)} <small>· todo Upsell (4PRO y Vencimiento), del ${fDia(v.d0)} a hoy; siempre el mes en curso</small></h3>
     <div class="hero" style="margin:6px 0 10px">
       <div class="hk"><div class="l">Llamadas emitidas</div><div class="v">${G.llamadas ? fmt(G.llamadas) : '—'}</div><div class="s">informe de llamadas (skills de Upsell)</div></div>
-      <div class="hk"><div class="l">Commlogs de Upsell</div><div class="v">${fmt(G.commlogs)}</div><div class="s">de instalaciones de la BBDD${G.nDias ? `, los ${fmt(G.nDias)} días con informe de llamadas` : ''}</div></div>
+      <div class="hk"><div class="l">Commlogs de Upsell</div><div class="v">${fmt(G.commlogs)}</div><div class="s">${G.porGestorLl ? 'de los gestores del informe de llamadas' : `de instalaciones de la BBDD de ${escapeHtml(nombreMes(v.bbMes))}`}${G.nDias ? `, los ${fmt(G.nDias)} días con informe de llamadas` : ''}</div></div>
       <div class="hk"><div class="l">Commlogs ÷ llamadas</div><div class="v">${pc(G.commlogs, G.llamadas)}</div><div class="s">qué parte de las llamadas se ha codificado</div></div>
     </div>
     ${!hayGest ? '<p class="status">Los commlogs guardados no traen el gestor: vuelve a subir el Excel de commlogs (con la columna cre_us) y saldrá el ranking.</p>' : ''}
-    ${!hayLlamG ? '<p class="status">No hay llamadas por gestor para estas fechas: vuelve a subir el informe de llamadas eligiendo la «Columna del gestor». Mientras, el ranking es solo por commlogs.</p>' : ''}
+    ${!hayLlamG ? `<p class="status">No hay llamadas por gestor de ${escapeHtml(nombreMes(v.mes))}: sube el informe de llamadas de este mes eligiendo la «Columna del gestor» (la matrícula). Mientras, el ranking es solo por commlogs de las instalaciones de la BBDD.</p>` : ''}
     ${lista.length ? `<div class="tablewrap" style="max-height:420px; overflow:auto"><table id="frG_${i}"><thead><tr><th>#</th><th>Gestor</th>${th('llamadas', 'Llamadas')}${th('commlogs', 'Commlogs')}
       ${th('pct', 'Commlogs ÷ llamadas')}<th class="n">Contactos</th><th class="n">% contacto (÷ commlogs)</th></tr></thead><tbody>` +
       lista.map((x, k) => `<tr><td>${k + 1}</td><td>${escapeHtml(x.nombre)}</td><td class="n">${x.llamadas ? fmt(x.llamadas) : '—'}</td><td class="n">${fmt(x.commlogs)}</td>
