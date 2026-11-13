@@ -577,7 +577,8 @@ function prepararLlamadas() {
       (dias[d] ||= {})[f] = ((dias[d] ||= {})[f] || 0) + v;
       if (camp) (porCamp[camp][d] ||= {})[f] = (porCamp[camp][d][f] || 0) + v;
       // Clave del gestor: «matrícula · nombre» (si se eligió la columna del nombre).
-      const nom = cn && cn !== ca ? String(r[cn] ?? '').trim() : '';
+      // «Apellidos, Nombre (matrícula)» -> «Apellidos, Nombre»
+      const nom = cn && cn !== ca ? String(r[cn] ?? '').trim().replace(/\s*\([^)]*\)\s*$/, '') : '';
       const g = ca ? String(r[ca] ?? '').trim().replace(/\.0+$/, '') + (nom ? ' · ' + nom : '') : '';
       if (g) (porGestor[d] ||= {})[g] = (porGestor[d][g] || 0) + v;
     }
@@ -1013,7 +1014,7 @@ function porGestor(d0, d1, logs, llamG, llamTot, ids) {
       const [mat, ...resto] = clave.split(' · ');
       const x = fila(normGestor(mat), mat);
       x.llamadas += n;
-      if (resto.length) x.nom = resto.join(' · ');
+      if (resto.length) x.nom = resto.join(' · ').replace(/\s*\([^)]*\)\s*$/, '');
     }
   }
   const lista = Object.values(g).map((x) => ({ ...x, pct: x.llamadas ? (100 * x.commlogs) / x.llamadas : null }));
