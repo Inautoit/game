@@ -1,0 +1,18 @@
+{
+  "_ayuda": "Rellena estos datos con los de tu agencia. Se usan en las demos y en los mensajes.",
+  "agencia": "[NOMBRE DE TU AGENCIA]",
+  "tu_nombre": "[TU NOMBRE]",
+  "telefono": "[TU TELÉFONO]",
+  "email": "[TU EMAIL]",
+  "web": "[TU WEB]",
+  "ofertas": {
+    "web": "Web profesional adaptada a móvil, con tu dominio y Google Maps",
+    "reservas": "Reservas o citas online que llegan a tu WhatsApp",
+    "whatsapp": "Botón de WhatsApp y respuestas automáticas a preguntas frecuentes",
+    "recordatorios": "Recordatorios automáticos de cita para reducir ausencias",
+    "resenas": "Petición automática de reseñas en Google tras cada visita",
+    "renovacion": "Renovación de la web actual: más rápida, segura (HTTPS) y moderna"
+  },
+  "precio_orientativo": "[p. ej. desde 300 € + 20 €/mes]",
+  "tono": "cercano, de tú, breve, sin tecnicismos"
+}
