@@ -26,6 +26,9 @@ el dueño de la agencia los apruebe.
      donde irá el enlace (el usuario lo pondrá al publicarla).
    - Cierre con una pregunta fácil de responder (p. ej. "¿Te la enseño en 5 minutos esta semana?").
    - Firma: tu nombre y agencia de `config.json`.
+   - **No afirmes haber visto nada que no conste en la ficha** ("me encantan tus cortes", "he visto tus reseñas"...).
+     Solo hechos de la ficha: dirección, qué le falta, qué tiene (Instagram, Fresha...).
+   - Trata de tú o de vosotros, pero igual en todo el mensaje (asunto incluido).
    - Nada de precios salvo que `config.json` tenga uno real. Nada de presión, urgencias falsas ni promesas.
    - Varía la estructura entre locales: que no parezcan plantillas.
 4. Guarda (esto cambia el estado a `mensaje redactado`):

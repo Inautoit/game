@@ -131,13 +131,13 @@
 </section>
 
 <footer>© 2026 LC Estilistas · Peluquería en Valencia<br><small>Diseño de demostración por [NOMBRE DE TU AGENCIA]</small></footer>
-<a class="wa" href="https://wa.me/34961142417" aria-label="WhatsApp" target="_blank">💬</a>
+
 <script>
   document.getElementById('form-reserva').addEventListener('submit', function (e) {
     e.preventDefault();
     var d = new FormData(this), partes = [];
     d.forEach(function (v, k) { if (v) partes.push(k + ': ' + v); });
-    var tel = '34961142417';
+    var tel = '';
     var txt = encodeURIComponent('Hola LC Estilistas, quiero pedir cita.\n' + partes.join('\n'));
     if (tel) window.open('https://wa.me/' + tel + '?text=' + txt, '_blank');
     else alert('Demo: aquí la reserva llegaría directamente al WhatsApp del negocio.');

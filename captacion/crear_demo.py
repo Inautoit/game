@@ -76,7 +76,8 @@ def tel_whatsapp(tel):
     d = re.sub(r"\D", "", tel.split(";")[0])
     if len(d) == 9:
         d = "34" + d
-    return d
+    # WhatsApp solo tiene sentido con móviles españoles (6xx / 7xx), no con fijos (9xx)
+    return d if re.match(r"^34[67]\d{8}$", d) else ""
 
 
 def campos_reserva(tipo, opciones):
