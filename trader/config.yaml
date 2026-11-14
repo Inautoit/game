@@ -1,0 +1,40 @@
+# ====== Configuración de la máquina ======
+mode: paper              # paper = dinero simulado | live = dinero REAL (además exige TRADER_LIVE=SI)
+exchange: binance        # binance (comisión 0.10%), kraken (0.26%: demasiado cara para esto), coinbase...
+quote: USDT              # moneda con la que compras: USDT en Binance, EUR en Kraken
+timeframe: 4h            # tamaño de vela. En 1h las pruebas reales pierden dinero (ver README)
+universe_size: 25        # cuántos mercados (los más líquidos) vigila
+top_n: 6                 # de esos, en cuántos (los mejor puntuados) puede entrar
+rescan_hours: 6
+poll_seconds: 30
+exclude: []              # monedas que nunca quieres tocar, p.ej. [DOGE, SHIB]
+
+paper_capital: 1000      # capital inicial del modo simulado
+live_max_capital: 100    # en modo real, máximo de tu saldo que la máquina puede usar
+
+# Orden = prioridad. Puedes desactivar una borrándola.
+strategies:
+  breakout: {n: 24, vol_mult: 1.5, atr_mult: 2.5}
+  trend: {fast: 20, slow: 50, adx_min: 22, atr_mult: 3.0}
+  # meanrev: {rsi_entry: 30, atr_mult: 2.0, max_hold: 24}   # desactivada: pierde en las pruebas reales
+
+risk:
+  risk_per_trade: 0.01     # pierde como máximo el 1% del capital por operación
+  max_position_pct: 0.25   # ninguna posición > 25% del capital
+  max_positions: 4
+  daily_loss_limit: 0.03   # si pierde un 3% en el día, deja de abrir hasta mañana
+  max_drawdown: 0.15       # si cae un 15% desde el máximo, cierra todo y se apaga
+  min_notional: 10
+
+costs:
+  fee: 0.001               # comisión por operación (Binance ~0.1%, Kraken ~0.26%)
+  slippage: 0.0005
+
+backtest:
+  # Kraken solo da 720 velas por API; para años de histórico usamos los archivos públicos de Binance.
+  # El precio en USDT se mueve prácticamente igual que en EUR, así que sirve para validar la estrategia.
+  source: binance_vision   # binance_vision | exchange
+  days: 1095
+  symbols: [BTC/USDT, ETH/USDT, SOL/USDT, XRP/USDT, ADA/USDT, LINK/USDT, DOT/USDT, AVAX/USDT, LTC/USDT, DOGE/USDT, BNB/USDT, TRX/USDT]
+  train_days: 180
+  test_days: 60
