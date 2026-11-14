@@ -6,6 +6,9 @@ Decide por sí misma **dónde**, **cuándo** y **cuánto**, y tiene frenos para 
 > ⚠️ No es asesoramiento financiero. Ningún sistema garantiza ganancias.
 > La mayoría de los bots pierden dinero. Úsala primero SIEMPRE en modo simulado.
 
+## ☁️ Ya está funcionando en Cloudflare
+Panel en directo (modo simulado): **https://maquina-trader.inautoit.workers.dev** · detalles en [`cloudflare/`](cloudflare/README.md)
+
 ## Cómo piensa
 
 | Pregunta | Quién la responde | Cómo |

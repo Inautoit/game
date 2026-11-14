@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Máquina Trader</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#16181d;--muted:#667085;--line:#e4e7ec;--pos:#12805c;--neg:#c4320a;--acc:#3b5bdb;--chip:#eef2ff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a21;--ink:#e8eaee;--muted:#98a2b3;--line:#2a2f3a;--pos:#3ccf91;--neg:#ff7a59;--acc:#8ea2ff;--chip:#232a45}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:1080px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:18px}
+h1{font-size:22px;margin:0 8px 0 0}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px;font-weight:600}
+.chip{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--chip);color:var(--acc)}
+.chip.bad{background:color-mix(in srgb,var(--neg) 15%,transparent);color:var(--neg)}
+.chip.good{background:color-mix(in srgb,var(--pos) 15%,transparent);color:var(--pos)}
+.sub{color:var(--muted);font-size:13px;width:100%}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .v{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+.pos{color:var(--pos)}.neg{color:var(--neg)}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+th{text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--line);padding:6px 6px}
+td{border-bottom:1px solid var(--line);padding:7px 6px;white-space:nowrap}
+.scroll{overflow-x:auto}
+.empty{color:var(--muted);font-size:13px;padding:8px 0}
+svg{width:100%;height:220px;display:block}
+.log{font:12px/1.5 ui-monospace,Menlo,monospace;max-height:260px;overflow:auto;color:var(--muted)}
+.log div{padding:2px 0;border-bottom:1px dashed var(--line)}
+footer{color:var(--muted);font-size:12px;margin-top:18px}
+.err{color:var(--neg);font-size:12px;margin-top:6px;word-break:break-word}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>🤖 Máquina Trader</h1>
+    <span class="chip">MODO SIMULADO</span>
+    <span id="status" class="chip">…</span>
+    <div class="sub" id="sub">Cargando…</div>
+  </header>
+  <section class="kpis">
+    <div class="card kpi"><div class="l">Capital</div><div class="v" id="k-eq">–</div></div>
+    <div class="card kpi"><div class="l">Rentabilidad</div><div class="v" id="k-ret">–</div></div>
+    <div class="card kpi"><div class="l">Caída máxima</div><div class="v" id="k-dd">–</div></div>
+    <div class="card kpi"><div class="l">Operaciones</div><div class="v" id="k-n">–</div></div>
+    <div class="card kpi"><div class="l">Aciertos</div><div class="v" id="k-win">–</div></div>
+  </section>
+  <section class="grid">
+    <div class="card"><h2>Evolución del capital</h2><div id="chart"><div class="empty">Aún no hay datos: la primera decisión llega al cerrar la próxima vela de 4 horas.</div></div></div>
+    <div class="card"><h2>Mejores mercados ahora</h2><div id="ranked"></div></div>
+  </section>
+  <section class="card" style="margin-bottom:12px"><h2>Posiciones abiertas</h2><div class="scroll" id="positions"></div></section>
+  <section class="card" style="margin-bottom:12px"><h2>Últimas operaciones</h2><div class="scroll" id="trades"></div></section>
+  <section class="card"><h2>Registro</h2><div class="log" id="log"></div><div class="err" id="err"></div></section>
+  <footer>Dinero ficticio (1.000 $), precios reales de Kraken, comisión simulada 0,10 %. Se actualiza cada 5 minutos. Esto no es asesoramiento financiero.</footer>
+</main>
+<script>
+const NAMES = { XBT: "BTC", XDG: "DOGE" };
+const nice = (p) => { const b = p.replace(/USD$/, ""); return NAMES[b] || b; };
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d = 2) => Number(n).toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
+const pct = (x) => (x >= 0 ? "+" : "") + fmt(x * 100, 2) + " %";
+const cls = (x) => (x > 0 ? "pos" : x < 0 ? "neg" : "");
+const when = (t) => new Date(t).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const px = (n) => Number(n).toPrecision(6);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function chart(points, base) {
+  if (points.length < 2) return;
+  const W = 640, H = 220, P = 6;
+  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]).concat([base]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const X = (x) => P + (W - 2 * P) * (x - x0) / (x1 - x0 || 1), Y = (y) => H - P - (H - 2 * P) * (y - y0) / (y1 - y0 || 1);
+  const d = points.map((p, i) => (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
+  const up = points[points.length - 1][1] >= base;
+  $("chart").innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Evolución del capital">' +
+    '<line x1="0" x2="' + W + '" y1="' + Y(base) + '" y2="' + Y(base) + '" stroke="var(--line)" stroke-dasharray="4 4"/>' +
+    '<path d="' + d + '" fill="none" stroke="' + (up ? "var(--pos)" : "var(--neg)") + '" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>' +
+    '<div class="sub">' + when(x0) + " → " + when(x1) + " · línea discontinua = capital inicial</div>";
+}
+
+async function load() {
+  const r = await fetch("/api/state", { cache: "no-store" });
+  const { state: s, trades, config } = await r.json();
+  const base = config.paperCapital;
+  const posVal = Object.values(s.positions).reduce((a, p) => a + p.qty * (p.last || p.entryPx), 0);
+  const eq = s.cash + posVal;
+  const curve = s.equity.concat([[Date.now(), eq]]);
+  let peak = base, dd = 0;
+  for (const [, v] of curve) { peak = Math.max(peak, v); dd = Math.min(dd, v / peak - 1); }
+  const wins = trades.filter((t) => t.pnl > 0).length;
+
+  $("k-eq").textContent = fmt(eq) + " $";
+  $("k-ret").textContent = pct(eq / base - 1); $("k-ret").className = "v " + cls(eq / base - 1);
+  $("k-dd").textContent = pct(dd); $("k-dd").className = "v " + cls(dd);
+  $("k-n").textContent = trades.length;
+  $("k-win").textContent = trades.length ? fmt(100 * wins / trades.length, 0) + " %" : "–";
+  const st = $("status");
+  if (s.risk.halted) { st.textContent = "APAGADA por el freno"; st.className = "chip bad"; }
+  else { st.textContent = "Funcionando"; st.className = "chip good"; }
+  $("sub").textContent = "Velas de " + config.timeframe + " · última revisión: " + (s.lastRun ? when(s.lastRun) : "aún ninguna") +
+    " · última decisión: " + (s.lastBarRun ? when(s.lastBarRun) : "pendiente") + " · en liquidez: " + fmt(s.cash) + " $" +
+    (s.risk.halted ? " · motivo: " + s.risk.haltReason : "");
+
+  chart(curve.length > 1 ? curve : [], base);
+
+  $("ranked").innerHTML = s.ranked && s.ranked.length
+    ? "<table><tr><th>#</th><th>Mercado</th><th>Puntuación</th></tr>" + s.ranked.map((r, i) =>
+        "<tr><td>" + (i + 1) + "</td><td>" + esc(nice(r[0])) + "</td><td>" + fmt(r[1], 3) + "</td></tr>").join("") + "</table>"
+    : '<div class="empty">Se calcula en la próxima vela.</div>';
+
+  const P = Object.entries(s.positions);
+  $("positions").innerHTML = P.length
+    ? "<table><tr><th>Mercado</th><th>Estrategia</th><th>Desde</th><th>Entrada</th><th>Ahora</th><th>Stop</th><th>Resultado</th></tr>" +
+      P.map(([sym, p]) => { const r = (p.last || p.entryPx) / p.entryPx - 1;
+        return "<tr><td>" + esc(nice(sym)) + "</td><td>" + esc(p.strat) + "</td><td>" + when(p.entryTime) + "</td><td>" + px(p.entryPx) +
+          "</td><td>" + px(p.last || p.entryPx) + "</td><td>" + px(p.stop) + '</td><td class="' + cls(r) + '">' + pct(r) + "</td></tr>"; }).join("") + "</table>"
+    : '<div class="empty">Ninguna. La máquina espera una señal clara.</div>';
+
+  const T = trades.slice(-30).reverse();
+  $("trades").innerHTML = T.length
+    ? "<table><tr><th>Mercado</th><th>Estrategia</th><th>Entrada</th><th>Salida</th><th>Motivo</th><th>Resultado</th></tr>" +
+      T.map((t) => "<tr><td>" + esc(nice(t.symbol)) + "</td><td>" + esc(t.strategy) + "</td><td>" + when(t.entryTime) + "</td><td>" + when(t.exitTime) +
+        "</td><td>" + esc(t.reason) + '</td><td class="' + cls(t.pnl) + '">' + (t.pnl >= 0 ? "+" : "") + fmt(t.pnl) + " (" + pct(t.ret) + ")</td></tr>").join("") + "</table>"
+    : '<div class="empty">Todavía no ha cerrado ninguna operación.</div>';
+
+  $("log").innerHTML = s.log.length ? s.log.slice().reverse().map((l) => "<div>" + when(l[0]) + " · " + esc(l[1]) + "</div>").join("")
+    : '<div class="empty">Sin eventos todavía.</div>';
+  $("err").textContent = s.lastError ? "Último error (" + when(s.lastError[0]) + "): " + s.lastError[1] : "";
+}
+load().catch((e) => { $("sub").textContent = "Error cargando datos: " + e; });
+setInterval(() => load().catch(() => {}), 60000);
+</script>
+</body>
+</html>
