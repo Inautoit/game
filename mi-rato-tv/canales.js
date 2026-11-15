@@ -12,6 +12,10 @@ export const CANALES = [
   { id: 'UCZowf26DsJ0mL1Arj60A51w', nombre: 'La Voz', cat: 'musica' },
   { id: 'UCQtVEU1LEtZDj8aLi6Lkw2A', nombre: 'RTVE Cocina', cat: 'cocina' },
   { id: 'UCE9T3T5nhw4HxIeQBxGKSyw', nombre: 'RTVE Archivo', cat: 'nostalgia' },
+  { id: 'UChtLgH7ZJLqLGWJpBnzy9Lg', nombre: 'Canal Sur', cat: 'humor' },
+  { id: 'UChWJN4K0gKeOGo97m7mN14w', nombre: 'Informativos Telecinco', cat: 'noticias' },
+  { id: 'UCMSOVP8zZq8BGwAJ2sEtOHw', nombre: 'Atresplayer', cat: 'nostalgia' },
+  { id: 'UCWJ8aE2rSKlmJihqqhnK7Yg', nombre: 'Eltiempo.es', cat: 'noticias' },
 ];
 // Orden de la mezcla: así no salen diez noticias seguidas.
 export const RITMO = ['humor', 'noticias', 'musica', 'cocina', 'humor', 'nostalgia', 'noticias', 'humor', 'musica'];

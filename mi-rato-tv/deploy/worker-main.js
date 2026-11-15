@@ -6,7 +6,7 @@ const dec = (b) => Uint8Array.from(atob(b), c => c.charCodeAt(0));
 const HORAS = 3;
 
 async function lista(ctx) {
-  const cache = caches.default, key = new Request('https://mi-rato-tv.cache/lista.json');
+  const cache = caches.default, key = new Request('https://mi-rato-tv.cache/lista-' + CANALES.length + '.json');
   const hit = await cache.match(key);
   if (hit) return hit;
   const porCanal = await Promise.all(CANALES.map(async (canal) => {

@@ -1,5 +1,5 @@
 // Mi Rato TV: guarda la app para abrir rápido; los vídeos siempre vienen de internet.
-const CACHE = 'miratotv-v4';
+const CACHE = 'miratotv-v5';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

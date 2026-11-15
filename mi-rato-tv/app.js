@@ -11,7 +11,22 @@ async function cargar() {
   // Mete un vídeo fijo cada 4 de canales
   const out = []; let f = 0;
   nuevos.forEach((v, i) => { out.push(v); if (i % 4 === 3 && fijos[f]) out.push(fijos[f++]); });
-  items = barajar(out.concat(fijos.slice(f)));
+  const todos = out.concat(fijos.slice(f));
+  // Primero los que nunca ha visto (en orden aleatorio); después los ya vistos, empezando por los más antiguos
+  const v = vistos();
+  const nuevos2 = todos.filter(x => !v[x.id]), viejos = todos.filter(x => v[x.id]).sort((a, b) => v[a.id] - v[b.id]);
+  items = barajar(nuevos2).concat(viejos);
+}
+
+// ---------- Vídeos ya vistos (se guardan en el propio móvil) ----------
+function vistos() { try { return JSON.parse(localStorage.getItem('miratotv.vistos') || '{}'); } catch { return {}; } }
+function marcarVisto(id) {
+  try {
+    const v = vistos(); v[id] = Date.now();
+    const ids = Object.keys(v);
+    if (ids.length > 3000) ids.sort((a, b) => v[a] - v[b]).slice(0, ids.length - 3000).forEach(k => delete v[k]);
+    localStorage.setItem('miratotv.vistos', JSON.stringify(v));
+  } catch {}
 }
 
 /** Orden aleatorio cada vez que se abre, sin repetir el mismo canal dos veces seguidas. */
@@ -75,6 +90,7 @@ async function crearPlayer() {
         const el = cur();
         if (e.data === YT.PlayerState.PLAYING) {
           el?.classList.add('live');
+          if (items[active]) marcarVisto(items[active].id);
           chip(el, player.isMuted() ? '🔊 Toca para oír' : '');
         }
         if (e.data === YT.PlayerState.ENDED) next(active);
