@@ -30,6 +30,15 @@ html, body { height: 100%; background: #0f1a2e; color: var(--white); font-family
 .reel-memory   { background: linear-gradient(170deg, #2f4a73, #22385a 55%, #172640); }
 .reel-relax    { background: linear-gradient(170deg, #2d6a6a, #20504f 55%, #153736); }
 
+/* Vídeo de fondo (con velo oscuro para que se lea bien el texto) */
+.bgv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; background: transparent; }
+.shade { position: absolute; inset: 0; z-index: 0;
+  background: linear-gradient(rgba(8,12,24,.55), rgba(8,12,24,.38) 35%, rgba(8,12,24,.45) 65%, rgba(8,12,24,.75)); }
+.reel:not(.has-video) .bgv, .reel:not(.has-video) .shade { display: none; }
+.has-video .glow { display: none; }
+.has-video .q, .has-video h1.big, .has-video .mid, .has-video .facts li, .has-video .bt { text-shadow: 0 2px 14px rgba(0,0,0,.55); }
+.credit { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,.6); }
+
 /* Luz suave que se mueve despacio al fondo */
 .glow { position: absolute; width: 140vmax; height: 140vmax; left: -20vmax; top: -70vmax; pointer-events: none;
   background: radial-gradient(closest-side, rgba(255,255,255,.13), rgba(255,255,255,0));

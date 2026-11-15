@@ -1,6 +1,7 @@
 import { QUESTIONS, SONGS, INFOS, MEMORY, CHEERS } from './content.js';
 import { initAudio, setMuted, state, Run, Cancelled, chime, sayNow } from './audio.js';
 import { icon } from './icons.js';
+import { VIDEOS } from './videos.js';
 
 const feed = document.getElementById('feed');
 const BREAK_AFTER_MIN = 15;
@@ -47,15 +48,21 @@ const CHANNELS = {
 };
 
 /** Marco de reel: contenido + autor y texto abajo + botones a la derecha (como en las redes). */
-function shell(kind, ch, caption, inner) {
+function shell(kind, ch, caption, inner, topic) {
   const [ic, name] = ch;
   const av = ic === 'logo' ? LOGO : icon(ic);
-  return $(`<section class="reel reel-${kind}">
+  const v = VIDEOS[topic];
+  const video = v ? `<video class="bgv" muted loop playsinline preload="none" poster="${v.poster}" aria-hidden="true">
+      <source data-src="${v.webm}" type='video/webm; codecs="vp9"'><source data-src="${v.mov}"></video><div class="shade"></div>` : '';
+  const credit = v ? `<p class="credit">Vídeo: ${esc(v.by)} · Wikimedia Commons · ${esc(v.lic)}</p>` : '';
+  return $(`<section class="reel reel-${kind}${v ? ' has-video' : ''}">
+    ${video}
     <div class="glow" aria-hidden="true"></div>
     <div class="body">${inner}</div>
     <div class="meta">
       <div class="author"><div class="avatar">${av}</div><b>${esc(name)}</b></div>
       <p class="caption">${caption}</p>
+      ${credit}
     </div>
     <div class="actions">
       <button class="act like" data-act="like" aria-label="Me gusta"><span>${icon('heart')}</span><small>Me gusta</small></button>
@@ -95,7 +102,7 @@ const REELS = {
       ${kicker('sun', date)}
       <h1 class="big step">${hello}${name ? ',<br>' + esc(name) : ''}</h1>
       <p class="mid step">${days > 1 ? `Llevas <b>${days} días</b> seguidos` : 'Qué bien que estés aquí'}</p>
-      <p class="small step hint">${icon('up')} Desliza hacia arriba o espera, pasa solo</p>`);
+      <p class="small step hint">${icon('up')} Desliza hacia arriba o espera, pasa solo</p>`, 'sunrise');
     return { el, presenter: 0, async play(run) {
       const steps = el.querySelectorAll('.step');
       steps[1].classList.add('on'); await run.say(`${hello}${name ? ', ' + name : ''}.`);
@@ -113,7 +120,7 @@ const REELS = {
       <h2 class="q step on${q.q.length > 45 ? ' long' : ''}">${esc(q.q)}</h2>
       <div class="think"></div>
       <div class="answer step"><span>${esc(q.a)}</span></div>
-      <p class="cheer step">${pick(CHEERS)}</p>`);
+      <p class="cheer step">${pick(CHEERS)}</p>`, q.v);
     return { el, presenter: ch[2], async play(run) {
       await run.say(q.q);
       await thinkTime(run, el, q.cat === 'Dilo en voz alta' ? 10 : 7);
@@ -131,7 +138,7 @@ const REELS = {
       ${VINYL}
       <div class="think"></div>
       <div class="answer step"><span>${esc(s.title)}</span></div>
-      <p class="cheer step">${esc(s.hint)}</p>`);
+      <p class="cheer step">${esc(s.hint)}</p>`, s.v);
     const spin = (on) => el.querySelector('.vinyl').classList.toggle('on', on);
     return { el, presenter: CHANNELS.song[2], async play(run) {
       await run.say('Escucha bien. ¿Qué canción es?');
@@ -151,7 +158,7 @@ const REELS = {
     const el = shell('info', ch, esc(it.title), `
       ${kicker(ch[0], it.cat)}
       <h2 class="q step on">${esc(it.title)}</h2>
-      <ol class="facts${steps ? ' numbered' : ''}">${it.facts.map(([, t], i) => `<li class="step"><span>${steps ? i + 1 : ''}</span>${esc(t)}</li>`).join('')}</ol>`);
+      <ol class="facts${steps ? ' numbered' : ''}">${it.facts.map(([, t], i) => `<li class="step"><span>${steps ? i + 1 : ''}</span>${esc(t)}</li>`).join('')}</ol>`, it.v);
     return { el, presenter: ch[2], async play(run) {
       await run.say(it.title + '.');
       for (const [i, li] of [...el.querySelectorAll('.facts li')].entries()) {
@@ -170,7 +177,7 @@ const REELS = {
       <h2 class="q step on">Recuerda estas cuatro palabras</h2>
       <div class="grid">${items.map(w => `<div class="card"><span class="front">${esc(w)}</span><span class="back">?</span></div>`).join('')}</div>
       <div class="think"></div>
-      <p class="cheer step">${pick(CHEERS)}</p>`);
+      <p class="cheer step">${pick(CHEERS)}</p>`, 'clouds sky');
     return { el, presenter: CHANNELS.memory[2], async play(run) {
       await run.say('Recuerda estas cuatro palabras: ' + items.join(', ') + '.');
       await run.wait(3500);
@@ -188,7 +195,7 @@ const REELS = {
     const el = shell('relax', CHANNELS.relax, 'Un momento para ti', `
       ${kicker('wind', 'Un respiro')}
       <h2 class="q step on">Respira conmigo</h2>
-      <div class="breath"><div class="ball"></div><p class="bt">Toma aire…</p></div>`);
+      <div class="breath"><div class="ball"></div><p class="bt">Toma aire…</p></div>`, pick(['ocean waves', 'forest stream']));
     return { el, presenter: CHANNELS.relax[2], async play(run) {
       run.pad([130.81, 196, 261.63, 329.63], 30);
       await run.say('Vamos a respirar despacio, tres veces.');
@@ -208,7 +215,7 @@ const REELS = {
       ${kicker('glass', 'Descanso')}
       <h2 class="q step on">Llevas un buen rato</h2>
       <p class="mid step on">Has hecho muchos ejercicios. Buen momento para levantarse, beber un vaso de agua o dar un paseo.</p>
-      <p class="small step on hint">${icon('up')} Si quieres seguir, desliza hacia arriba</p>`);
+      <p class="small step on hint">${icon('up')} Si quieres seguir, desliza hacia arriba</p>`, 'walking park');
     return { el, presenter: 0, autoNext: false, async play(run) {
       await run.say('Llevas un buen rato. Has hecho muchos ejercicios.');
       await run.say('Buen momento para levantarte, beber un vaso de agua o dar un paseo. Mañana más.');
@@ -252,6 +259,9 @@ async function activate(r, force = false) {
   if (idx > reels.length - 4) fill(5);
   const myRun = run = new Run(r.presenter || 0);
   resetReel(r);
+  reels.forEach(x => { if (x !== r) x.el.querySelector('video.bgv')?.pause(); });
+  playBg(r.el);
+  if (reels[idx + 1]) loadBg(reels[idx + 1].el); // el siguiente ya va cargando
   try {
     await r.play(myRun);
     countToday();
@@ -264,6 +274,16 @@ function resetReel(r) {
   if (!r.html) { r.html = r.el.innerHTML; return; }
   r.el.innerHTML = r.html;
 }
+
+/** Vídeo de fondo: se carga solo cuando hace falta (ahorra datos). */
+function loadBg(el) {
+  const v = el.querySelector('video.bgv'); if (!v || v.dataset.loaded) return v;
+  v.querySelectorAll('source').forEach(s => { s.src = s.dataset.src; });
+  v.preload = 'auto'; v.dataset.loaded = '1'; v.load();
+  v.addEventListener('error', () => el.classList.remove('has-video'), { once: true });
+  return v;
+}
+function playBg(el) { const v = loadBg(el); v?.play().catch(() => {}); }
 
 function goTo(i) { reels[i]?.el.scrollIntoView({ behavior: 'smooth' }); }
 
