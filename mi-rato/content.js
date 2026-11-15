@@ -121,7 +121,4 @@ export const MEMORY = [
   [['🐟', 'pez'], ['🕯️', 'vela'], ['🍐', 'pera'], ['🏠', 'casa']],
 ];
 
-export const CHEERS = [
-  '¡Muy bien!', '¡Qué cabeza tienes!', '¡Estupendo!', '¡Así se hace!',
-  '¿Lo sabías? ¡Seguro que sí!', '¡Fenomenal!', '¡Vamos con otra!',
-];
+export const CHEERS = ['Muy bien.', 'Exacto.', 'Estupendo.', 'Bien hecho.', 'Así es.', 'Perfecto.', 'Vamos con otra.'];

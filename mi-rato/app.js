@@ -1,5 +1,6 @@
 import { QUESTIONS, SONGS, INFOS, MEMORY, CHEERS } from './content.js';
 import { initAudio, setMuted, state, Run, Cancelled, chime, sayNow } from './audio.js';
+import { icon } from './icons.js';
 
 const feed = document.getElementById('feed');
 const BREAK_AFTER_MIN = 15;
@@ -31,52 +32,56 @@ function updateStreak() {
 
 // ---------- Piezas visuales ----------
 export const LOGO = '<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1f5fd6"/><circle cx="256" cy="262" r="150" fill="#fff"/><path d="M222 192 L328 262 L222 332 Z" fill="#1f5fd6" stroke="#1f5fd6" stroke-width="22" stroke-linejoin="round"/><path d="M398 92 l12 30 30 12 -30 12 -12 30 -12 -30 -30 -12 30 -12z" fill="#fff"/></svg>';
+// Canal: [icono, nombre, presentador]. Cada canal tiene siempre la misma voz,
+// y hay varias voces distintas repartidas entre canales.
 const CHANNELS = {
-  'Refrán': ['📜', 'Refranes de siempre'], 'Adivinanza': ['🤔', 'Adivinanzas'], 'Pregunta': ['❓', 'Preguntas fáciles'],
-  'Cuentas': ['🧮', 'Cuentas del mercado'], 'Dilo en voz alta': ['🗣️', 'Juegos de palabras'],
-  'Comida sana': ['🥗', 'Comer bien'], 'Salud': ['💙', 'Salud y bienestar'], 'Receta fácil': ['🍳', 'Cocina fácil'],
-  'Truco de cocina': ['🍳', 'Cocina fácil'], 'Curiosidad': ['💡', 'Curiosidades'],
+  greeting: ['logo', 'Mi Rato', 0],
+  'Refrán': ['quote', 'Refranes de siempre', 1], 'Adivinanza': ['bulb', 'Adivinanzas', 2],
+  'Pregunta': ['question', 'Preguntas fáciles', 0], 'Cuentas': ['calc', 'Cuentas del mercado', 3],
+  'Dilo en voz alta': ['speech', 'Juegos de palabras', 2],
+  song: ['music', 'Canciones de siempre', 1],
+  'Comida sana': ['bowl', 'Comer bien', 2], 'Salud': ['health', 'Salud y bienestar', 0],
+  'Receta fácil': ['bowl', 'Cocina fácil', 3], 'Truco de cocina': ['bowl', 'Cocina fácil', 3],
+  'Curiosidad': ['book', 'Curiosidades', 1],
+  memory: ['eye', 'Memoria', 3], relax: ['wind', 'Respira tranquilo', 0],
 };
+
 /** Marco de reel: contenido + autor y texto abajo + botones a la derecha (como en las redes). */
-function shell(kind, [avatar, name], caption, inner) {
-  const av = avatar === 'logo' ? LOGO : `<span>${avatar}</span>`;
+function shell(kind, ch, caption, inner) {
+  const [ic, name] = ch;
+  const av = ic === 'logo' ? LOGO : icon(ic);
   return $(`<section class="reel reel-${kind}">
-    <div class="floaties" aria-hidden="true"></div>
+    <div class="glow" aria-hidden="true"></div>
     <div class="body">${inner}</div>
     <div class="meta">
       <div class="author"><div class="avatar">${av}</div><b>${esc(name)}</b></div>
       <p class="caption">${caption}</p>
     </div>
     <div class="actions">
-      <button class="act like" data-act="like" aria-label="Me gusta"><span>🤍</span><small>Me gusta</small></button>
-      <button class="act" data-act="replay" aria-label="Otra vez"><span>🔁</span><small>Otra vez</small></button>
-      <button class="act" data-act="share" aria-label="Compartir"><span>📤</span><small>Compartir</small></button>
+      <button class="act like" data-act="like" aria-label="Me gusta"><span>${icon('heart')}</span><small>Me gusta</small></button>
+      <button class="act" data-act="replay" aria-label="Otra vez"><span>${icon('replay')}</span><small>Otra vez</small></button>
+      <button class="act" data-act="share" aria-label="Compartir"><span>${icon('share')}</span><small>Compartir</small></button>
     </div>
   </section>`);
 }
-function floaties(el, emojis) {
-  const box = el.querySelector('.floaties');
-  for (let i = 0; i < 9; i++) {
-    const s = document.createElement('span');
-    s.textContent = emojis[i % emojis.length];
-    s.style.left = (5 + Math.random() * 85) + '%';
-    s.style.animationDelay = (-Math.random() * 14) + 's';
-    s.style.animationDuration = (11 + Math.random() * 8) + 's';
-    s.style.fontSize = (28 + Math.random() * 30) + 'px';
-    box.appendChild(s);
-  }
-}
 const show = (el, sel) => el.querySelector(sel).classList.add('on');
+const kicker = (ic, text) => `<p class="kicker step on">${icon(ic)}<span>${esc(text)}</span></p>`;
 
-/** Cuenta atrás visual: "Piénsalo… ¡dilo en voz alta!" */
-async function thinkTime(run, el, seconds, text = 'Piénsalo… ¡dilo en voz alta!') {
+/** Cuenta atrás visual para pensar. */
+async function thinkTime(run, el, seconds, text = 'Piénsalo y dilo en voz alta') {
   const box = el.querySelector('.think');
-  box.innerHTML = `<div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="prog" style="animation-duration:${seconds}s"/></svg><b>${seconds}</b></div><p>🤔 ${text}</p>`;
+  box.innerHTML = `<div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="prog" style="animation-duration:${seconds}s"/></svg><b>${seconds}</b></div><p>${text}</p>`;
   box.classList.add('on');
   const num = box.querySelector('b');
   for (let s = seconds; s > 0; s--) { num.textContent = s; await run.wait(1000); }
   box.classList.remove('on');
 }
+
+const VINYL = `<div class="vinyl"><svg viewBox="0 0 200 200" aria-hidden="true">
+  <circle cx="100" cy="100" r="96" fill="#111"/>
+  ${[86, 76, 66, 56, 46].map(r => `<circle cx="100" cy="100" r="${r}" fill="none" stroke="#2a2a2a" stroke-width="1.2"/>`).join('')}
+  <path d="M40 60 A80 80 0 0 1 100 20" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="100" cy="100" r="30" fill="currentColor"/><circle cx="100" cy="100" r="4" fill="#111"/></svg></div>`;
 
 // ---------- Tipos de reel ----------
 const REELS = {
@@ -86,30 +91,30 @@ const REELS = {
     const h = new Date().getHours();
     const hello = h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
     const days = updateStreak();
-    const el = shell('greeting', ['logo', 'Mi Rato'], 'Tu rato de cada día ☀️', `
-      <h1 class="big step">${hello}${name ? ', ' + esc(name) : ''}</h1>
-      <p class="mid step">Hoy es <b>${date}</b></p>
-      ${days > 1 ? `<p class="mid step">🔥 Llevas <b>${days} días</b> seguidos</p>` : '<p class="mid step">🌼 ¡Qué bien que estés aquí!</p>'}
-      <p class="small step hint">Desliza hacia arriba o espera, que pasa solo ⬆️</p>`);
-    floaties(el, ['☀️', '🌼', '🌻', '☕']);
-    return { el, async play(run) {
+    const el = shell('greeting', CHANNELS.greeting, 'Tu rato de cada día', `
+      ${kicker('sun', date)}
+      <h1 class="big step">${hello}${name ? ',<br>' + esc(name) : ''}</h1>
+      <p class="mid step">${days > 1 ? `Llevas <b>${days} días</b> seguidos` : 'Qué bien que estés aquí'}</p>
+      <p class="small step hint">${icon('up')} Desliza hacia arriba o espera, pasa solo</p>`);
+    return { el, presenter: 0, async play(run) {
       const steps = el.querySelectorAll('.step');
-      steps[0].classList.add('on'); await run.say(`${hello}${name ? ', ' + name : ''}.`);
-      steps[1].classList.add('on'); await run.say(`Hoy es ${date}.`);
-      steps[2].classList.add('on'); await run.say(days > 1 ? `Llevas ${days} días seguidos. ¡Muy bien!` : 'Vamos a pasar un buen rato.');
+      steps[1].classList.add('on'); await run.say(`${hello}${name ? ', ' + name : ''}.`);
+      await run.say(`Hoy es ${date}.`);
+      steps[2].classList.add('on'); await run.say(days > 1 ? `Llevas ${days} días seguidos. Muy bien.` : 'Vamos a pasar un buen rato.');
       steps[3].classList.add('on'); await run.wait(1500);
     } };
   },
 
   question() {
     const q = next.question();
-    const el = shell('question', CHANNELS[q.cat], '¿Te lo sabes? Dilo en voz alta 🗣️', `
+    const ch = CHANNELS[q.cat];
+    const el = shell('question', ch, 'Piénsalo y dilo en voz alta', `
+      ${kicker(ch[0], q.cat)}
       <h2 class="q step on${q.q.length > 45 ? ' long' : ''}">${esc(q.q)}</h2>
       <div class="think"></div>
-      <div class="answer step">${q.ae ? `<span class="ae">${q.ae}</span>` : ''}<span>${esc(q.a)}</span></div>
+      <div class="answer step"><span>${esc(q.a)}</span></div>
       <p class="cheer step">${pick(CHEERS)}</p>`);
-    floaties(el, [q.icon, '✨', '💭']);
-    return { el, async play(run) {
+    return { el, presenter: ch[2], async play(run) {
       await run.say(q.q);
       await thinkTime(run, el, q.cat === 'Dilo en voz alta' ? 10 : 7);
       show(el, '.answer'); chime();
@@ -120,43 +125,38 @@ const REELS = {
 
   song() {
     const s = next.song();
-    const bars = Array.from({ length: 12 }, () => '<i></i>').join('');
-    const el = shell('song', ['🎵', 'Canciones de siempre'], '¿La reconoces? 🎶 ¡Cántala!', `
+    const el = shell('song', CHANNELS.song, '¿La reconoces? Cántala', `
+      ${kicker('music', 'Música')}
       <h2 class="q step on">¿Qué canción es?</h2>
-      <div class="eq">${bars}</div>
+      ${VINYL}
       <div class="think"></div>
-      <div class="answer step"><span class="ae">${s.icon}</span><span>${esc(s.title)}</span></div>
+      <div class="answer step"><span>${esc(s.title)}</span></div>
       <p class="cheer step">${esc(s.hint)}</p>`);
-    floaties(el, ['🎵', '🎶', '🎼', s.icon]);
-    const bump = (i) => {
-      const eq = el.querySelectorAll('.eq i');
-      eq.forEach(b => { b.style.height = (20 + Math.random() * 80) + '%'; });
-      eq[i % eq.length].style.height = '100%';
-    };
-    return { el, async play(run) {
+    const spin = (on) => el.querySelector('.vinyl').classList.toggle('on', on);
+    return { el, presenter: CHANNELS.song[2], async play(run) {
       await run.say('Escucha bien. ¿Qué canción es?');
-      el.querySelector('.eq').classList.add('on');
-      await run.melody(s, bump);
-      await thinkTime(run, el, 6, '¿La reconoces? ¡Dilo en voz alta!');
+      spin(true); await run.melody(s); spin(false);
+      await thinkTime(run, el, 6, '¿La reconoces? Dilo en voz alta');
       show(el, '.answer'); show(el, '.cheer'); chime();
-      await run.say(`Es: ${s.title}. ¡Vamos a cantarla!`);
-      await run.melody(s, bump);
+      await run.say(`Es: ${s.title}. Vamos a cantarla.`);
+      spin(true); await run.melody(s); spin(false);
       await run.wait(800);
     } };
   },
 
   info() {
     const it = next.info();
-    const el = shell('info', CHANNELS[it.cat], `${it.icon} ${esc(it.title)}`, `
-      <div class="hero step on">${it.icon}</div>
+    const ch = CHANNELS[it.cat];
+    const steps = it.cat === 'Receta fácil';
+    const el = shell('info', ch, esc(it.title), `
+      ${kicker(ch[0], it.cat)}
       <h2 class="q step on">${esc(it.title)}</h2>
-      <ul class="facts">${it.facts.map(([e, t]) => `<li class="step"><span>${e}</span>${esc(t)}</li>`).join('')}</ul>`);
-    floaties(el, [it.icon, ...it.facts.map(f => f[0])]);
-    return { el, async play(run) {
+      <ol class="facts${steps ? ' numbered' : ''}">${it.facts.map(([, t], i) => `<li class="step"><span>${steps ? i + 1 : ''}</span>${esc(t)}</li>`).join('')}</ol>`);
+    return { el, presenter: ch[2], async play(run) {
       await run.say(it.title + '.');
-      for (const li of el.querySelectorAll('.facts li')) {
+      for (const [i, li] of [...el.querySelectorAll('.facts li')].entries()) {
         li.classList.add('on');
-        await run.say(li.textContent.slice(li.firstChild.textContent.length));
+        await run.say(it.facts[i][1]);
         await run.wait(500);
       }
       await run.wait(1800);
@@ -164,34 +164,32 @@ const REELS = {
   },
 
   memory() {
-    const items = next.memory();
-    const el = shell('memory', ['🧠', 'Memoria'], 'Mira bien y luego recuerda 👀', `
-      <h2 class="q step on">Mira bien estas cuatro cosas</h2>
-      <div class="grid">${items.map(([e]) => `<div class="card"><span class="front">${e}</span><span class="back">❔</span></div>`).join('')}</div>
+    const items = next.memory().map(([, w]) => w);
+    const el = shell('memory', CHANNELS.memory, 'Mira bien y luego recuerda', `
+      ${kicker('eye', 'Memoria')}
+      <h2 class="q step on">Recuerda estas cuatro palabras</h2>
+      <div class="grid">${items.map(w => `<div class="card"><span class="front">${esc(w)}</span><span class="back">?</span></div>`).join('')}</div>
       <div class="think"></div>
-      <div class="answer step words"><span>${items.map(([, w]) => w).join(' · ')}</span></div>
       <p class="cheer step">${pick(CHEERS)}</p>`);
-    floaties(el, ['🧠', '✨', '👀']);
-    return { el, async play(run) {
-      await run.say('Mira bien estas cuatro cosas. Intenta recordarlas.');
-      await run.wait(5000);
+    return { el, presenter: CHANNELS.memory[2], async play(run) {
+      await run.say('Recuerda estas cuatro palabras: ' + items.join(', ') + '.');
+      await run.wait(3500);
       el.querySelector('.grid').classList.add('hidden');
       el.querySelector('.q').textContent = '¿Cuáles eran?';
       await run.say('Las he tapado. ¿Cuáles eran?');
       await thinkTime(run, el, 9, 'Dilas en voz alta');
-      el.querySelector('.grid').classList.remove('hidden');
-      show(el, '.answer'); chime();
-      await run.say('Eran: ' + items.map(i => i[1]).join(', ') + '.');
+      el.querySelector('.grid').classList.remove('hidden'); chime();
+      await run.say('Eran: ' + items.join(', ') + '.');
       show(el, '.cheer'); await run.wait(2000);
     } };
   },
 
   relax() {
-    const el = shell('relax', ['🌿', 'Respira tranquilo'], 'Un momento para ti 🍃', `
+    const el = shell('relax', CHANNELS.relax, 'Un momento para ti', `
+      ${kicker('wind', 'Un respiro')}
       <h2 class="q step on">Respira conmigo</h2>
       <div class="breath"><div class="ball"></div><p class="bt">Toma aire…</p></div>`);
-    floaties(el, ['🍃', '🌿', '☁️']);
-    return { el, async play(run) {
+    return { el, presenter: CHANNELS.relax[2], async play(run) {
       run.pad([130.81, 196, 261.63, 329.63], 30);
       await run.say('Vamos a respirar despacio, tres veces.');
       const ball = el.querySelector('.ball'), bt = el.querySelector('.bt');
@@ -199,22 +197,21 @@ const REELS = {
         bt.textContent = 'Toma aire…'; ball.className = 'ball in'; await run.wait(4500);
         bt.textContent = 'Suelta el aire…'; ball.className = 'ball out'; await run.wait(5000);
       }
-      bt.textContent = '¡Muy bien! 😊';
+      bt.textContent = 'Muy bien';
       await run.say('Muy bien. Seguimos.');
       await run.wait(1000);
     } };
   },
 
   pause() {
-    const el = shell('greeting', ['logo', 'Mi Rato'], 'Hora de moverse un poco 🚶‍♀️', `
-      <div class="hero step on">🚶‍♀️</div>
-      <h2 class="q step on">¡Llevas un buen rato!</h2>
-      <p class="mid step on">Has hecho un montón de ejercicios. ¿Qué tal si te levantas, bebes un vaso de agua o das un paseo?</p>
-      <p class="small step on hint">Si quieres seguir, desliza hacia arriba ⬆️</p>`);
-    floaties(el, ['💧', '🌳', '☀️']);
-    return { el, autoNext: false, async play(run) {
-      await run.say('¡Llevas un buen rato! Has hecho un montón de ejercicios.');
-      await run.say('¿Qué tal si te levantas, bebes un vaso de agua o das un paseo? Mañana más.');
+    const el = shell('greeting', CHANNELS.greeting, 'Hora de moverse un poco', `
+      ${kicker('glass', 'Descanso')}
+      <h2 class="q step on">Llevas un buen rato</h2>
+      <p class="mid step on">Has hecho muchos ejercicios. Buen momento para levantarse, beber un vaso de agua o dar un paseo.</p>
+      <p class="small step on hint">${icon('up')} Si quieres seguir, desliza hacia arriba</p>`);
+    return { el, presenter: 0, autoNext: false, async play(run) {
+      await run.say('Llevas un buen rato. Has hecho muchos ejercicios.');
+      await run.say('Buen momento para levantarte, beber un vaso de agua o dar un paseo. Mañana más.');
     } };
   },
 };
@@ -253,7 +250,7 @@ async function activate(r, force = false) {
   reels.forEach(x => x.el.classList.toggle('active', x === r));
   const idx = reels.indexOf(r);
   if (idx > reels.length - 4) fill(5);
-  const myRun = run = new Run();
+  const myRun = run = new Run(r.presenter || 0);
   resetReel(r);
   try {
     await r.play(myRun);
@@ -301,13 +298,12 @@ feed.addEventListener('click', async (e) => {
   const r = reels.find(x => x.el.contains(b));
   if (b.dataset.act === 'like') {
     const on = b.classList.toggle('on');
-    b.querySelector('span').textContent = on ? '❤️' : '🤍';
     if (on) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); store.set('likes', store.get('likes', 0) + 1); }
   }
   if (b.dataset.act === 'replay' && r) { r.el.scrollIntoView({ behavior: 'smooth' }); activate(r, true); }
   if (b.dataset.act === 'share') {
-    const data = { title: 'Mi Rato', text: '¡Mira esta app para pasar un buen rato y ejercitar la mente! 🧠🎵', url: location.href.split('#')[0] };
-    try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(data.url); toast('Enlace copiado 👍'); } }
+    const data = { title: 'Mi Rato', text: 'Mira esta app para pasar un buen rato y ejercitar la mente.', url: location.href.split('#')[0] };
+    try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(data.url); toast('Enlace copiado'); } }
     catch { /* cancelado */ }
   }
 });
@@ -320,14 +316,15 @@ document.getElementById('test').addEventListener('click', () => {
   initAudio(); chime();
   const ok = sayNow('Hola. Si me oyes, todo está bien.');
   document.getElementById('testmsg').textContent = ok
-    ? '¿No oyes nada? Sube el volumen y quita el modo silencio 🔔'
+    ? '¿No oyes nada? Sube el volumen y quita el modo silencio.'
     : 'Este navegador no puede hablar. Prueba con Chrome o Safari.';
 });
 
 const muteBtn = document.getElementById('mute');
+muteBtn.innerHTML = icon('volume');
 muteBtn.addEventListener('click', () => {
   setMuted(!state.muted);
-  muteBtn.textContent = state.muted ? '🔇' : '🔊';
+  muteBtn.innerHTML = icon(state.muted ? 'mute' : 'volume');
   muteBtn.setAttribute('aria-label', state.muted ? 'Activar sonido' : 'Quitar sonido');
 });
 

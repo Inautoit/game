@@ -56,10 +56,49 @@ export function initAudio() {
   if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = pickVoice;
 }
 
+// ---------- Voces ----------
+// Se usan las voces que ya trae el móvil. Se elige la más natural y se reparten
+// varias entre "presentadores" para que no suene todo igual.
+let voices = [];
+const FEMALE = /m[oó]nica|paulina|marisol|helena|laura|elvira|luc[ií]a|sabina|esperanza|ang[eé]lica|isabela|soledad|dalia|elena|carmen|conchita|pen[eé]lope|lupe|ximena|female|mujer/i;
+const MALE = /jorge|juan|diego|pablo|[aá]lvaro|carlos|enrique|jaime|ra[uú]l|miguel|andr[eé]s|gonzalo|mateo|male|hombre/i;
+const NOVELTY = /eloquence|compact|grandma|grandpa|bubbles|bells|bad news|good news|jester|zarvox|whisper|albert|trinoids|organ|superstar|boing|wobble|cellos|hysterical|reed|rocko|sandy|shelley|flo\b|eddy|junior|ralph|fred|kathy/i;
+function score(v) {
+  let s = 0;
+  if (/natural|neural|premium|enhanced|mejorad|online|wavenet|siri/i.test(v.name)) s += 6;
+  if (/google/i.test(v.name)) s += 3;
+  if (v.lang === 'es-ES' || v.lang === 'es_ES') s += 2;
+  if (NOVELTY.test(v.name)) s -= 20;
+  return s;
+}
 function pickVoice() {
   if (!('speechSynthesis' in window)) return;
-  const vs = speechSynthesis.getVoices();
-  voice = vs.find(v => v.lang === 'es-ES') || vs.find(v => v.lang?.startsWith('es')) || null;
+  voices = speechSynthesis.getVoices().filter(v => /^es/i.test(v.lang)).sort((a, b) => score(b) - score(a));
+  voice = voices[0] || null;
+}
+// Presentadores: voz de mujer / hombre, con su propio tono y ritmo.
+const PRESENTERS = [
+  { g: 'f', pitch: 1.0, rate: 0.92 },
+  { g: 'm', pitch: 1.0, rate: 0.9 },
+  { g: 'f', pitch: 1.05, rate: 0.96 },
+  { g: 'm', pitch: 0.95, rate: 0.88 },
+];
+function voiceProfile(i) {
+  const p = PRESENTERS[i % PRESENTERS.length];
+  const good = voices.filter(v => score(v) > -10);
+  if (!good.length) return { voice: null, pitch: p.pitch, rate: p.rate };
+  const best = score(good[0]);
+  const top = good.filter(v => score(v) >= best - 3); // solo las de mejor calidad
+  const re = p.g === 'f' ? FEMALE : MALE;
+  const byGender = good.filter(v => re.test(v.name) && score(v) >= best - 6);
+  let v, pitch = p.pitch;
+  if (byGender.length) v = byGender[(i >> 1) % byGender.length];
+  else {
+    v = top[i % top.length];
+    // Si solo hay una voz, se distingue un poco con el tono
+    if (top.length === 1) pitch = p.g === 'm' ? p.pitch - 0.08 : p.pitch + 0.04;
+  }
+  return { voice: v, pitch, rate: p.rate };
 }
 
 export function setMuted(m) {
@@ -70,7 +109,7 @@ export function setMuted(m) {
 
 /** Una "ejecución" de un reel: se puede cancelar al deslizar. */
 export class Run {
-  constructor() { this.cancelled = false; this.cleanups = []; }
+  constructor(presenter = 0) { this.cancelled = false; this.cleanups = []; this.presenter = presenter; }
   cancel() {
     this.cancelled = true;
     this.cleanups.splice(0).forEach(f => { try { f(); } catch {} });
@@ -95,8 +134,9 @@ export class Run {
     if (!canSpeak) return this.wait(est);
     await new Promise((res, rej) => {
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'es-ES'; if (voice) u.voice = voice;
-      u.rate = 0.9; u.pitch = 1.05;
+      const vp = voiceProfile(this.presenter);
+      u.lang = vp.voice?.lang || 'es-ES'; if (vp.voice) u.voice = vp.voice;
+      u.rate = vp.rate; u.pitch = vp.pitch;
       let finished = false;
       const finish = () => { if (finished) return; finished = true; clearTimeout(guard); res(); };
       const guard = setTimeout(finish, est + 4000);
@@ -149,7 +189,7 @@ export class Run {
 export function chime() {
   if (!ctx) return;
   const t = ctx.currentTime;
-  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => playTone(f, t + i * 0.09, 0.35, 0.18));
+  [523.25, 783.99, 1046.5].forEach((f, i) => playTone(f, t + i * 0.12, 0.6, 0.12));
 }
 
 function playTone(freq, start, dur, vol = 0.3) {

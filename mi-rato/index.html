@@ -10,6 +10,9 @@
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Source+Sans+3:wght@400;600;700&display=swap" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -22,7 +25,7 @@
   <path d="M222 192 L328 262 L222 332 Z" fill="#1f5fd6" stroke="#1f5fd6" stroke-width="22" stroke-linejoin="round"/>
   <path d="M398 92 l12 30 30 12 -30 12 -12 30 -12 -30 -30 -12 30 -12z" fill="#fff"/>
 </svg><span>Mi Rato</span></div>
-    <button id="mute" aria-label="Quitar sonido">🔊</button>
+    <button id="mute" aria-label="Quitar sonido"></button>
   </header>
 
   <div id="start">
@@ -37,7 +40,7 @@
     <label for="name">¿Cómo te llamas? <small>(si quieres)</small></label>
     <input id="name" autocomplete="given-name" maxlength="20" placeholder="Tu nombre" />
     <button id="go">Entrar</button>
-    <button id="test" type="button">🔊 Probar sonido</button>
+    <button id="test" type="button"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>Probar sonido</button>
     <p id="testmsg" class="testmsg"></p>
   </div>
 
