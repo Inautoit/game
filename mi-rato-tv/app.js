@@ -58,7 +58,7 @@ function loadYT() {
 // ---------- Diapositivas ----------
 // Hay UN SOLO reproductor fijo detrás de las diapositivas. Al deslizar, cambia de vídeo
 // (loadVideoById) en vez de crear otro: así el móvil mantiene el sonido sin tener que tocar cada vez.
-let started = false, active = -1, player = null, playerReady = false;
+let started = false, active = -1, player = null, playerReady = false, necesitaToque = false, recienActivado = false;
 function build() {
   if (!items.length) { feed.innerHTML = '<div class="empty">Todavía no hay vídeos en la lista.</div>'; return; }
   items.forEach((it, i) => {
@@ -103,8 +103,11 @@ async function crearPlayer() {
 function play(i) {
   if (!playerReady || i < 0) return;
   player.loadVideoById(items[i].id);
-  player.unMute(); player.setVolume(100); player.playVideo();
-  // Si el móvil no deja arrancarlo solo, se avisa en vez de quedarse parado
+  if (!necesitaToque) player.unMute(); player.setVolume(100); player.playVideo();
+  // Sin un toque previo el móvil no deja sonar: entonces arranca en silencio y se avisa
+  setTimeout(() => {
+    if (active === i && player.getPlayerState() !== YT.PlayerState.PLAYING && !player.isMuted()) { necesitaToque = true; player.mute(); player.playVideo(); }
+  }, 1200);
   setTimeout(() => {
     if (active === i && player.getPlayerState() !== YT.PlayerState.PLAYING && player.getPlayerState() !== YT.PlayerState.BUFFERING)
       chip(cur(), '▶ Toca para ver');
@@ -120,6 +123,7 @@ function activate(i) {
 }
 function next(i) { const n = feed.children[i + 1]; if (n) n.scrollIntoView({ behavior: 'smooth' }); }
 function togglePause(el) {
+  if (recienActivado) { recienActivado = false; return; } // ese toque era para activar el sonido, no para pausar
   if (!playerReady || +el.dataset.i !== active) return;
   if (player.isMuted()) { player.unMute(); player.setVolume(100); player.playVideo(); chip(el, ''); return; }
   const st = player.getPlayerState();
@@ -130,13 +134,16 @@ function togglePause(el) {
 // ---------- Inicio ----------
 loadYT();
 const listo = cargar().then(() => { build(); crearPlayer(); });
-document.getElementById('go').addEventListener('click', () => {
-  started = true;
-  document.getElementById('start').classList.add('gone');
-  document.getElementById('top').classList.add('gone');
-  // Dentro del toque de "Entrar": arranca con sonido si el reproductor ya está listo
-  if (playerReady) { active = 0; play(0); } else listo.then(() => activate(0));
-});
+// Arranca solo, sin pantalla de inicio
+started = true;
+setTimeout(() => document.getElementById('top').classList.add('gone'), 0);
+listo.then(() => activate(0));
+// El primer toque en cualquier sitio activa el sonido
+addEventListener('pointerup', () => {
+  if (!playerReady || !player.isMuted()) return;
+  necesitaToque = false; recienActivado = true;
+  player.unMute(); player.setVolume(100); player.playVideo(); chip(cur(), '');
+}, { capture: true });
 addEventListener('keydown', (e) => {
   if (!started) return;
   if (e.key === 'ArrowDown') { e.preventDefault(); next(active); }
