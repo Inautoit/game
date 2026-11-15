@@ -58,7 +58,7 @@ function loadYT() {
 // ---------- Diapositivas ----------
 // Hay UN SOLO reproductor fijo detrás de las diapositivas. Al deslizar, cambia de vídeo
 // (loadVideoById) en vez de crear otro: así el móvil mantiene el sonido sin tener que tocar cada vez.
-let started = false, active = -1, player = null, playerReady = false, necesitaToque = false, recienActivado = false;
+let started = false, active = -1, player = null, playerReady = false, yaToco = false, recienActivado = false;
 function build() {
   if (!items.length) { feed.innerHTML = '<div class="empty">Todavía no hay vídeos en la lista.</div>'; return; }
   items.forEach((it, i) => {
@@ -91,7 +91,8 @@ async function crearPlayer() {
         if (e.data === YT.PlayerState.PLAYING) {
           el?.classList.add('live');
           if (items[active]) marcarVisto(items[active].id);
-          chip(el, player.isMuted() ? '🔊 Toca para oír' : '');
+          if (yaToco && player.isMuted()) { player.unMute(); player.setVolume(100); } // después del primer toque, siempre con sonido
+          chip(el, !yaToco && player.isMuted() ? '🔊 Toca para oír' : '');
         }
         if (e.data === YT.PlayerState.ENDED) next(active);
       },
@@ -103,11 +104,13 @@ async function crearPlayer() {
 function play(i) {
   if (!playerReady || i < 0) return;
   player.loadVideoById(items[i].id);
-  if (!necesitaToque) player.unMute(); player.setVolume(100); player.playVideo();
+  player.unMute(); player.setVolume(100); player.playVideo();
   // Sin un toque previo el móvil no deja sonar: entonces arranca en silencio y se avisa
   setTimeout(() => {
-    if (active === i && player.getPlayerState() !== YT.PlayerState.PLAYING && !player.isMuted()) { necesitaToque = true; player.mute(); player.playVideo(); }
-  }, 1200);
+    // Solo antes del primer toque: si el móvil no lo deja sonar, arranca en silencio
+    const st = player.getPlayerState();
+    if (!yaToco && active === i && st !== YT.PlayerState.PLAYING && st !== YT.PlayerState.BUFFERING) { player.mute(); player.playVideo(); }
+  }, 1500);
   setTimeout(() => {
     if (active === i && player.getPlayerState() !== YT.PlayerState.PLAYING && player.getPlayerState() !== YT.PlayerState.BUFFERING)
       chip(cur(), '▶ Toca para ver');
@@ -140,8 +143,9 @@ setTimeout(() => document.getElementById('top').classList.add('gone'), 0);
 listo.then(() => activate(0));
 // El primer toque en cualquier sitio activa el sonido
 addEventListener('pointerup', () => {
+  const primero = !yaToco; yaToco = true;
   if (!playerReady || !player.isMuted()) return;
-  necesitaToque = false; recienActivado = true;
+  recienActivado = primero;
   player.unMute(); player.setVolume(100); player.playVideo(); chip(cur(), '');
 }, { capture: true });
 addEventListener('keydown', (e) => {
