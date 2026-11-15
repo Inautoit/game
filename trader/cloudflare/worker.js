@@ -1,9 +1,9 @@
-// Máquina de trading autónoma en Cloudflare Workers (modo SIMULADO con precios reales de Kraken).
-// Cron cada 5 min: vigila stop-loss. Al cerrar cada vela de 4h: escanea, decide y opera.
-import { CONFIG, STRATS, score, positionSize, canOpen, riskUpdate, parseKlines } from "./lib.js";
+// Máquina de trading autónoma en Cloudflare Workers: varios traders SIMULADOS compitiendo con precios reales de Kraken.
+// Cron cada 5 min: revisa los stop-loss de todos y deja decidir al trader cuya vela acaba de cerrar.
+import { CONFIG, TRADERS, STRATS, score, explain, positionSize, canOpen, riskUpdate, parseKlines } from "./lib.js";
 import { DASHBOARD } from "./dashboard.js";
 
-// ---- Fuente de datos: Kraken (API pública) ----
+// ---- Fuente de datos: Kraken (API pública). Binance bloquea las IPs de Cloudflare. ----
 const KRAKEN = "https://api.kraken.com/0/public/";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function kget(path, tries = 3) {
@@ -19,7 +19,6 @@ async function kget(path, tries = 3) {
   }
   throw last;
 }
-// Precio actual (bid/ask) y volumen 24h de varios pares de una vez
 async function tickers(alts) {
   const [pairs, t] = await Promise.all([kget(`AssetPairs?pair=${alts.join(",")}`), kget(`Ticker?pair=${alts.join(",")}`)]);
   const out = {};
@@ -29,109 +28,91 @@ async function tickers(alts) {
   }
   return out;
 }
-async function klines(alt) {
-  const r = await kget(`OHLC?pair=${alt}&interval=${CONFIG.barMs / 60000}`);
+async function klines(alt, barMs) {
+  const r = await kget(`OHLC?pair=${alt}&interval=${barMs / 60000}`);
   const rows = r[Object.keys(r).find((k) => k !== "last")];
-  return rows.slice(-(CONFIG.historyBars + 1)).map((x) => [x[0] * 1000, x[1], x[2], x[3], x[4], x[6], x[0] * 1000 + CONFIG.barMs - 1]);
+  return rows.slice(-(CONFIG.historyBars + 1)).map((x) => [x[0] * 1000, x[1], x[2], x[3], x[4], x[6], x[0] * 1000 + barMs - 1]);
 }
-async function book(sym) { return (await tickers([sym]))[sym]; }
 
-function freshState() {
+// ---- Estado (una sola clave KV para todos: pocas escrituras) ----
+function fresh(t) {
   return { cash: CONFIG.paperCapital, positions: {}, risk: { peak: null, day: null, dayStart: null, halted: false, haltReason: "" },
-           lastBar: null, universe: [], ranked: [], equity: [], log: [], started: Date.now(), lastRun: null,
-           lastError: null, lastBarRun: null };
+           lastBar: null, universe: [], ranked: [], watch: [], equity: [], log: [], started: Date.now(),
+           lastBarRun: null, checks: 0, decisions: 0 };
 }
-async function load(env) {
-  const [s, t] = await Promise.all([env.STATE.get("state", "json"), env.STATE.get("trades", "json")]);
-  return { st: s || freshState(), trades: t || [] };
-}
-async function save(env, st, trades, tradesChanged) {
-  await env.STATE.put("state", JSON.stringify(st));
-  if (tradesChanged) await env.STATE.put("trades", JSON.stringify(trades.slice(-500)));
-}
-
-function note(env, st, msg) {
-  st.log.push([Date.now(), msg]);
-  st.log = st.log.slice(-100);
-  if (env.TELEGRAM_TOKEN && env.TELEGRAM_CHAT_ID) {
-    return fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: msg }) }).catch(() => {});
+async function loadAll(env) {
+  let all = await env.STATE.get("traders", "json");
+  if (!all) { // migración desde la versión de un solo trader
+    const old = await env.STATE.get("state", "json");
+    all = { meta: { checks: 0, lastRun: null, lastError: null }, traders: {} };
+    if (old) all.traders.prudente = { ...fresh(), ...old, watch: [], checks: 0, decisions: (old.equity || []).length };
   }
+  for (const t of TRADERS) all.traders[t.id] ??= fresh(t);
+  const trades = {};
+  await Promise.all(TRADERS.map(async (t) => {
+    trades[t.id] = (await env.STATE.get(`trades:${t.id}`, "json")) || (t.id === "prudente" ? (await env.STATE.get("trades", "json")) || [] : []);
+  }));
+  return { all, trades };
 }
 
-async function tick(env, now = Date.now()) {
-  const { st, trades } = await load(env);
-  const ctx = { tradesChanged: false, notes: [] };
-  const { fee, slippage } = CONFIG.costs;
+function addLog(st, msg) { st.log.push([Date.now(), msg]); st.log = st.log.slice(-150); }
+function telegram(env, msg) {
+  if (!env.TELEGRAM_TOKEN || !env.TELEGRAM_CHAT_ID) return null;
+  return fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: msg }) }).catch(() => {});
+}
+const nice = (p) => ({ XBT: "BTC", XDG: "DOGE" })[p.replace(/USD$/, "")] || p.replace(/USD$/, "");
 
-  const closePos = async (sym, reason, bid) => {
+function makeOps(env, t, st, trades, ctx, now) {
+  const { fee, slippage } = CONFIG.costs;
+  const note = (msg, important) => { addLog(st, msg); if (important) ctx.notes.push(telegram(env, `${t.name}: ${msg}`)); };
+  const close = (sym, reason, bid) => {
     const p = st.positions[sym];
-    if (!p) return;
-    bid = bid ?? (await book(sym)).bid;
     const px = bid * (1 - slippage), gross = p.qty * px, f = gross * fee;
     st.cash += gross - f;
     const pnl = gross - f - (p.qty * p.entryPx + p.fee);
     trades.push({ symbol: sym, strategy: p.strat, entryTime: p.entryTime, exitTime: now, entryPx: p.entryPx, exitPx: px,
                   qty: p.qty, pnl, ret: pnl / (p.qty * p.entryPx + p.fee), reason });
     delete st.positions[sym];
-    ctx.tradesChanged = true;
-    ctx.notes.push(note(env, st, `${pnl > 0 ? "✅" : "🔴"} VENTA ${sym} @ ${px.toPrecision(6)} | ${reason} | ${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} USD`));
+    ctx.changed.add(t.id);
+    note(`${pnl > 0 ? "✅" : "🔴"} VENDE ${nice(sym)} a ${px.toPrecision(6)} (${reason}) → ${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} $`, true);
   };
-
-  try {
-    // 1) stop-loss (cada 5 minutos)
-    const open = Object.keys(st.positions);
-    const books = open.length ? await tickers(open) : {};
-    for (const sym of open) {
-      const { bid } = books[sym];
-      st.positions[sym].last = bid;
-      if (bid <= st.positions[sym].stop) await closePos(sym, "stop", bid);
-    }
-
-    // 2) nueva vela cerrada -> decidir
-    const bar = Math.floor(now / CONFIG.barMs);
-    if (!st.risk.halted && bar !== st.lastBar && now - bar * CONFIG.barMs > 60_000) {
-      await onBar(env, st, now, closePos, ctx);
-      st.lastBar = bar;
-      st.lastBarRun = now;
-    }
-    st.lastError = null;
-  } catch (e) {
-    st.lastError = [now, String(e && e.stack || e).slice(0, 500)];
-  }
-  st.lastRun = now;
-  await Promise.all(ctx.notes);
-  await save(env, st, trades, ctx.tradesChanged);
-  return st;
+  const open = (sym, strat, q0, dist, ask, why) => {
+    const px = ask * (1 + slippage), qty = Math.min(q0, st.cash / (px * (1 + fee)));
+    if (qty * px < t.risk.min_notional) return;
+    const f = qty * px * fee;
+    st.cash -= qty * px + f;
+    st.positions[sym] = { qty, entryPx: px, stop: px - dist, strat, entryTime: now, bars: 0, fee: f, last: px };
+    note(`🟢 COMPRA ${nice(sym)} por ${(qty * px).toFixed(0)} $ a ${px.toPrecision(6)} · ${why} · stop ${(px - dist).toPrecision(6)}`, true);
+  };
+  return { note, close, open };
 }
 
-async function onBar(env, st, now, closePos, ctx) {
-  const { fee, slippage } = CONFIG.costs;
-  // ¿Dónde? los más líquidos entre los candidatos
+async function onBar(env, t, st, trades, ctx, now) {
+  const ops = makeOps(env, t, st, trades, ctx, now);
   const tk = await tickers(CONFIG.candidates);
-  st.universe = Object.entries(tk).sort((a, b) => b[1].quoteVolume - a[1].quoteVolume).slice(0, CONFIG.universeSize).map(([s]) => s);
+  st.universe = Object.entries(tk).sort((a, b) => b[1].quoteVolume - a[1].quoteVolume).slice(0, t.universeSize).map(([s]) => s);
 
   const want = [...new Set([...st.universe, ...Object.keys(st.positions)])];
-  const res = [];
-  for (const s of want) { // de una en una para respetar el límite de Kraken
-    try { res.push([s, parseKlines(await klines(s), now)]); } catch (e) { res.push([s, null]); }
-    await sleep(1100);
-  }
   const sigs = {}, scores = {}, prices = {};
-  for (const [s, d] of res) {
-    if (!d || d.c.length < CONFIG.minBars) continue;
-    prices[s] = d.c[d.c.length - 1];
-    sigs[s] = Object.fromEntries(Object.entries(CONFIG.strategies).map(([n, p]) => [n, STRATS[n](d, p)]));
-    scores[s] = score(d);
+  for (const s of want) { // de una en una para respetar el límite de Kraken
+    try {
+      const d = parseKlines(await klines(s, t.barMs), now);
+      if (d.c.length >= CONFIG.minBars) {
+        prices[s] = d.c[d.c.length - 1];
+        sigs[s] = Object.fromEntries(Object.entries(t.strategies).map(([n, p]) => [n, STRATS[n](d, p)]));
+        scores[s] = score(d);
+      }
+    } catch (e) { /* un mercado que falla no para al resto */ }
+    await sleep(1100);
   }
 
   const equity = () => st.cash + Object.entries(st.positions).reduce((a, [s, p]) => a + p.qty * (prices[s] ?? p.last ?? p.entryPx), 0);
-  let eq = equity();
   const day = new Date(now).toISOString().slice(0, 10);
-  if (riskUpdate(CONFIG.risk, st.risk, eq, day) === "kill") {
-    for (const s of Object.keys(st.positions)) await closePos(s, "kill_switch");
-    ctx.notes.push(note(env, st, `⛔ MÁQUINA APAGADA: ${st.risk.haltReason}`));
+  if (riskUpdate(t.risk, st.risk, equity(), day) === "kill") {
+    for (const s of Object.keys(st.positions)) ops.close(s, "freno de emergencia", tk[s]?.bid ?? prices[s]);
+    ops.note(`⛔ APAGADO: ${st.risk.haltReason}`, true);
     st.equity.push([now, st.cash]);
     return;
   }
@@ -140,40 +121,86 @@ async function onBar(env, st, now, closePos, ctx) {
   for (const s of Object.keys(st.positions)) {
     const p = st.positions[s], sg = sigs[s]?.[p.strat];
     p.bars = (p.bars || 0) + 1;
+    if (prices[s]) p.last = prices[s];
     if (!sg) continue;
-    if (Number.isFinite(sg.trail)) p.stop = Math.max(p.stop, sg.trail);
-    if (sg.exit) await closePos(s, "señal");
+    if (Number.isFinite(sg.trail) && sg.trail > p.stop) p.stop = sg.trail;
+    if (sg.exit) ops.close(s, "la señal se agotó", tk[s]?.bid ?? prices[s]);
   }
 
-  // ¿Cuándo y cuánto? nuevas entradas en los mejor puntuados
+  // ranking y lista de vigilancia con el porqué de cada uno
   st.ranked = Object.entries(scores).filter(([, v]) => Number.isFinite(v)).sort((a, b) => b[1] - a[1])
-    .slice(0, CONFIG.topN).map(([s, v]) => [s, +v.toFixed(3)]);
-  eq = equity();
-  if (canOpen(CONFIG.risk, st.risk, eq, Object.keys(st.positions).length)) {
+    .slice(0, t.topN).map(([s, v]) => [s, +v.toFixed(3)]);
+  const top = new Set(st.ranked.map(([s]) => s));
+  st.watch = Object.keys(sigs).map((s) => ({
+    s, price: prices[s], score: Number.isFinite(scores[s]) ? +scores[s].toFixed(3) : null, top: top.has(s),
+    why: st.positions[s] ? "en cartera" : (Number.isFinite(scores[s]) ? "" : "volatilidad fuera de rango · ") + explain(sigs[s]),
+  })).sort((a, b) => (b.score ?? -99) - (a.score ?? -99));
+
+  // nuevas entradas
+  let bought = 0, signals = 0;
+  const eq = equity();
+  if (canOpen(t.risk, st.risk, eq, Object.keys(st.positions).length)) {
     const cands = [];
     for (const [s] of st.ranked) {
       if (st.positions[s]) continue;
-      for (const n of Object.keys(CONFIG.strategies)) {
+      for (const n of Object.keys(t.strategies)) {
         const sg = sigs[s][n];
         if (sg.entry && Number.isFinite(sg.stop) && sg.stop < prices[s]) { cands.push([sg.strength, s, n, prices[s] - sg.stop]); break; }
       }
     }
+    signals = cands.length;
     cands.sort((a, b) => b[0] - a[0]);
-    const slots = CONFIG.risk.max_positions - Object.keys(st.positions).length;
+    const slots = t.risk.max_positions - Object.keys(st.positions).length;
     for (const [, s, n, dist] of cands.slice(0, Math.max(0, slots))) {
-      const q0 = positionSize(CONFIG.risk, eq, st.cash, prices[s], prices[s] - dist);
-      if (q0 <= 0) continue;
-      const { ask } = await book(s);
-      const px = ask * (1 + slippage), qty = Math.min(q0, st.cash / (px * (1 + fee)));
-      if (qty * px < CONFIG.risk.min_notional) continue;
-      const f = qty * px * fee;
-      st.cash -= qty * px + f;
-      st.positions[s] = { qty, entryPx: px, stop: px - dist, strat: n, entryTime: now, bars: 0, fee: f, last: px };
-      ctx.notes.push(note(env, st, `🟢 COMPRA ${s} ${qty.toPrecision(5)} @ ${px.toPrecision(6)} | ${n} | stop ${(px - dist).toPrecision(6)}`));
+      const q = positionSize(t.risk, eq, st.cash, prices[s], prices[s] - dist);
+      if (q > 0 && tk[s]) { ops.open(s, n, q, dist, tk[s].ask, n === "breakout" ? "ruptura" : "tendencia"); bought++; }
     }
   }
+  st.decisions++;
+  const best = st.watch.find((w) => w.top && !st.positions[w.s]);
+  ops.note(`📊 Vela de ${t.timeframe} cerrada: analizados ${Object.keys(sigs).length} mercados, ${signals} señales, ${bought} compras` +
+    (bought ? "" : best ? ` · mejor candidato ${nice(best.s)}: ${best.why}` : " · nada interesante, espera"));
   st.equity.push([now, equity()]);
   st.equity = st.equity.slice(-3000);
+}
+
+async function tick(env, now = Date.now()) {
+  const { all, trades } = await loadAll(env);
+  const ctx = { changed: new Set(), notes: [] };
+  try {
+    // 1) stop-loss de todos los traders con una sola consulta de precios
+    const openSyms = [...new Set(TRADERS.flatMap((t) => Object.keys(all.traders[t.id].positions)))];
+    const book = openSyms.length ? await tickers(openSyms) : {};
+    for (const t of TRADERS) {
+      const st = all.traders[t.id], ops = makeOps(env, t, st, trades[t.id], ctx, now);
+      st.checks++;
+      for (const s of Object.keys(st.positions)) {
+        const b = book[s]; if (!b) continue;
+        st.positions[s].last = b.bid;
+        if (b.bid <= st.positions[s].stop) ops.close(s, "stop-loss", b.bid);
+      }
+    }
+    // 2) decide el trader cuya vela acaba de cerrar (uno por ejecución para no saturar)
+    const due = TRADERS.find((t) => {
+      const st = all.traders[t.id], bar = Math.floor(now / t.barMs);
+      return !st.risk.halted && bar !== st.lastBar && now - bar * t.barMs > 60_000;
+    });
+    if (due) {
+      const st = all.traders[due.id];
+      await onBar(env, due, st, trades[due.id], ctx, now);
+      st.lastBar = Math.floor(now / due.barMs);
+      st.lastBarRun = now;
+    }
+    all.meta.lastError = null;
+  } catch (e) {
+    all.meta.lastError = [now, String((e && e.stack) || e).slice(0, 500)];
+  }
+  all.meta.checks = (all.meta.checks || 0) + 1;
+  all.meta.lastRun = now;
+  await Promise.all(ctx.notes);
+  await env.STATE.put("traders", JSON.stringify(all));
+  await Promise.all([...ctx.changed].map((id) => env.STATE.put(`trades:${id}`, JSON.stringify(trades[id].slice(-500)))));
+  return all;
 }
 
 export default {
@@ -183,17 +210,12 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (url.pathname === "/api/state") {
-      const { st, trades } = await load(env);
-      const config = { timeframe: CONFIG.timeframe, strategies: CONFIG.strategies, risk: CONFIG.risk, costs: CONFIG.costs,
-                       paperCapital: CONFIG.paperCapital };
-      return Response.json({ state: st, trades, config, now: Date.now() }, { headers: { "cache-control": "no-store" } });
-    }
-    if (url.pathname === "/api/health") {
-      const out = {};
-      try { const t = await tickers(CONFIG.candidates); out.ok = true; out.tickers = Object.keys(t).length; }
-      catch (e) { out.ok = false; out.error = String(e); }
-      out.colo = req.cf && req.cf.colo; out.country = req.cf && req.cf.country;
-      return Response.json(out);
+      const { all, trades } = await loadAll(env);
+      return Response.json({
+        now: Date.now(), meta: all.meta, capital: CONFIG.paperCapital, costs: CONFIG.costs,
+        traders: TRADERS.map((t) => ({ id: t.id, name: t.name, timeframe: t.timeframe, note: t.note, risk: t.risk,
+                                       state: all.traders[t.id], trades: trades[t.id] })),
+      }, { headers: { "cache-control": "no-store" } });
     }
     if (url.pathname === "/") return new Response(DASHBOARD, { headers: { "content-type": "text/html; charset=utf-8" } });
     return new Response("No encontrado", { status: 404 });

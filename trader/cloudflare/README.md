@@ -3,8 +3,14 @@
 Funciona sola en Cloudflare, sin servidor propio y sin tener el ordenador encendido.
 
 - **Panel:** https://maquina-trader.inautoit.workers.dev
-- **Modo:** SIMULADO (1.000 $ ficticios, precios reales de Kraken, comisión simulada 0,10 %).
-- **Cada 5 min** revisa los stop-loss. **Cada 4 h**, al cerrar la vela, escanea 20 mercados y decide.
+- **Modo:** SIMULADO. Tres traders compiten, cada uno con 1.000 $ ficticios, precios reales de Kraken y comisión simulada del 0,10 %:
+  | Trader | Velas | Resultado en pruebas con datos reales |
+  |---|---|---|
+  | 🐢 Prudente | 4 h | +19 % en walk-forward de 3 años (el validado) |
+  | 🐇 Rápido | 1 h | −18 % a −57 % en 3 años |
+  | ⚡ Scalper | 15 min | −93 % en 1 año (~9 operaciones/día) |
+- **Cada 5 min** revisa los stop-loss de todos. Cuando cierra la vela de un trader, ese trader escanea 20 mercados y decide.
+- El panel muestra la clasificación, la actividad en directo y, para cada mercado, por qué compra o no.
 - Estado guardado en Cloudflare KV (`maquina-trader-estado`).
 
 ## Archivos
@@ -29,7 +35,7 @@ Añade al Worker los secretos `TELEGRAM_TOKEN` y `TELEGRAM_CHAT_ID`
 (panel de Cloudflare → Workers → maquina-trader → Settings → Variables and Secrets).
 
 ## Reiniciar la simulación
-Borra la clave `state` (y `trades`) del KV `maquina-trader-estado`.
+Borra la clave `traders` (y `trades:<id>`) del KV `maquina-trader-estado`.
 
 ## Por qué Kraken y no Binance
 Binance bloquea las IPs de Cloudflare (responde 403). Para operar con dinero real en Binance hace falta

@@ -1,6 +1,25 @@
 // Lógica pura de la máquina (port exacto de bot/indicators.py, strategies.py, scanner.py y risk.py).
 // Se verifica contra la versión Python con parity_test.mjs.
 
+const H = 3600_000;
+const RISK = { risk_per_trade: 0.01, max_position_pct: 0.25, max_positions: 4, daily_loss_limit: 0.03,
+               max_drawdown: 0.15, min_notional: 10 };
+const VALIDATED = { breakout: { n: 24, vol_mult: 1.5, atr_mult: 2.5 }, trend: { fast: 20, slow: 50, adx_min: 22, atr_mult: 3.0 } };
+
+// Varios traders con dinero ficticio, cada uno a su ritmo, compitiendo con los mismos precios.
+export const TRADERS = [
+  { id: "prudente", name: "🐢 Prudente", timeframe: "4h", barMs: 4 * H, universeSize: 20, topN: 6,
+    strategies: VALIDATED, risk: RISK,
+    note: "El validado: +19 % en la prueba honesta de 3 años. Opera poco: solo con señales claras." },
+  { id: "rapido", name: "🐇 Rápido", timeframe: "1h", barMs: H, universeSize: 20, topN: 8,
+    strategies: VALIDATED, risk: { ...RISK, max_positions: 5 },
+    note: "Experimental: opera varias veces al día. En 3 años de pruebas perdió dinero (−18 % a −57 %)." },
+  { id: "scalper", name: "⚡ Scalper", timeframe: "15m", barMs: H / 4, universeSize: 20, topN: 10,
+    strategies: { breakout: { n: 16, vol_mult: 1.3, atr_mult: 2.5 }, trend: { fast: 9, slow: 21, adx_min: 20, atr_mult: 3.0 } },
+    risk: { ...RISK, max_positions: 6 },
+    note: "Experimental: opera sin parar (~9 al día). En 1 año de pruebas perdió un 93 % (sin comisiones, −41 %)." },
+];
+
 export const CONFIG = {
   timeframe: "4h", barMs: 4 * 3600_000, historyBars: 400, minBars: 250,
   universeSize: 20, topN: 6, paperCapital: 1000,
@@ -61,6 +80,24 @@ export const donchianHigh = (h, n) => shift1(rollMax(h, n));
 export const donchianLow = (l, n) => shift1(rollMin(l, n));
 const nz = (v) => (Number.isNaN(v) ? 0 : v);
 
+// Explicación en lenguaje normal de por qué compra o no
+export function explain(sig) {
+  const t = sig.trend?.info, b = sig.breakout?.info, parts = [];
+  if (sig.breakout?.entry) return "SEÑAL: ruptura de máximos con volumen";
+  if (sig.trend?.entry) return "SEÑAL: arranca tendencia alcista";
+  if (b) {
+    if (b.distHigh > 0) parts.push(`le falta ${(b.distHigh * 100).toFixed(1)} % para romper máximos`);
+    else if (!(b.volRatio > b.volMult)) parts.push(`rompe máximos pero sin volumen (${b.volRatio.toFixed(1)}x)`);
+    else if (!b.aboveTrend) parts.push("rompe, pero por debajo de su media larga");
+  }
+  if (t) {
+    if (!t.up) parts.push("tendencia bajista");
+    else if (!(t.adx > t.adxMin)) parts.push(`tendencia alcista débil (ADX ${t.adx.toFixed(0)}<${t.adxMin})`);
+    else parts.push("tendencia alcista ya en marcha (no entra tarde)");
+  }
+  return parts.join(" · ") || "sin datos suficientes";
+}
+
 // Señales de la ÚLTIMA vela cerrada: {entry, exit, stop, trail, strength}
 export function trendSignal(d, p) {
   const { c, h, l } = d, N = c.length;
@@ -69,7 +106,8 @@ export function trendSignal(d, p) {
   const i = N - 1;
   const strength = nz((a[i] / 50) * Math.max(fast[i] / slow[i] - 1, 0) * 100);
   return { entry: cond(i) && !cond(i - 1), exit: fast[i] < slow[i], stop: c[i] - p.atr_mult * at[i],
-           trail: c[i] - p.atr_mult * at[i], strength };
+           trail: c[i] - p.atr_mult * at[i], strength,
+           info: { adx: a[i], up: fast[i] > slow[i] && c[i] > slow[i], adxMin: p.adx_min } };
 }
 export function breakoutSignal(d, p) {
   const { c, h, l, v } = d, N = c.length, i = N - 1;
@@ -78,7 +116,8 @@ export function breakoutSignal(d, p) {
   const entry = c[i] > hi[i] && v[i] > p.vol_mult * vs[i] && c[i] > e100[i];
   const s1 = (c[i] - hi[i]) / at[i];
   const strength = nz((Number.isNaN(s1) ? NaN : Math.max(s1, 0)) + v[i] / vs[i]);
-  return { entry, exit: c[i] < lo[i], stop: c[i] - p.atr_mult * at[i], trail: c[i] - p.atr_mult * at[i], strength };
+  return { entry, exit: c[i] < lo[i], stop: c[i] - p.atr_mult * at[i], trail: c[i] - p.atr_mult * at[i], strength,
+           info: { distHigh: hi[i] / c[i] - 1, volRatio: v[i] / vs[i], volMult: p.vol_mult, aboveTrend: c[i] > e100[i] } };
 }
 export const STRATS = { trend: trendSignal, breakout: breakoutSignal };
 

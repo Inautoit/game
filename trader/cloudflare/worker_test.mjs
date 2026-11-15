@@ -41,32 +41,47 @@ globalThis.fetch = async (url) => {
 const kv = new Map();
 const env = { STATE: { get: async (k, t) => (kv.has(k) ? JSON.parse(kv.get(k)) : null), put: async (k, v) => kv.set(k, v) } };
 const run = () => new Promise((res) => worker.scheduled({ scheduledTime: now }, env, { waitUntil: (p) => p.then(res) }));
+const T = () => JSON.parse(kv.get("traders"));
 
+// migración: estado viejo de un solo trader
+kv.set("state", JSON.stringify({ cash: 1000, positions: {}, risk: { peak: 1000, day: null, dayStart: null, halted: false, haltReason: "" },
+                                  lastBar: null, universe: [], ranked: [], equity: [[1, 1000]], log: [] }));
 await run();
-let st = JSON.parse(kv.get("state"));
-assert.equal(st.lastError, null, st.lastError);
+let all = T();
+assert.equal(all.meta.lastError, null, all.meta.lastError);
+let st = all.traders.prudente;
 assert.deepEqual(st.universe, ["AAAUSD", "BBBUSD"]);
-console.log("ranking:", st.ranked, "| posiciones:", Object.keys(st.positions), "| log:", st.log.map((l) => l[1]));
+assert.equal(st.equity.length, 2, "conserva la historia anterior");
+assert.ok(st.watch.length === 2 && st.watch.every((w) => w.why), "explica cada mercado");
+console.log("vigilancia:", st.watch.map((w) => `${w.s}: ${w.why}`));
+console.log("log:", st.log.map((l) => l[1]));
 const sym = Object.keys(st.positions)[0];
 assert.ok(sym, "debería abrir alguna posición");
 const stop = st.positions[sym].stop;
+assert.equal(all.traders.rapido.decisions, 0, "un trader por ejecución");
 
-now += 5 * 60_000; bidOverride = stop * 0.99;   // el precio cae bajo el stop
+now += 5 * 60_000; bidOverride = stop * 0.99;   // cae bajo el stop; además decide el Rápido
 await run();
-st = JSON.parse(kv.get("state"));
-const trades = JSON.parse(kv.get("trades"));
-assert.ok(!st.positions[sym] && trades[0].reason === "stop");
-console.log("stop OK:", trades[0].reason, trades[0].pnl.toFixed(2), "| caja", st.cash.toFixed(2));
+all = T();
+const trades = JSON.parse(kv.get("trades:prudente"));
+assert.ok(!all.traders.prudente.positions[sym] && trades[0].reason === "stop-loss");
+assert.equal(all.traders.rapido.decisions, 1);
+console.log("stop OK:", trades[0].pnl.toFixed(2), "$ | rápido decidió:", all.traders.rapido.log.at(-1)[1]);
 
-// freno: capital hundido -> apagado
-st.cash = 100; kv.set("state", JSON.stringify(st)); now += H4; bidOverride = null;
+now += 7 * 60_000; bidOverride = null;
 await run();
-st = JSON.parse(kv.get("state"));
-assert.ok(st.risk.halted, "debería apagarse");
-console.log("freno OK:", st.risk.haltReason);
+assert.equal(T().traders.scalper.decisions, 1, "el scalper también decide");
+
+// freno: capital hundido -> apagado solo ese trader
+all = T(); all.traders.prudente.cash = 100; kv.set("traders", JSON.stringify(all)); now += H4;
+await run();
+all = T();
+assert.ok(all.traders.prudente.risk.halted && !all.traders.rapido.risk.halted);
+console.log("freno OK:", all.traders.prudente.risk.haltReason);
 
 const page = await worker.fetch(new Request("https://x/"), env);
-assert.ok((await page.text()).includes("Máquina Trader"));
+assert.ok((await page.text()).includes("Clasificación de traders"));
 const api = await (await worker.fetch(new Request("https://x/api/state"), env)).json();
-assert.ok(api.state && api.trades.length === 1);
-console.log("panel y API OK");
+assert.equal(api.traders.length, 3);
+assert.ok(api.meta.checks >= 4);
+console.log("panel y API OK · revisiones:", api.meta.checks);
