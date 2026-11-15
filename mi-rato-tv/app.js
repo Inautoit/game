@@ -28,16 +28,16 @@ function loadYT() {
 }
 
 // ---------- Diapositivas ----------
-let started = false, active = -1, player = null, skipped = new Set();
+// Hay UN SOLO reproductor fijo detrás de las diapositivas. Al deslizar, cambia de vídeo
+// (loadVideoById) en vez de crear otro: así el móvil mantiene el sonido sin tener que tocar cada vez.
+let started = false, active = -1, player = null, playerReady = false;
 function build() {
   if (!items.length) { feed.innerHTML = '<div class="empty">Todavía no hay vídeos en la lista.</div>'; return; }
   items.forEach((it, i) => {
     const el = document.createElement('section');
     el.className = 'slide'; el.dataset.i = i;
-    el.innerHTML = `<img class="thumb" src="https://i.ytimg.com/vi/${it.id}/hqdefault.jpg" alt="">
-      <div class="player"></div><div class="shield"></div>
-      <div class="chip" hidden></div>`;
-    el.querySelector('.shield').addEventListener('click', () => togglePause(el));
+    el.innerHTML = `<img class="thumb" src="https://i.ytimg.com/vi/${it.id}/hqdefault.jpg" alt="" loading="lazy"><div class="chip" hidden></div>`;
+    el.addEventListener('click', () => togglePause(el)); // la diapositiva tapa el reproductor: nada de YouTube se puede tocar
     feed.appendChild(el);
     io.observe(el);
   });
@@ -46,51 +46,67 @@ const io = new IntersectionObserver((es) => {
   for (const e of es) if (e.isIntersecting && e.intersectionRatio > 0.6) activate(+e.target.dataset.i);
 }, { root: feed, threshold: [0.6] });
 
-function chip(el, text) { const c = el.querySelector('.chip'); c.textContent = text || ''; c.hidden = !text; }
+function chip(el, text) { const c = el?.querySelector('.chip'); if (!c) return; c.textContent = text || ''; c.hidden = !text; }
+const cur = () => feed.children[active];
 
-async function activate(i) {
-  if (!started || i === active) return;
-  active = i;
-  // Solo hay un reproductor a la vez: se quita el anterior (ahorra datos y batería)
-  if (player) { try { player.destroy(); } catch {} player = null; }
-  document.querySelectorAll('.slide .player').forEach(p => (p.innerHTML = ''));
-  const el = feed.children[i], it = items[i];
-  chip(el, '');
+async function crearPlayer() {
   await ytLoaded;
-  if (active !== i) return;
-  const box = document.createElement('div'); el.querySelector('.player').appendChild(box);
-  player = new YT.Player(box, {
-    videoId: it.id, width: '100%', height: '100%',
+  if (!items.length) return;
+  player = new YT.Player('stage-player', {
+    videoId: items[0].id, width: '100%', height: '100%',
     host: 'https://www.youtube-nocookie.com',
-    playerVars: { autoplay: 1, controls: 0, rel: 0, playsinline: 1, fs: 0, disablekb: 1, iv_load_policy: 3, modestbranding: 1, origin: location.origin },
+    playerVars: { autoplay: 0, controls: 0, rel: 0, playsinline: 1, fs: 0, disablekb: 1, iv_load_policy: 3, modestbranding: 1, origin: location.origin },
     events: {
-      onReady: (e) => { e.target.unMute(); e.target.setVolume(100); e.target.playVideo();
-        setTimeout(() => { if (active === i && e.target.isMuted?.()) chip(el, '🔊 Toca para oír'); }, 1500); },
+      onReady: () => { playerReady = true; if (started) play(active); },
       onStateChange: (e) => {
-        if (e.data === YT.PlayerState.PLAYING) chip(el, e.target.isMuted() ? '🔊 Toca para oír' : '');
-        if (e.data === YT.PlayerState.ENDED) next(i);
+        const el = cur();
+        if (e.data === YT.PlayerState.PLAYING) {
+          el?.classList.add('live');
+          chip(el, player.isMuted() ? '🔊 Toca para oír' : '');
+        }
+        if (e.data === YT.PlayerState.ENDED) next(active);
       },
-      onError: () => { skipped.add(i); next(i); }, // vídeo borrado o que no deja insertarse: al siguiente
+      onError: () => next(active), // vídeo borrado o que no deja insertarse: al siguiente
     },
   });
 }
+
+function play(i) {
+  if (!playerReady || i < 0) return;
+  player.loadVideoById(items[i].id);
+  player.unMute(); player.setVolume(100); player.playVideo();
+  // Si el móvil no deja arrancarlo solo, se avisa en vez de quedarse parado
+  setTimeout(() => {
+    if (active === i && player.getPlayerState() !== YT.PlayerState.PLAYING && player.getPlayerState() !== YT.PlayerState.BUFFERING)
+      chip(cur(), '▶ Toca para ver');
+  }, 3000);
+}
+
+function activate(i) {
+  if (!started || i === active) return;
+  document.querySelectorAll('.slide.live').forEach(s => s.classList.remove('live'));
+  chip(cur(), '');
+  active = i;
+  play(i);
+}
 function next(i) { const n = feed.children[i + 1]; if (n) n.scrollIntoView({ behavior: 'smooth' }); }
 function togglePause(el) {
-  if (!player || +el.dataset.i !== active) return;
+  if (!playerReady || +el.dataset.i !== active) return;
   if (player.isMuted()) { player.unMute(); player.setVolume(100); player.playVideo(); chip(el, ''); return; }
-  const s = player.getPlayerState();
-  if (s === YT.PlayerState.PLAYING) { player.pauseVideo(); chip(el, '⏸ Pausa — toca para seguir'); }
+  const st = player.getPlayerState();
+  if (st === YT.PlayerState.PLAYING) { player.pauseVideo(); chip(el, '⏸ Pausa: toca para seguir'); }
   else { player.playVideo(); chip(el, ''); }
 }
 
 // ---------- Inicio ----------
 loadYT();
-const listo = cargar().then(build);
+const listo = cargar().then(() => { build(); crearPlayer(); });
 document.getElementById('go').addEventListener('click', () => {
   started = true;
   document.getElementById('start').classList.add('gone');
   document.getElementById('top').classList.add('gone');
-  listo.then(() => { if (items.length) activate(0); });
+  // Dentro del toque de "Entrar": arranca con sonido si el reproductor ya está listo
+  if (playerReady) { active = 0; play(0); } else listo.then(() => activate(0));
 });
 addEventListener('keydown', (e) => {
   if (!started) return;
