@@ -11,7 +11,20 @@ async function cargar() {
   // Mete un vídeo fijo cada 4 de canales
   const out = []; let f = 0;
   nuevos.forEach((v, i) => { out.push(v); if (i % 4 === 3 && fijos[f]) out.push(fijos[f++]); });
-  items = out.concat(fijos.slice(f));
+  items = barajar(out.concat(fijos.slice(f)));
+}
+
+/** Orden aleatorio cada vez que se abre, sin repetir el mismo canal dos veces seguidas. */
+function barajar(lista) {
+  const a = [...lista];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  for (let i = 1; i < a.length; i++) {
+    if (a[i].canal && a[i].canal === a[i - 1].canal) {
+      const j = a.findIndex((x, k) => k > i && x.canal !== a[i - 1].canal);
+      if (j > 0) [a[i], a[j]] = [a[j], a[i]];
+    }
+  }
+  return a;
 }
 
 const feed = document.getElementById('feed');
