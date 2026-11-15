@@ -1,0 +1,17 @@
+{
+  "name": "Mi Rato",
+  "short_name": "Mi Rato",
+  "description": "Reels para la mente: música, preguntas fáciles y consejos de comida y salud.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ff5e7e",
+  "theme_color": "#2b1b4f",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
