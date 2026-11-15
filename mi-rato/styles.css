@@ -163,6 +163,9 @@ h1.big { font-size: clamp(40px, 11vw, 72px); line-height: 1.05; }
 #go { font-size: 32px; font-weight: 800; padding: 18px 0; width: min(100%, 380px); border-radius: 14px; border: 0;
   background: #1f5fd6; color: #fff; box-shadow: 0 8px 20px rgba(31,95,214,.35); cursor: pointer; }
 #go:active { transform: scale(.98); }
+#test { font-size: 22px; font-weight: 700; padding: 12px 22px; border-radius: 14px; border: 2px solid #1f5fd6;
+  background: #fff; color: #1f5fd6; cursor: pointer; }
+#start .testmsg { font-size: 19px; min-height: 1.3em; color: #1f5fd6; font-weight: 600; }
 
 @media (max-height: 740px) {
   #start { gap: 10px; }

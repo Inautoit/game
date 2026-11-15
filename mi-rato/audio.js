@@ -2,7 +2,28 @@
 
 export const Cancelled = Symbol('cancelled');
 
-let ctx = null, master = null, voice = null;
+let ctx = null, master = null, voice = null, silentEl = null;
+
+/** WAV de 1 s de silencio, generado aquí mismo (sin archivos). */
+function silentWav() {
+  const rate = 8000, n = rate, buf = new DataView(new ArrayBuffer(44 + n));
+  const w = (o, s) => [...s].forEach((c, i) => buf.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); buf.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); buf.setUint32(16, 16, true);
+  buf.setUint16(20, 1, true); buf.setUint16(22, 1, true); buf.setUint32(24, rate, true); buf.setUint32(28, rate, true);
+  buf.setUint16(32, 1, true); buf.setUint16(34, 8, true); w(36, 'data'); buf.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) buf.setUint8(44 + i, 128);
+  let bin = ''; new Uint8Array(buf.buffer).forEach(b => bin += String.fromCharCode(b));
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+
+/** Habla directamente (para usar dentro de un toque: así el móvil da permiso a la voz). */
+export function sayNow(text) {
+  if (!('speechSynthesis' in window)) return false;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'es-ES'; if (voice) u.voice = voice; u.rate = 0.9;
+  speechSynthesis.resume(); speechSynthesis.speak(u);
+  return true;
+}
 export const state = { muted: false };
 
 export function initAudio() {
@@ -18,7 +39,19 @@ export function initAudio() {
       master.connect(delay); delay.connect(fb); fb.connect(delay); fb.connect(ctx.destination);
     }
     ctx.resume();
+    // Un "clic" inaudible dentro del toque desbloquea Web Audio en iPhone
+    const b = ctx.createBuffer(1, 1, 22050), src = ctx.createBufferSource();
+    src.buffer = b; src.connect(ctx.destination); src.start(0);
   } catch { /* sin audio */ }
+  // iPhone: que suene aunque el interruptor de silencio esté puesto
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+  try {
+    if (!silentEl) {
+      silentEl = new Audio(silentWav());
+      silentEl.loop = true; silentEl.setAttribute('playsinline', '');
+    }
+    silentEl.play().catch(() => {});
+  } catch {}
   pickVoice();
   if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = pickVoice;
 }
@@ -69,7 +102,8 @@ export class Run {
       const guard = setTimeout(finish, est + 4000);
       u.onend = finish; u.onerror = finish;
       this.cleanups.push(() => { clearTimeout(guard); speechSynthesis.cancel(); if (!finished) { finished = true; rej(Cancelled); } });
-      speechSynthesis.cancel();
+      if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+      speechSynthesis.resume();
       speechSynthesis.speak(u);
     });
     this.check();

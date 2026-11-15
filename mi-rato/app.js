@@ -1,5 +1,5 @@
 import { QUESTIONS, SONGS, INFOS, MEMORY, CHEERS } from './content.js';
-import { initAudio, setMuted, state, Run, Cancelled, chime } from './audio.js';
+import { initAudio, setMuted, state, Run, Cancelled, chime, sayNow } from './audio.js';
 
 const feed = document.getElementById('feed');
 const BREAK_AFTER_MIN = 15;
@@ -288,7 +288,8 @@ document.getElementById('go').addEventListener('click', () => {
   started = true; startTime = Date.now();
   startEl.classList.add('gone');
   add('greeting'); fill(4);
-  setTimeout(() => activate(reels[0]), 300);
+  // Empezar YA, dentro del toque: así el móvil permite la voz desde la primera frase
+  activate(reels[0]);
   if (document.documentElement.requestFullscreen && matchMedia('(pointer:coarse)').matches) {
     document.documentElement.requestFullscreen().catch(() => {});
   }
@@ -314,6 +315,14 @@ function toast(msg) {
   const t = $(`<div class="toast">${esc(msg)}</div>`); document.body.appendChild(t);
   setTimeout(() => t.remove(), 2200);
 }
+
+document.getElementById('test').addEventListener('click', () => {
+  initAudio(); chime();
+  const ok = sayNow('Hola. Si me oyes, todo está bien.');
+  document.getElementById('testmsg').textContent = ok
+    ? '¿No oyes nada? Sube el volumen y quita el modo silencio 🔔'
+    : 'Este navegador no puede hablar. Prueba con Chrome o Safari.';
+});
 
 const muteBtn = document.getElementById('mute');
 muteBtn.addEventListener('click', () => {
