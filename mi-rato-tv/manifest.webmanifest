@@ -1,7 +1,7 @@
 {
   "name": "Mi Rato TV",
   "short_name": "Mi Rato TV",
-  "description": "Vídeos elegidos por tu familia, sin compartir ni comentar.",
+  "description": "Humor, música, cocina y noticias de canales españoles, sin compartir ni comentar.",
   "lang": "es",
   "start_url": "./",
   "scope": "./",

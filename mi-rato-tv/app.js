@@ -2,11 +2,17 @@ import { LISTA } from './lista.js';
 
 // ---------- Lista de vídeos ----------
 const idOf = (u) => (String(u).match(/(?:shorts\/|v=|youtu\.be\/|embed\/)([\w-]{11})/) || [])[1] || (/^[\w-]{11}$/.test(u) ? u : null);
-const items = LISTA.map(x => (typeof x === 'string' ? { url: x } : x)).map(x => ({ ...x, id: idOf(x.url || x.id) })).filter(x => x.id);
-// Barajado distinto cada día (pero estable durante el día)
-const seed = Number(new Date().toISOString().slice(0, 10).replace(/-/g, ''));
-let r = seed; const rnd = () => ((r = (r * 1103515245 + 12345) % 2147483648) / 2147483648);
-for (let i = items.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [items[i], items[j]] = [items[j], items[i]]; }
+// Lista fija elegida a mano (opcional) + Shorts nuevos de los canales oficiales (los trae Cloudflare)
+const fijos = LISTA.map(x => (typeof x === 'string' ? { url: x } : x)).map(x => ({ ...x, id: idOf(x.url || x.id) })).filter(x => x.id);
+let items = [];
+async function cargar() {
+  let nuevos = [];
+  try { const r = await fetch('./lista.json', { cache: 'no-cache' }); if (r.ok) nuevos = (await r.json()).videos || []; } catch {}
+  // Mete un vídeo fijo cada 4 de canales
+  const out = []; let f = 0;
+  nuevos.forEach((v, i) => { out.push(v); if (i % 4 === 3 && fijos[f]) out.push(fijos[f++]); });
+  items = out.concat(fijos.slice(f));
+}
 
 const feed = document.getElementById('feed');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -30,7 +36,7 @@ function build() {
     el.className = 'slide'; el.dataset.i = i;
     el.innerHTML = `<img class="thumb" src="https://i.ytimg.com/vi/${it.id}/hqdefault.jpg" alt="">
       <div class="player"></div><div class="shield"></div>
-      <div class="chip" hidden></div><div class="title">${esc(it.title)}</div>`;
+      <div class="chip" hidden></div>`;
     el.querySelector('.shield').addEventListener('click', () => togglePause(el));
     feed.appendChild(el);
     io.observe(el);
@@ -78,14 +84,18 @@ function togglePause(el) {
 }
 
 // ---------- Inicio ----------
-loadYT(); build();
+loadYT();
+const listo = cargar().then(build);
 document.getElementById('go').addEventListener('click', () => {
   started = true;
   document.getElementById('start').classList.add('gone');
-  if (items.length) activate(0);
+  document.getElementById('top').classList.add('gone');
+  listo.then(() => { if (items.length) activate(0); });
 });
 addEventListener('keydown', (e) => {
   if (!started) return;
   if (e.key === 'ArrowDown') { e.preventDefault(); next(active); }
   if (e.key === 'ArrowUp') { e.preventDefault(); feed.children[active - 1]?.scrollIntoView({ behavior: 'smooth' }); }
 });
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(() => {});
