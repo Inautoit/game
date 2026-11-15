@@ -442,7 +442,7 @@ async function tick(env, now = Date.now()) {
   await step("velas", async () => {
     const due = TRADERS.find((t) => {
       const st = all.traders[t.id], bar = Math.floor(now / t.barMs);
-      return !st.risk.halted && bar !== st.lastBar && now - bar * t.barMs > 60_000;
+      return !st.risk.halted && bar !== st.lastBar && now - bar * t.barMs > 30_000;
     });
     if (!due) return;
     const st = all.traders[due.id];
@@ -456,7 +456,7 @@ async function tick(env, now = Date.now()) {
   });
   // si el Rápido está apagado, el Estadístico pide sus propias velas de 1 h
   const pst = all.traders.pares, hourBar = Math.floor(now / 3600_000);
-  if (all.traders.rapido.risk.halted && pst.lastBar !== hourBar && now - hourBar * 3600_000 > 60_000) {
+  if (all.traders.rapido.risk.halted && pst.lastBar !== hourBar && now - hourBar * 3600_000 > 30_000) {
     await step("pares", async () => {
       const frames = {};
       for (const c of COINS) { try { frames[c.kraken] = parseKlines(await klines(c.kraken, 3600_000), now); } catch (e) {} await sleep(1100); }
