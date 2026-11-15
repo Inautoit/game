@@ -16,9 +16,32 @@ export const CANALES = [
   { id: 'UChWJN4K0gKeOGo97m7mN14w', nombre: 'Informativos Telecinco', cat: 'noticias' },
   { id: 'UCMSOVP8zZq8BGwAJ2sEtOHw', nombre: 'Atresplayer', cat: 'nostalgia' },
   { id: 'UCWJ8aE2rSKlmJihqqhnK7Yg', nombre: 'Eltiempo.es', cat: 'noticias' },
+  // Humor y entretenimiento
+  { id: 'UCLNZvDlwQJMaQg477NAxvjQ', nombre: 'El Hormiguero', cat: 'humor' },
+  { id: 'UCQcjDEVrrnRCgx99035ADtw', nombre: 'Carnaval de Cádiz (Canal Sur)', cat: 'humor' },
+  { id: 'UCjsuIwGVcbyMU60tqrOXVVQ', nombre: 'MasterChef España', cat: 'humor' },
+  // Series y programas de siempre
+  { id: 'UCcJmo9dEwjkjOneRbmz7qfA', nombre: 'RTVE Series', cat: 'nostalgia' },
+  { id: 'UCzFECXtTtodMuin8whWxDqQ', nombre: 'La 2', cat: 'nostalgia' },
+  { id: 'UCE2CYjCSM-ebWPADoR7cLlg', nombre: 'Españoles en el mundo', cat: 'curiosidades' },
+  { id: 'UCpyYUq9kcBMLPlfE8EzguvA', nombre: 'National Geographic España', cat: 'curiosidades' },
+  // Música
+  { id: 'UCF61cdwp7DHm6__qFNW3e0A', nombre: 'Dyango', cat: 'musica' },
+  { id: 'UCVr4HNzc-0y2GYEh9UfQYJw', nombre: 'La Voz Kids', cat: 'musica' },
+  { id: 'UCk7_W_QBCqMTYcVVQaImYUA', nombre: 'Cadena 100', cat: 'musica' },
+  { id: 'UCliPx6aha_hf1oVyhDE1V9w', nombre: 'Orquesta y Coro RTVE', cat: 'musica' },
+  // Cocina
+  { id: 'UCq7v9oVEWn1T2Vn_CjM_X1w', nombre: 'Cocinatis', cat: 'cocina' },
+  { id: 'UCMCQlw54oqPMRnKKRjsRnYA', nombre: 'Canal Cocina', cat: 'cocina' },
+  { id: 'UCfYH5kIY7at9s5MR7gF1jkg', nombre: 'Directo al Paladar', cat: 'cocina' },
+  // Deporte
+  { id: 'UC4SBVYTpqOh-exr7BShLAPw', nombre: 'Teledeporte', cat: 'deporte' },
+  { id: 'UCJ2F8qpzHRk3RdJZ4YXLbxQ', nombre: 'Selección Española', cat: 'deporte' },
+  // Consejos útiles (estafas, seguridad)
+  { id: 'UCmUAGTETe2N4ZIaAToIMobw', nombre: 'Policía Nacional', cat: 'util' },
 ];
 // Orden de la mezcla: así no salen diez noticias seguidas.
-export const RITMO = ['humor', 'noticias', 'musica', 'cocina', 'humor', 'nostalgia', 'noticias', 'humor', 'musica'];
+export const RITMO = ['humor', 'noticias', 'musica', 'cocina', 'humor', 'nostalgia', 'curiosidades', 'noticias', 'humor', 'musica', 'deporte', 'cocina', 'util', 'nostalgia'];
 // Títulos que no se muestran (anuncios, directos y sucesos duros).
 export const FILTRO = /#publi|directo|muert|muere|fallec|asesin|matan|mató|violen|violad|agresi|apuñal|tirote|guerra|bomba|atentad|cad[aá]ver|suicid|terror|sangre|abus|secuestr|disparo|narco|incendio mortal/i;
 
