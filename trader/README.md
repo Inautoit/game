@@ -7,7 +7,9 @@ Decide por sí misma **dónde**, **cuándo** y **cuánto**, y tiene frenos para 
 > La mayoría de los bots pierden dinero. Úsala primero SIEMPRE en modo simulado.
 
 ## ☁️ Ya está funcionando en Cloudflare
-Panel en directo (modo simulado): **https://maquina-trader.inautoit.workers.dev** · detalles en [`cloudflare/`](cloudflare/README.md)
+Panel en directo (modo simulado, 6 traders compitiendo): **https://maquina-trader.inautoit.workers.dev** · detalles en [`cloudflare/`](cloudflare/README.md)
+
+Backtests de las técnicas profesionales: `bot/funding.py` (financiación) y `bot/pairs.py` (pares).
 
 ## Cómo piensa
 

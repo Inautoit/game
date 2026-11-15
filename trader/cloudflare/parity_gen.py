@@ -26,6 +26,21 @@ for sym in ["BTC/USDT", "SOL/USDT", "DOGE/USDT", "LINK/USDT"]:
             r = st.generate(w).iloc[-1]
             out[name] = {k: (bool(r[k]) if k in ("entry", "exit") else float(r[k])) for k in ("entry", "exit", "stop", "trail", "strength")}
         cases.append(out)
+# casos de pares (velas de 1 h)
+from bot.pairs import zscore
+pc = []
+h1 = {s: D.fetch_binance_vision(s, "1h", 1095)["close"] for s in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "DOGE/USDT"]}
+import pandas as pd
+closes = pd.DataFrame(h1).dropna()
+for e in rng.integers(400, len(closes), 30):
+    w = closes.iloc[e - 400:e]
+    for A, B in (("BTC/USDT", "ETH/USDT"), ("SOL/USDT", "DOGE/USDT"), ("ETH/USDT", "SOL/USDT")):
+        r = np.log(w).diff()
+        pc.append({"a": w[A].tolist(), "b": w[B].tolist(), "z": float(zscore(w[A], w[B], 168).iloc[-1]),
+                   "corr": float(r[A].rolling(200).corr(r[B]).iloc[-1])})
+json.dump(pc, open(os.path.join("cloudflare", "parity_pairs.json"), "w"))
+print(len(pc), "casos de pares")
+
 def clean(x):
     if isinstance(x, float):
         return None if x != x else ("-inf" if x == float("-inf") else x)

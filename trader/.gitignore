@@ -6,3 +6,4 @@ __pycache__/
 .env
 cloudflare/parity_cases.json
 cloudflare/dashboard.js
+cloudflare/parity_pairs.json

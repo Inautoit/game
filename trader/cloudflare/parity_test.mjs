@@ -18,5 +18,11 @@ for (const k of cases) {
   const s = score(d), ps = k.score ?? NaN;
   if (!close(s, ps)) { fails++; if (fails < 10) console.log("DIFERENCIA score", k.sym, s, ps); }
 }
-console.log(`${cases.length} casos, ${fails} diferencias`);
+import { pairStats } from "./pro.js";
+const pc = JSON.parse(fs.readFileSync(new URL("./parity_pairs.json", import.meta.url)));
+for (const k of pc) {
+  const s = pairStats(k.a, k.b);
+  if (!close(s.z, k.z) || !close(s.corr, k.corr)) { fails++; if (fails < 10) console.log("DIFERENCIA pares", s, k.z, k.corr); }
+}
+console.log(`${cases.length} casos de señales + ${pc.length} de pares, ${fails} diferencias`);
 process.exit(fails ? 1 : 0);

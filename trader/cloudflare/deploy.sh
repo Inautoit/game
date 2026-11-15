@@ -24,6 +24,7 @@ curl -sS --fail-with-body "${AUTH[@]}" -X PUT "$API/workers/scripts/$NAME" \
   -F "metadata=$META;type=application/json" \
   -F "worker.js=@worker.js;type=application/javascript+module" \
   -F "lib.js=@lib.js;type=application/javascript+module" \
+  -F "pro.js=@pro.js;type=application/javascript+module" \
   -F "dashboard.js=@dashboard.js;type=application/javascript+module" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);console.log('código:',j.success,JSON.stringify(j.errors))})"
 
 # 3) que se ejecute sola cada 5 minutos

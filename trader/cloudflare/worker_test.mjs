@@ -80,8 +80,8 @@ assert.ok(all.traders.prudente.risk.halted && !all.traders.rapido.risk.halted);
 console.log("freno OK:", all.traders.prudente.risk.haltReason);
 
 const page = await worker.fetch(new Request("https://x/"), env);
-assert.ok((await page.text()).includes("Clasificación de traders"));
+assert.ok((await page.text()).includes("Tus 6 traders juntos"));
 const api = await (await worker.fetch(new Request("https://x/api/state"), env)).json();
-assert.equal(api.traders.length, 3);
+assert.equal(api.traders.length, 6);
 assert.ok(api.meta.checks >= 4);
 console.log("panel y API OK · revisiones:", api.meta.checks);
