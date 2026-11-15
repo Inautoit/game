@@ -30,13 +30,29 @@ function updateStreak() {
 }
 
 // ---------- Piezas visuales ----------
-function shell(kind, label, inner) {
-  const el = $(`<section class="reel reel-${kind}">
+export const LOGO = '<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1f5fd6"/><circle cx="256" cy="262" r="150" fill="#fff"/><path d="M222 192 L328 262 L222 332 Z" fill="#1f5fd6" stroke="#1f5fd6" stroke-width="22" stroke-linejoin="round"/><path d="M398 92 l12 30 30 12 -30 12 -12 30 -12 -30 -30 -12 30 -12z" fill="#fff"/></svg>';
+const CHANNELS = {
+  'Refrán': ['📜', 'Refranes de siempre'], 'Adivinanza': ['🤔', 'Adivinanzas'], 'Pregunta': ['❓', 'Preguntas fáciles'],
+  'Cuentas': ['🧮', 'Cuentas del mercado'], 'Dilo en voz alta': ['🗣️', 'Juegos de palabras'],
+  'Comida sana': ['🥗', 'Comer bien'], 'Salud': ['💙', 'Salud y bienestar'], 'Receta fácil': ['🍳', 'Cocina fácil'],
+  'Truco de cocina': ['🍳', 'Cocina fácil'], 'Curiosidad': ['💡', 'Curiosidades'],
+};
+/** Marco de reel: contenido + autor y texto abajo + botones a la derecha (como en las redes). */
+function shell(kind, [avatar, name], caption, inner) {
+  const av = avatar === 'logo' ? LOGO : `<span>${avatar}</span>`;
+  return $(`<section class="reel reel-${kind}">
     <div class="floaties" aria-hidden="true"></div>
-    <div class="chip">${label}</div>
     <div class="body">${inner}</div>
+    <div class="meta">
+      <div class="author"><div class="avatar">${av}</div><b>${esc(name)}</b></div>
+      <p class="caption">${caption}</p>
+    </div>
+    <div class="actions">
+      <button class="act like" data-act="like" aria-label="Me gusta"><span>🤍</span><small>Me gusta</small></button>
+      <button class="act" data-act="replay" aria-label="Otra vez"><span>🔁</span><small>Otra vez</small></button>
+      <button class="act" data-act="share" aria-label="Compartir"><span>📤</span><small>Compartir</small></button>
+    </div>
   </section>`);
-  return el;
 }
 function floaties(el, emojis) {
   const box = el.querySelector('.floaties');
@@ -70,7 +86,7 @@ const REELS = {
     const h = new Date().getHours();
     const hello = h < 13 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
     const days = updateStreak();
-    const el = shell('greeting', '☀️ Hola', `
+    const el = shell('greeting', ['logo', 'Mi Rato'], 'Tu rato de cada día ☀️', `
       <h1 class="big step">${hello}${name ? ', ' + esc(name) : ''}</h1>
       <p class="mid step">Hoy es <b>${date}</b></p>
       ${days > 1 ? `<p class="mid step">🔥 Llevas <b>${days} días</b> seguidos</p>` : '<p class="mid step">🌼 ¡Qué bien que estés aquí!</p>'}
@@ -87,7 +103,7 @@ const REELS = {
 
   question() {
     const q = next.question();
-    const el = shell('question', `${q.icon} ${esc(q.cat)}`, `
+    const el = shell('question', CHANNELS[q.cat], '¿Te lo sabes? Dilo en voz alta 🗣️', `
       <h2 class="q step on${q.q.length > 45 ? ' long' : ''}">${esc(q.q)}</h2>
       <div class="think"></div>
       <div class="answer step">${q.ae ? `<span class="ae">${q.ae}</span>` : ''}<span>${esc(q.a)}</span></div>
@@ -105,7 +121,7 @@ const REELS = {
   song() {
     const s = next.song();
     const bars = Array.from({ length: 12 }, () => '<i></i>').join('');
-    const el = shell('song', '🎵 Música', `
+    const el = shell('song', ['🎵', 'Canciones de siempre'], '¿La reconoces? 🎶 ¡Cántala!', `
       <h2 class="q step on">¿Qué canción es?</h2>
       <div class="eq">${bars}</div>
       <div class="think"></div>
@@ -131,7 +147,7 @@ const REELS = {
 
   info() {
     const it = next.info();
-    const el = shell('info', `${it.icon} ${esc(it.cat)}`, `
+    const el = shell('info', CHANNELS[it.cat], `${it.icon} ${esc(it.title)}`, `
       <div class="hero step on">${it.icon}</div>
       <h2 class="q step on">${esc(it.title)}</h2>
       <ul class="facts">${it.facts.map(([e, t]) => `<li class="step"><span>${e}</span>${esc(t)}</li>`).join('')}</ul>`);
@@ -149,7 +165,7 @@ const REELS = {
 
   memory() {
     const items = next.memory();
-    const el = shell('memory', '🧠 Memoria', `
+    const el = shell('memory', ['🧠', 'Memoria'], 'Mira bien y luego recuerda 👀', `
       <h2 class="q step on">Mira bien estas cuatro cosas</h2>
       <div class="grid">${items.map(([e]) => `<div class="card"><span class="front">${e}</span><span class="back">❔</span></div>`).join('')}</div>
       <div class="think"></div>
@@ -171,7 +187,7 @@ const REELS = {
   },
 
   relax() {
-    const el = shell('relax', '🌿 Un respiro', `
+    const el = shell('relax', ['🌿', 'Respira tranquilo'], 'Un momento para ti 🍃', `
       <h2 class="q step on">Respira conmigo</h2>
       <div class="breath"><div class="ball"></div><p class="bt">Toma aire…</p></div>`);
     floaties(el, ['🍃', '🌿', '☁️']);
@@ -190,7 +206,7 @@ const REELS = {
   },
 
   pause() {
-    const el = shell('greeting', '⏸️ Descanso', `
+    const el = shell('greeting', ['logo', 'Mi Rato'], 'Hora de moverse un poco 🚶‍♀️', `
       <div class="hero step on">🚶‍♀️</div>
       <h2 class="q step on">¡Llevas un buen rato!</h2>
       <p class="mid step on">Has hecho un montón de ejercicios. ¿Qué tal si te levantas, bebes un vaso de agua o das un paseo?</p>
@@ -230,8 +246,8 @@ const io = new IntersectionObserver((entries) => {
   for (const e of entries) if (e.isIntersecting && e.intersectionRatio > 0.6) activate(reels[+e.target.dataset.i]);
 }, { root: feed, threshold: [0.6] });
 
-async function activate(r) {
-  if (!started || r === active) return;
+async function activate(r, force = false) {
+  if (!started || (r === active && !force)) return;
   run?.cancel();
   active = r;
   reels.forEach(x => x.el.classList.toggle('active', x === r));
@@ -277,6 +293,27 @@ document.getElementById('go').addEventListener('click', () => {
     document.documentElement.requestFullscreen().catch(() => {});
   }
 });
+
+// Botones de la derecha (opcionales: la app funciona sin tocar nada)
+feed.addEventListener('click', async (e) => {
+  const b = e.target.closest('.act'); if (!b) return;
+  const r = reels.find(x => x.el.contains(b));
+  if (b.dataset.act === 'like') {
+    const on = b.classList.toggle('on');
+    b.querySelector('span').textContent = on ? '❤️' : '🤍';
+    if (on) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); store.set('likes', store.get('likes', 0) + 1); }
+  }
+  if (b.dataset.act === 'replay' && r) { r.el.scrollIntoView({ behavior: 'smooth' }); activate(r, true); }
+  if (b.dataset.act === 'share') {
+    const data = { title: 'Mi Rato', text: '¡Mira esta app para pasar un buen rato y ejercitar la mente! 🧠🎵', url: location.href.split('#')[0] };
+    try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(data.url); toast('Enlace copiado 👍'); } }
+    catch { /* cancelado */ }
+  }
+});
+function toast(msg) {
+  const t = $(`<div class="toast">${esc(msg)}</div>`); document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
 
 const muteBtn = document.getElementById('mute');
 muteBtn.addEventListener('click', () => {

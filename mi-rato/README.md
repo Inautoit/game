@@ -1,4 +1,6 @@
-# Mi Rato 🌻
+# Mi Rato
+
+**En línea:** <https://mi-rato.inautoit.workers.dev>
 
 App tipo **Reels** para personas mayores: en lugar de deslizar vídeos sin fin,
 cada reel ejercita la mente. **No hace falta tocar nada**: se mira, se escucha,
@@ -20,7 +22,22 @@ Todo se lee en voz alta (voz del navegador) y la música se genera en el propio
 navegador (melodías tradicionales / de dominio público). Funciona sin conexión
 y se puede **instalar en el móvil** («Añadir a pantalla de inicio»).
 
-## Ejecutar
+## Instalar en el móvil (icono en la pantalla de inicio)
+
+- **Android (Chrome):** abre la dirección → menú ⋮ → «Añadir a pantalla de inicio» / «Instalar app».
+- **iPhone (Safari):** abre la dirección → botón Compartir → «Añadir a pantalla de inicio».
+
+Aparece el icono azul de **Mi Rato** y se abre a pantalla completa, como una app.
+
+## Publicar cambios
+
+```bash
+CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... ./deploy/deploy.sh
+```
+
+Empaqueta todo en un único Worker de Cloudflare (`deploy/build.py`) y lo sube.
+
+## Ejecutar en local
 
 ```bash
 python3 -m http.server 8000
@@ -43,4 +60,5 @@ audio.js              Voz y música (Web Audio)
 content.js            Contenido
 manifest.webmanifest  Instalable como app
 sw.js                 Funciona sin conexión
+deploy/               Publicación en Cloudflare Workers
 ```

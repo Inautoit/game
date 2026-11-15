@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#2b1b4f" />
+  <meta name="theme-color" content="#1f5fd6" />
   <meta name="description" content="Reels para la mente: música, preguntas fáciles y consejos de comida y salud." />
   <title>Mi Rato</title>
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -15,15 +15,28 @@
 <body>
   <main id="feed" aria-live="polite"></main>
 
-  <button id="mute" aria-label="Quitar sonido">🔊</button>
+  <header id="top">
+    <div class="brand"><svg viewBox="0 0 512 512" aria-hidden="true">
+  <rect width="512" height="512" rx="112" fill="#1f5fd6"/>
+  <circle cx="256" cy="262" r="150" fill="#fff"/>
+  <path d="M222 192 L328 262 L222 332 Z" fill="#1f5fd6" stroke="#1f5fd6" stroke-width="22" stroke-linejoin="round"/>
+  <path d="M398 92 l12 30 30 12 -30 12 -12 30 -12 -30 -30 -12 30 -12z" fill="#fff"/>
+</svg><span>Mi Rato</span></div>
+    <button id="mute" aria-label="Quitar sonido">🔊</button>
+  </header>
 
   <div id="start">
-    <div class="logo">🌻</div>
+    <div class="logo"><svg viewBox="0 0 512 512" aria-hidden="true">
+  <rect width="512" height="512" rx="112" fill="#1f5fd6"/>
+  <circle cx="256" cy="262" r="150" fill="#fff"/>
+  <path d="M222 192 L328 262 L222 332 Z" fill="#1f5fd6" stroke="#1f5fd6" stroke-width="22" stroke-linejoin="round"/>
+  <path d="M398 92 l12 30 30 12 -30 12 -12 30 -12 -30 -30 -12 30 -12z" fill="#fff"/>
+</svg></div>
     <h1>Mi Rato</h1>
     <p>Música, preguntas fáciles y cosas interesantes.<br>Solo mira, escucha y piensa.</p>
     <label for="name">¿Cómo te llamas? <small>(si quieres)</small></label>
     <input id="name" autocomplete="given-name" maxlength="20" placeholder="Tu nombre" />
-    <button id="go">▶ Empezar</button>
+    <button id="go">Entrar</button>
   </div>
 
   <script type="module" src="./app.js"></script>
