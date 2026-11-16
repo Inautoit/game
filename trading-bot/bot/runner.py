@@ -322,7 +322,9 @@ class Runner:
             self.event("INTERRUPTOR DE EMERGENCIA: caída del 10 % desde máximos. No abrirá más operaciones.", "down")
         if self.risk.halted_today and not was_halted:
             self.event("Límite de pérdida diaria alcanzado: pausa hasta mañana.", "down")
-        cands = [self.scan[s] for s in new_bar if s in self.scan and self.scan[s]["entry"] != 0]
+        # sólo señales frescas: la vela debe haber cerrado hace menos de 15 minutos
+        fresh = lambda s: pd.Timestamp(now) - (pd.Timestamp(self.scan[s]["time"]) + self.bar) < pd.Timedelta(minutes=15)
+        cands = [self.scan[s] for s in new_bar if s in self.scan and self.scan[s]["entry"] != 0 and fresh(s)]
         if cands:
             self.open_best(cands, now)
         if not self.equity_hist or now.timestamp() - self.equity_hist[-1][0] / 1000 >= 300:
@@ -349,6 +351,9 @@ class Runner:
         if p.exists():
             b = json.loads(p.read_text())
             bt = {k: b.get(k) for k in ("metrics", "auc", "period", "by_class")}
+            eqb = b.get("equity", [])
+            step = max(1, len(eqb) // 600)
+            bt["equity"] = [[int(pd.Timestamp(t).timestamp() * 1000), v] for t, v in eqb[::step]]
         state = {
             "updated": now.isoformat(), "status": self.status, "mode": self.cfg.get("mode", "paper"),
             "initial": float(self.cfg.get("capital_inicial", 10_000)), "equity_now": eq, "cash": self.broker.cash,

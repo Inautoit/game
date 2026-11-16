@@ -101,3 +101,18 @@ def test_ml_strategy_backtest():
            "ml": {"tp_atr": 2, "sl_atr": 1, "min_edge": 0.05}}}}
     res = Backtester(cfg).run({"X-USD": df})
     assert len(res["trades"]) > 0 and (res["trades"].direction == 1).all()
+
+
+def test_market_hours():
+    from datetime import datetime, timezone
+    from bot.runner import market_open
+    mon_15utc = datetime(2026, 11, 16, 15, 0, tzinfo=timezone.utc)   # lunes 10:00 NY, 16:00 Madrid
+    sat = datetime(2026, 11, 14, 15, 0, tzinfo=timezone.utc)
+    assert market_open("AAPL", mon_15utc) and market_open("SAN.MC", mon_15utc)
+    assert not market_open("AAPL", sat) and market_open("BTC-USD", sat) and not market_open("EURUSD=X", sat)
+    assert not market_open("SAN.MC", datetime(2026, 11, 16, 17, 0, tzinfo=timezone.utc))  # 18:00 Madrid
+
+
+def test_clean_json():
+    from bot.runner import _clean
+    assert _clean({"a": [float("nan"), 1.0, np.float64("inf")]}) == {"a": [None, 1.0, None]}

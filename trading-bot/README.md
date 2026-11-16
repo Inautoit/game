@@ -15,24 +15,24 @@ Bot que estudia el mercado, decide y opera a corto plazo (minutos y horas). **Fu
 | Riesgo | `bot/risk.py` | Arriesga un 0,5 % por operación, máximo 4 posiciones, freno diario del 2 % e interruptor de emergencia si cae un 10 % |
 | Backtest | `bot/backtest.py` | Simulación vela a vela sin mirar al futuro, con comisiones, deslizamiento, huecos de precio y stops |
 | Paper trading | `bot/live.py`, `bot/broker.py` | Opera en vivo con dinero simulado, o con la cuenta paper o real de Alpaca |
-| **Panel web** | `web/` | El bot funcionando en el navegador: precios en directo, señales, posiciones, aprendizaje |
+| Bot continuo | `bot/runner.py`, `bot/universe.py` | Vigila 134 mercados sin parar, elige las mejores oportunidades y sirve el panel web |
+| **Panel web** | `web/` | Radar de oportunidades, posiciones, historial, actividad y validación |
 
 ## Cómo aprende el modelo
 
-1. **Histórico de 3 años**: velas de 15 minutos de BTC, ETH, SOL, BNB y XRP descargadas de Binance.
-2. **Etiquetado "triple barrera"**: en cada vela se pregunta si, al entrar ahí, el precio habría tocado el objetivo (2×ATR) antes que el stop (1×ATR) en las 8 horas siguientes.
-3. **Features**: 28 variables que no dependen de la escala del precio (retornos medidos en ATR, RSI, ADX, posición en Bollinger, distancia a medias y al VWAP, volatilidad, hora del día, forma de la vela…).
+1. **Histórico**: 1,2 millones de velas de 1 hora de 134 mercados (3 años de cripto vía Binance; 2 años del resto vía Yahoo, el máximo gratuito).
+2. **Etiquetado "triple barrera"**: en cada vela se pregunta si, al entrar ahí, el precio habría tocado el objetivo (2×ATR) antes que el stop (1×ATR) en las 16 velas siguientes.
+3. **Features**: 32 variables (incluido el tipo de mercado) que no dependen de la escala del precio (retornos medidos en ATR, RSI, ADX, posición en Bollinger, distancia a medias y al VWAP, volatilidad, hora del día, forma de la vela…).
 4. **Validación walk-forward**: se entrena con 18 meses y se prueba en el mes siguiente que el modelo no ha visto; luego se avanza un mes y se repite. Se deja un hueco de 2 días para que no se filtre información del futuro.
 5. **Decisión**: sólo opera si la probabilidad supera el punto de equilibrio después de comisiones, más un margen de seguridad del 5 %.
 6. **Aprendizaje continuo**:
-   - En Python, el modelo se reentrena cada 24 h con los datos nuevos y con sus propias operaciones, que cuentan el triple (`ml_journal.csv`).
-   - En la web, un calibrador online se ajusta con cada vela que se resuelve y con cada operación cerrada.
+   - El modelo se reentrena cada 24 h con los datos nuevos y con sus propias operaciones, que cuentan el triple (`ml_journal.csv`).
 
 ## Uso
 
 ```bash
 cd trading-bot
-pip install -r requirements.txt scikit-learn
+pip install -r requirements.txt
 ```
 
 ```bash
@@ -41,21 +41,39 @@ python main.py ml-train                  # descarga 3 años, valida, hace backte
 python main.py backtest                  # backtest de las estrategias de reglas con datos de Yahoo
 python main.py compare                   # compara todas las estrategias
 python main.py scan                      # señales actuales de cada activo
-python main.py paper                     # paper trading en vivo (Ctrl+C para parar)
+python main.py run                       # BOT CONTINUO en 134 mercados + panel en http://localhost:8080
 ```
 
-Para que `paper` use el modelo de machine learning, pon `strategy.name: ml` en `config.yaml`.
+## El bot continuo (`python main.py run`)
 
-## Panel web
+- Vigila **134 mercados**: las 30 criptos con más volumen, 50 empresas de EE. UU., IBEX y grandes europeas, 19 ETF (índices, oro, petróleo, bonos), 10 pares de divisas y 10 futuros. Puedes añadir más en `config.yaml` → `ml.markets.extra`.
+- **Cada minuto** actualiza precios y ejecuta stops y objetivos al instante.
+- **Cada vez que cierra una vela** en cualquier mercado, el modelo la analiza, ordena las oportunidades de todos los mercados por esperanza matemática y entra en las mejores (máx. 6 posiciones). Sólo opera en mercados abiertos.
+- **Reentrena cada día** con los datos nuevos y con sus propias operaciones.
+- Sirve el **panel web** en el puerto 8080 (también desde el móvil, con la IP del servidor).
 
-Abre `web/index.html` en el navegador, o publícalo en GitHub Pages (en GitHub: Settings → Pages, y elige la rama y la carpeta). El bot:
+### Dejarlo funcionando 24/7
 
-- lee precios en directo de la API pública de Binance cada 20 segundos;
-- calcula las señales con el mismo modelo (exportado a `web/model.js`; los árboles se ejecutan en JavaScript);
-- abre y cierra posiciones simuladas, y guarda el estado en tu navegador;
-- muestra el capital, las posiciones, el historial, la actividad y lo que va aprendiendo.
+Necesita un ordenador siempre encendido:
 
-Funciona mientras la pestaña está abierta. Para que opere 24/7 sin el navegador, ejecuta `python main.py paper` en un servidor o en un VPS.
+- **Servidor en la nube**: Oracle Cloud "Always Free" (gratis) u otro VPS de 4-5 €/mes (Hetzner, Contabo…). Con Ubuntu:
+  ```bash
+  curl -O https://raw.githubusercontent.com/Inautoit/game/claude/cool-ramanujan-5tjkw7/trading-bot/deploy/install.sh
+  sudo bash install.sh
+  ```
+  Esto instala el bot como servicio: arranca solo y se reinicia si falla. Abre el puerto 8080 en el firewall del proveedor para ver el panel.
+- **Tu PC o una Raspberry Pi**: `python main.py run`, y abre `http://localhost:8080`.
+
+## Resultados de la validación (datos no vistos, nov 2024 – nov 2026, con comisiones)
+
+| Métrica | Valor |
+|---|---|
+| Rentabilidad | +14,1 % |
+| Caída máxima | −10,8 % |
+| Operaciones | 663 · acierto 37 % · profit factor 1,11 |
+| AUC del modelo | 0,555 largos / 0,534 cortos (0,5 = azar) |
+
+La ventaja existe pero es pequeña y se concentra en acciones de EE. UU. muy volátiles. En cripto, las comisiones se comen casi toda la ventaja en velas de 1 h. **No es suficiente para dinero real**: déjalo meses en simulado.
 
 ## Paso a dinero real (en el futuro)
 

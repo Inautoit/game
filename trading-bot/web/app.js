@@ -96,14 +96,19 @@
   }
 
   function drawEquity() {
-    const cv = $("eq"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    const pts = (S.equity || []).length > 1 ? S.equity : [[Date.now() - 6e4, S.initial], [Date.now(), S.equity_now]];
+    drawLine($("eq"), pts, S.initial);
+    if (S.backtest && (S.backtest.equity || []).length > 1) drawLine($("bteq"), S.backtest.equity, S.backtest.equity[0][1]);
+  }
+
+  function drawLine(cv, pts, base) {
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
     if (!W) return;
     cv.width = W * dpr; cv.height = H * dpr;
     const g = cv.getContext("2d"); g.scale(dpr, dpr);
     const css = getComputedStyle(document.documentElement), col = n => css.getPropertyValue(n).trim();
-    const pts = (S.equity || []).length > 1 ? S.equity : [[Date.now() - 6e4, S.initial], [Date.now(), S.equity_now]];
-    const ys = pts.map(p => p[1]).concat([S.initial]);
-    let lo = Math.min(...ys), hi = Math.max(...ys); const pad = (hi - lo) * 0.1 || S.initial * 0.002; lo -= pad; hi += pad;
+    const ys = pts.map(p => p[1]).concat([base]);
+    let lo = Math.min(...ys), hi = Math.max(...ys); const pad = (hi - lo) * 0.1 || base * 0.002; lo -= pad; hi += pad;
     const L = 64, R = 10, T = 10, B = 22;
     const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
     const X = t => L + (W - L - R) * ((t - t0) / Math.max(1, t1 - t0)), Y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
@@ -113,8 +118,8 @@
       g.strokeStyle = col("--line"); g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke();
       g.fillStyle = col("--muted"); g.fillText(fmt(v, 0), 4, y + 4);
     }
-    g.setLineDash([4, 4]); g.strokeStyle = col("--muted"); g.beginPath(); g.moveTo(L, Y(S.initial)); g.lineTo(W - R, Y(S.initial)); g.stroke(); g.setLineDash([]);
-    const last = pts[pts.length - 1][1], c = last >= S.initial ? col("--up") : col("--down");
+    g.setLineDash([4, 4]); g.strokeStyle = col("--muted"); g.beginPath(); g.moveTo(L, Y(base)); g.lineTo(W - R, Y(base)); g.stroke(); g.setLineDash([]);
+    const last = pts[pts.length - 1][1], c = last >= base ? col("--up") : col("--down");
     g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1]))));
     g.strokeStyle = c; g.lineWidth = 2; g.stroke();
     g.lineTo(X(t1), H - B); g.lineTo(L, H - B); g.closePath();
