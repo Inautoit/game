@@ -32,11 +32,13 @@ FEATURES = [
     "atr_pct", "atr_ratio", "rv_24", "rsi", "adx", "bb_pos", "bb_width",
     "d_ema_fast", "d_ema_slow", "d_ema_trend", "ema_slope", "macd_n", "vol_ratio",
     "range_pos", "d_vwap", "hour_sin", "hour_cos", "dow", "body", "upper_wick", "lower_wick",
+    "is_crypto", "is_stock", "is_forex", "is_future",
 ]
 
 
-def make_features(df: pd.DataFrame, p: dict | None = None) -> pd.DataFrame:
+def make_features(df: pd.DataFrame, p: dict | None = None, symbol: str = "") -> pd.DataFrame:
     """Variables independientes de la escala de precio (sirven para cualquier activo)."""
+    from .config import asset_class
     p = p or {}
     d = add_all(df, p)
     c = d["close"]
@@ -68,6 +70,9 @@ def make_features(df: pd.DataFrame, p: dict | None = None) -> pd.DataFrame:
     f["body"] = (c - d["open"]) / rng
     f["upper_wick"] = (d["high"] - np.maximum(c, d["open"])) / rng
     f["lower_wick"] = (np.minimum(c, d["open"]) - d["low"]) / rng
+    cls = asset_class(symbol) if symbol else "crypto"
+    for k in ("crypto", "stock", "forex", "future"):
+        f[f"is_{k}"] = float(cls == k)
     f = f.replace([np.inf, -np.inf], np.nan)
     f["atr"] = d["atr"]
     return f
@@ -106,7 +111,7 @@ def triple_barrier(df: pd.DataFrame, atr_s: pd.Series, tp: float, sl: float, hor
 def build_dataset(data: dict[str, pd.DataFrame], ml: dict, params: dict | None = None) -> pd.DataFrame:
     parts = []
     for sym, df in data.items():
-        f = make_features(df, params)
+        f = make_features(df, params, sym)
         yl, ys = triple_barrier(df, f["atr"], ml["tp_atr"], ml["sl_atr"], ml["horizon"])
         f["y_long"], f["y_short"], f["symbol"] = yl, ys, sym
         parts.append(f.dropna(subset=FEATURES + ["y_long", "y_short"]))
@@ -133,9 +138,10 @@ def walk_forward(ds: pd.DataFrame, ml: dict, train_months: int = 18, sample_weig
     months = pd.period_range(ds.index.min().to_period("M"), ds.index.max().to_period("M"), freq="M")
     first_test = ml.get("min_train_months", 12)
     purge = pd.Timedelta(ml.get("purge", "2D"))
-    for i, m in enumerate(months[first_test:], start=first_test):
+    step = ml.get("retrain_every_months", 1)
+    for i, m in enumerate(months[first_test::step], start=first_test):
         t0 = m.start_time.tz_localize("UTC")
-        t1 = (m + 1).start_time.tz_localize("UTC")
+        t1 = (m + step).start_time.tz_localize("UTC")
         lo_t = (m - train_months).start_time.tz_localize("UTC")
         tr = ds[(ds.index >= lo_t) & (ds.index < t0 - purge)]
         te_mask = (ds.index >= t0) & (ds.index < t1)

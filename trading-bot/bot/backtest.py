@@ -79,7 +79,9 @@ class Backtester:
         trades: list[Trade] = []
         last_price: dict[str, float] = {}
         equity_curve = []
-        rows = {s: df.to_dict("index") for s, df in sigs.items()}
+        keep = ["open", "high", "low", "close", "atr", "entry", "exit_long", "exit_short",
+                "score", "last_of_session", "bars_to_close"]
+        rows = {s: df[[c for c in keep if c in df]].to_dict("index") for s, df in sigs.items()}
         timeline = sorted(set().union(*[df.index for df in sigs.values()]))
 
         def equity() -> float:
@@ -97,6 +99,7 @@ class Backtester:
             trades.append(Trade(sym, p.direction, p.qty, p.entry_time, p.entry_price, t, fill,
                                 pnl, pnl / (p.qty * p.entry_price), p.bars_held, reason))
 
+        candidates: list = []
         for t in timeline:
             for sym, r_all in rows.items():
                 r = r_all.get(t)
@@ -155,12 +158,17 @@ class Backtester:
                         elif (p.direction == 1 and r["exit_long"]) or (p.direction == -1 and r["exit_short"]):
                             pending[sym] = ("close", 0); pending_reason[sym] = "señal de salida"
                 last_price[sym] = r["close"]
-                # 3) nuevas entradas
+                # 3) candidatas a nueva entrada (se ordenan por calidad al final de la vela)
                 if sym not in positions and sym not in pending and r["entry"] != 0:
-                    late = cls == "stock" and r["bars_to_close"] < risk.no_entry_last_bars
-                    if not late and risk.can_open(len(positions) + sum(
-                            1 for a, _ in pending.values() if a == "open"), int(r["entry"])):
-                        pending[sym] = ("open", int(r["entry"]))
+                    late = cls == "stock" and risk.flatten_eod_stocks and r["bars_to_close"] < risk.no_entry_last_bars
+                    if not late:
+                        sc = r.get("score", 1.0)
+                        candidates.append((abs(sc) if sc == sc else 0.0, sym, int(r["entry"])))
+            # elegir las MEJORES oportunidades de todos los mercados hasta llenar el cupo
+            for _, sym, d in sorted(candidates, reverse=True):
+                if risk.can_open(len(positions) + sum(1 for a, _ in pending.values() if a == "open"), d):
+                    pending[sym] = ("open", d)
+            candidates.clear()
             eq = equity()
             risk.on_equity(eq, pd.Timestamp(t).tz_convert("America/New_York").date())
             if risk.killed or risk.halted_today:

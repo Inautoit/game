@@ -1,0 +1,16 @@
+# Servicio systemd: el bot arranca solo al encender el servidor y se reinicia si falla.
+# Instalar:  sudo cp atalaya.service /etc/systemd/system/ && sudo systemctl enable --now atalaya
+[Unit]
+Description=Atalaya Bot (trading 24/7, dinero simulado)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=atalaya
+WorkingDirectory=/opt/atalaya/trading-bot
+ExecStart=/opt/atalaya/venv/bin/python main.py run --port 8080
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

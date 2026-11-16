@@ -86,9 +86,15 @@ def ml_strategy(d: pd.DataFrame, p: dict) -> pd.DataFrame:
     pl, ps = d["p_long"].fillna(0), d["p_short"].fillna(0)
     long_ = (pl > p_be + edge) & (pl >= ps)
     short = (ps > p_be + edge) & (ps > pl)
+    # Esperanza en múltiplos del riesgo (R) para ordenar oportunidades entre todos los mercados
+    cost_r = cost / atr_pct / sl
+    ev_l = (pl * tp - (1 - pl) * sl) / sl - cost_r
+    ev_s = (ps * tp - (1 - ps) * sl) / sl - cost_r
     return pd.DataFrame({
         "entry": np.where(long_, 1, np.where(short, -1, 0)),
-        "exit_long": short, "exit_short": long_, "score": pl - ps,
+        "exit_long": short, "exit_short": long_,
+        "score": np.where(long_, ev_l, np.where(short, ev_s, np.maximum(ev_l, ev_s))),
+        "ev_long": ev_l, "ev_short": ev_s, "p_breakeven": p_be,
     }, index=d.index)
 
 

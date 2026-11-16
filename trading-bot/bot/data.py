@@ -149,3 +149,106 @@ def fetch_binance(symbol: str, interval: str = "15m", years: float = 3.0,
         df.to_csv(cache)
     cutoff = pd.Timestamp(end - int(years * 365 * 86_400_000), unit="ms", tz="UTC")
     return df[df.index >= cutoff]
+
+
+# ---------------------------------------------------------------------------
+# Descarga masiva rápida: ficheros mensuales de data.binance.vision + Yahoo por lotes
+# ---------------------------------------------------------------------------
+def _binance_month(sym: str, interval: str, ym: str) -> pd.DataFrame | None:
+    import io
+    import zipfile
+    import requests
+    url = f"https://data.binance.vision/data/spot/monthly/klines/{sym}/{interval}/{sym}-{interval}-{ym}.zip"
+    try:
+        r = requests.get(url, timeout=30)
+        if r.status_code != 200:
+            return None
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            raw = pd.read_csv(z.open(z.namelist()[0]), header=None)
+    except Exception:  # noqa: BLE001
+        return None
+    if not str(raw.iloc[0, 0]).isdigit():   # cabecera opcional
+        raw = raw.iloc[1:]
+    t = raw[0].astype("int64")
+    t = t.where(t < 1e14, t // 1000)        # desde 2025 los ficheros vienen en microsegundos
+    df = pd.DataFrame({c: raw[i].astype(float) for i, c in enumerate(COLS, start=1)})
+    df.index = pd.to_datetime(t.values, unit="ms", utc=True)
+    return df
+
+
+def fetch_binance_bulk(symbol: str, interval: str = "1h", years: float = 3.0,
+                       cache_dir: str | None = "data_cache") -> pd.DataFrame:
+    """Histórico largo vía ficheros mensuales (rápido) + API para el mes en curso."""
+    from concurrent.futures import ThreadPoolExecutor
+    sym = binance_symbol(symbol)
+    cache = Path(cache_dir) / f"binance_{sym}_{interval}.csv" if cache_dir else None
+    now = pd.Timestamp.now(tz="UTC")
+    if cache is not None and cache.exists():
+        df = pd.read_csv(cache, index_col=0)
+        df.index = pd.to_datetime(df.index, utc=True)
+        if df.index[0] <= now - pd.Timedelta(days=int(years * 365) - 40):
+            # sólo actualizar la cola por la API
+            tail = fetch_binance(symbol, interval, years=(now - df.index[-1]).days / 365 + 0.01,
+                                 cache_dir=None)
+            df = pd.concat([df, tail])
+            df = df[~df.index.duplicated(keep="last")].sort_index()
+            df.to_csv(cache)
+            return df[df.index >= now - pd.Timedelta(days=int(years * 365))]
+    months = pd.period_range((now - pd.Timedelta(days=int(years * 365))).tz_localize(None).to_period("M"),
+                             now.tz_localize(None).to_period("M") - 1, freq="M")
+    with ThreadPoolExecutor(12) as ex:
+        parts = [p for p in ex.map(lambda m: _binance_month(sym, interval, str(m)), months) if p is not None]
+    hist = pd.concat(parts) if parts else pd.DataFrame(columns=COLS)
+    start_ms = int((hist.index[-1].timestamp() if len(hist) else (now - pd.Timedelta(days=40)).timestamp()) * 1000)
+    tail = fetch_binance(symbol, interval, years=(now.timestamp() * 1000 - start_ms) / 86_400_000 / 365 + 0.001,
+                         cache_dir=None)
+    df = pd.concat([hist, tail])
+    df = df[~df.index.duplicated(keep="last")].sort_index()
+    if cache is not None and len(df):
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(cache)
+    return df
+
+
+def fetch_yahoo_batch(symbols: list[str], interval: str = "1h", period: str = "730d",
+                      cache_dir: str | None = "data_cache", chunk: int = 25) -> dict[str, pd.DataFrame]:
+    """Descarga por lotes de Yahoo (acciones, ETF, forex, futuros)."""
+    import yfinance as yf
+    out: dict[str, pd.DataFrame] = {}
+    for i in range(0, len(symbols), chunk):
+        part = symbols[i:i + chunk]
+        try:
+            raw = yf.download(part, interval=interval, period=period, auto_adjust=True,
+                              progress=False, group_by="ticker", threads=True)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Yahoo lote %s: %s", part, e)
+            continue
+        for s in part:
+            try:
+                sub = raw[s] if isinstance(raw.columns, pd.MultiIndex) else raw
+                df = _normalize(sub)
+                df.index = pd.to_datetime(df.index, utc=True)
+                if len(df) > 200:
+                    out[s] = df
+                    if cache_dir:
+                        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+                        df.to_csv(Path(cache_dir) / f"yahoo_{s.replace('=', '_').replace('^', '')}_{interval}.csv")
+            except Exception:  # noqa: BLE001
+                log.warning("Sin datos de Yahoo para %s", s)
+    return out
+
+
+def fetch_universe(symbols: list[str], interval: str = "1h", years: float = 3.0,
+                   cache_dir: str | None = "data_cache") -> dict[str, pd.DataFrame]:
+    from concurrent.futures import ThreadPoolExecutor
+    from .config import asset_class
+    crypto = [s for s in symbols if asset_class(s) == "crypto"]
+    other = [s for s in symbols if asset_class(s) != "crypto"]
+    out: dict[str, pd.DataFrame] = {}
+    with ThreadPoolExecutor(4) as ex:
+        for s, df in zip(crypto, ex.map(lambda s: fetch_binance_bulk(s, interval, years, cache_dir), crypto)):
+            if len(df) > 500:
+                out[s] = df
+    if other:
+        out.update(fetch_yahoo_batch(other, interval, "730d" if interval in ("1h", "60m") else "60d", cache_dir))
+    return out

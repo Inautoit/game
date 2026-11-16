@@ -3,7 +3,9 @@
   python main.py backtest            # backtest con datos reales del universo de config.yaml
   python main.py backtest --demo     # backtest con datos sintéticos (sin internet)
   python main.py compare             # compara todas las estrategias
-  python main.py paper               # paper trading en vivo (Ctrl+C para parar)
+  python main.py ml-train            # entrena y valida el modelo con todos los mercados
+  python main.py run                 # BOT CONTINUO en todos los mercados + panel en :8080
+  python main.py paper               # paper trading con estrategias de reglas
   python main.py scan                # señales actuales de cada activo
 """
 from __future__ import annotations
@@ -51,14 +53,6 @@ def cmd_backtest(cfg, args):
     print("\nGuardado: backtest_trades.csv, backtest_equity.csv, web/backtest.json")
 
 
-def build_web_bundle():
-    """web/model.js = modelo + resultados de validación (lo carga web/index.html sin servidor)."""
-    from pathlib import Path
-    model = Path("web/model.json").read_text()
-    bt = Path("web/backtest_ml.json").read_text() if Path("web/backtest_ml.json").exists() else "null"
-    Path("web/model.js").write_text(f"window.MODEL={model};\nwindow.BACKTEST={bt};\n")
-
-
 def export_web(res, cfg, path, extra=None):
     """Exporta resultados para el panel web."""
     from pathlib import Path
@@ -104,21 +98,21 @@ def ml_cfg(cfg):
     c = copy.deepcopy(cfg)
     c["strategy"] = {"name": "ml", "params": {**cfg["strategy"].get("params", {}), "ml": ml}}
     c["risk"].update({"stop_atr_mult": ml["sl_atr"], "take_profit_atr_mult": ml["tp_atr"],
-                      "trailing_atr_mult": 0, "max_holding_bars": ml["horizon"]})
+                      "trailing_atr_mult": 0, "max_holding_bars": ml["horizon"],
+                      "flatten_eod_stocks": False})
     return c
 
 
 def cmd_ml_train(cfg, args):
     """Descarga 3 años, valida walk-forward, hace backtest fuera de muestra y entrena el modelo final."""
-    from bot.data import fetch_binance
+    from bot.data import fetch_universe
+    from bot.universe import full_universe
+    from bot.config import asset_class
     from bot import ml as M
     mc = cfg["ml"]
-    data = {}
-    for s in mc["universe"]:
-        df = fetch_binance(s, mc["interval"], mc["years"], cfg["data"].get("cache_dir"))
-        if len(df) > 5000:
-            data[s] = df
-            print(f"{s}: {len(df)} velas {df.index[0]:%Y-%m-%d} → {df.index[-1]:%Y-%m-%d}")
+    data = fetch_universe(full_universe(cfg), mc["interval"], mc["years"], cfg["data"].get("cache_dir"))
+    by = pd.Series({s: asset_class(s) for s in data}).value_counts()
+    print(f"{len(data)} activos descargados: {by.to_dict()} | {sum(len(d) for d in data.values()):,} velas")
     ds = M.build_dataset(data, mc, cfg["strategy"].get("params"))
     print(f"Dataset: {len(ds)} filas | tasa base ganadoras largo={ds.y_long.mean():.1%} "
           f"corto={ds.y_short.mean():.1%} | equilibrio sin costes={mc['sl_atr']/(mc['tp_atr']+mc['sl_atr']):.1%}")
@@ -129,6 +123,10 @@ def cmd_ml_train(cfg, args):
     auc_s = roc_auc_score(ok.y_short, ok.p_short)
     print(f"AUC fuera de muestra: largo={auc_l:.3f} corto={auc_s:.3f} (0.5 = azar)")
     # Calibración: tasa real de acierto por tramo de probabilidad predicha
+    ok = ok.assign(cls=ok.symbol.map(asset_class))
+    for c, g in ok.groupby("cls"):
+        if g.y_long.nunique() > 1:
+            print(f"  AUC {c:7s}: largo={roc_auc_score(g.y_long, g.p_long):.3f} corto={roc_auc_score(g.y_short, g.p_short):.3f}  ({len(g):,} velas)")
     ok = ok.assign(bucket=pd.cut(ok.p_long, [0, .2, .3, .35, .4, .45, .5, 1]))
     print("Calibración largos (prob. predicha → acierto real):")
     print(ok.groupby("bucket", observed=True).y_long.agg(["count", "mean"]).round(3).to_string())
@@ -143,18 +141,31 @@ def cmd_ml_train(cfg, args):
     for k, v in res["metrics"].items():
         print(f"  {k:28s} {v}")
     if len(res["trades"]):
-        print(res["trades"].groupby("symbol").pnl.agg(["count", "sum"]).round(2).to_string())
-    print("Comprar y mantener:", {k: f"{v:+.1%}" for k, v in res["buy_and_hold"].items()})
+        t = res["trades"].assign(cls=res["trades"].symbol.map(asset_class))
+        print("Por tipo de mercado:")
+        print(t.groupby("cls").pnl.agg(["count", "sum", lambda x: (x > 0).mean()]).round(2).to_string())
+        print("Mejores y peores activos:")
+        ps = t.groupby("symbol").pnl.sum().sort_values()
+        print(pd.concat([ps.head(5), ps.tail(5)]).round(2).to_string())
+        print(t.reason.value_counts().to_string())
     for e in res["risk_events"][:5]:
         print("  [riesgo]", e)
+    by_class = {}
+    if len(res["trades"]):
+        t = res["trades"].assign(cls=res["trades"].symbol.map(asset_class))
+        by_class = {c: {"trades": int(len(g)), "pnl": round(float(g.pnl.sum()), 2),
+                        "win": round(float((g.pnl > 0).mean()), 3)} for c, g in t.groupby("cls")}
     export_web(res, ml_cfg(cfg), "web/backtest_ml.json",
-               extra={"auc": f"{auc_l:.3f} / {auc_s:.3f}",
+               extra={"auc": f"{auc_l:.3f} / {auc_s:.3f}", "by_class": by_class,
                       "period": f"{test_start:%m/%Y} – {res['equity'].index[-1]:%m/%Y}"})
     meta = M.fit_final(ds, mc, mc["model_path"], train_months=mc["train_months"])
-    bundle = M.load_model(mc["model_path"])
-    M.export_trees_json(bundle, "web/model.json")
-    build_web_bundle()
     print("Modelo final guardado:", meta)
+
+
+def cmd_run(cfg, args):
+    """Bot continuo en todos los mercados + panel web."""
+    from bot.runner import Runner
+    Runner(cfg).run(port=args.port, once=args.once, poll=cfg.get("live", {}).get("poll_seconds", 60))
 
 
 def cmd_paper(cfg, args):
@@ -164,12 +175,13 @@ def cmd_paper(cfg, args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["backtest", "compare", "scan", "paper", "ml-train"])
+    ap.add_argument("cmd", choices=["run", "backtest", "compare", "scan", "paper", "ml-train"])
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--demo", action="store_true", help="usar datos sintéticos")
-    ap.add_argument("--once", action="store_true", help="paper: un solo ciclo")
+    ap.add_argument("--once", action="store_true", help="un solo ciclo")
+    ap.add_argument("--port", type=int, default=8080, help="puerto del panel web (0 = sin web)")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
     conf = load_config(a.config)
-    {"backtest": cmd_backtest, "compare": cmd_compare, "scan": cmd_scan, "paper": cmd_paper, "ml-train": cmd_ml_train}[a.cmd](conf, a)
+    {"backtest": cmd_backtest, "compare": cmd_compare, "scan": cmd_scan, "paper": cmd_paper, "ml-train": cmd_ml_train, "run": cmd_run}[a.cmd](conf, a)

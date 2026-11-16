@@ -69,20 +69,30 @@ canvas{display:block;width:100%;height:220px}
 .note{font-size:12px;color:var(--muted);max-width:75ch}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{color:var(--muted);font-size:13px;padding:10px 0}
+.filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.filters input{font:13px var(--f-body);padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);min-width:0;flex:1 1 160px;max-width:240px}
+.tag{font:500 11px var(--f-body);color:var(--muted)}
+.closed{opacity:.55}
+.offline{border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--panel));padding:14px;border-radius:8px}
+.offline code{font:12px var(--f-mono);background:var(--chip);padding:2px 6px;border-radius:4px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>Atalaya Bot<small>Trading intradía con machine learning · cripto 24/7 · velas de 15 min · dinero simulado</small></h1>
+    <h1>Atalaya Bot<small id="sub">Vigila acciones, cripto, divisas, índices y materias primas · entra donde el modelo ve más ventaja</small></h1>
     <div class="status">
       <span id="st" class="pill"><span class="dot"></span><span id="stTxt">Conectando…</span></span>
-      <span class="pill" id="nextBar">próxima vela —</span>
-      <button id="pause" type="button">Pausar</button>
-      <span id="resetBox"><button id="reset" class="danger" type="button">Reiniciar cuenta</button></span>
+      <span class="pill" id="mode">DINERO SIMULADO</span>
     </div>
   </header>
+
+  <div id="offline" class="offline" hidden>
+    <strong>El bot no está en marcha.</strong> Este panel muestra lo que hace el bot cuando se ejecuta con
+    <code>python main.py run</code> y se abre en <code>http://localhost:8080</code>.
+  </div>
 
   <section class="kpis" id="kpis"></section>
 
@@ -92,11 +102,20 @@ canvas{display:block;width:100%;height:220px}
   </section>
 
   <section class="panel">
-    <h2>Mercado y señales del modelo</h2>
+    <h2>Radar de oportunidades · <span id="scanInfo" class="tag"></span></h2>
+    <div class="filters" id="filters">
+      <button type="button" data-f="all" aria-pressed="true">Todos</button>
+      <button type="button" data-f="crypto" aria-pressed="false">Cripto</button>
+      <button type="button" data-f="stock" aria-pressed="false">Acciones y ETF</button>
+      <button type="button" data-f="forex" aria-pressed="false">Divisas</button>
+      <button type="button" data-f="future" aria-pressed="false">Futuros</button>
+      <button type="button" data-f="signal" aria-pressed="false">Sólo con señal</button>
+      <input id="q" type="search" placeholder="Buscar símbolo…" aria-label="Buscar símbolo">
+    </div>
     <div class="scroll"><table id="mkt"><thead><tr>
-      <th>Activo</th><th>Precio</th><th>24 h</th><th>RSI</th><th>ADX</th><th>ATR %</th>
-      <th>Prob. subida</th><th>Prob. bajada</th><th>Umbral</th><th>Señal</th></tr></thead><tbody></tbody></table></div>
-    <p class="note">La probabilidad es la que estima el modelo de que el precio toque el objetivo (2×ATR) antes que el stop (1×ATR) en las próximas 8 horas, ajustada por lo que el bot ha aprendido en vivo. La marca vertical es el umbral mínimo para que la operación tenga esperanza positiva tras comisiones.</p>
+      <th>Activo</th><th>Tipo</th><th>Precio</th><th>24 h</th><th>RSI</th><th>Prob. subida</th><th>Prob. bajada</th>
+      <th>Esperanza</th><th>Señal</th><th>Mercado</th></tr></thead><tbody></tbody></table></div>
+    <p class="note">Ordenado de mejor a peor oportunidad. La probabilidad es la que estima el modelo de alcanzar el objetivo (2×ATR) antes que el stop (1×ATR). La marca vertical es el mínimo exigido para operar. La esperanza está en múltiplos del riesgo (R) ya descontadas las comisiones: +0,30R significa ganar de media un 30 % de lo arriesgado.</p>
   </section>
 
   <div class="grid2">
@@ -105,7 +124,7 @@ canvas{display:block;width:100%;height:220px}
       <div class="scroll"><table id="pos"><thead><tr><th>Activo</th><th>Lado</th><th>Entrada</th><th>Actual</th><th>Stop</th><th>Objetivo</th><th>Velas</th><th>PnL</th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="panel">
-      <h2>Qué está aprendiendo</h2>
+      <h2>Modelo y aprendizaje</h2>
       <div class="learn" id="learn"></div>
     </section>
   </div>
@@ -124,11 +143,9 @@ canvas{display:block;width:100%;height:220px}
   <section class="panel">
     <h2>Validación histórica del modelo</h2>
     <div class="learn" id="bt"></div>
-    <p class="note">Resultado de simular el modelo sobre meses que no vio durante el entrenamiento (validación walk-forward), con comisiones y deslizamiento. Rentabilidades pasadas no garantizan resultados futuros. Este panel funciona sólo con dinero simulado; los datos vienen de la API pública de Binance y el bot opera mientras esta pestaña esté abierta.</p>
+    <p class="note">Simulación sobre meses que el modelo no vio al entrenar (walk-forward), con comisiones y deslizamiento. Rentabilidades pasadas no garantizan resultados futuros.</p>
   </section>
 </div>
-<script src="model.js"></script>
-<script src="engine.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
