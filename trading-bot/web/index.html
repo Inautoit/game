@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Atalaya Bot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap">
+<style>
+/* Layout: consola de vigilancia — cabecera de estado, fila de cifras, gráfico, y paneles en rejilla */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#18212b; --muted:#5d6b7a; --line:#d6dde4;
+  --accent:#1f6feb; --up:#13804b; --down:#c4362c; --warn:#a86400; --chip:#e4e9ef;
+  --f-display:"Sora","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141a; --panel:#161d25; --ink:#e3e9ef; --muted:#8d9bab; --line:#25303b;
+  --accent:#5a9cff; --up:#3ccf86; --down:#ff6b5e; --warn:#f0a531; --chip:#1f2832; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141a; --panel:#161d25; --ink:#e3e9ef; --muted:#8d9bab; --line:#25303b;
+  --accent:#5a9cff; --up:#3ccf86; --down:#ff6b5e; --warn:#f0a531; --chip:#1f2832; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 40px}
+.wrap{max-width:1280px;margin:0 auto;display:grid;gap:16px}
+header{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between}
+h1{font:700 22px/1.1 var(--f-display);margin:0;letter-spacing:-.01em}
+h1 small{display:block;font:400 13px var(--f-body);color:var(--muted);margin-top:4px}
+h2{font:600 13px var(--f-body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px}
+.status{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--chip);font:500 12px var(--f-mono)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pill.live .dot{background:var(--up);box-shadow:0 0 0 3px color-mix(in srgb,var(--up) 25%,transparent)}
+.pill.err .dot{background:var(--down)} .pill.paused .dot{background:var(--warn)}
+button{font:500 13px var(--f-body);border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 12px;border-radius:6px;cursor:pointer}
+button:hover{border-color:var(--accent)} button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.danger{color:var(--down)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kpi{background:var(--panel);padding:12px 14px}
+.kpi b{display:block;font:500 20px var(--f-mono);font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi span{font-size:12px;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.grid2{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px}
+@media (max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font:500 11px var(--f-body);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{font:13px var(--f-mono);text-align:right;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+tr:last-child td{border-bottom:none}
+.up{color:var(--up)} .down{color:var(--down)} .muted{color:var(--muted)}
+.sig{display:inline-block;min-width:64px;text-align:center;padding:2px 8px;border-radius:4px;font:600 11px var(--f-body);letter-spacing:.04em;background:var(--chip);color:var(--muted)}
+.sig.long{background:color-mix(in srgb,var(--up) 18%,transparent);color:var(--up)}
+.sig.short{background:color-mix(in srgb,var(--down) 18%,transparent);color:var(--down)}
+.prob{display:inline-grid;grid-template-columns:44px 70px;gap:6px;align-items:center}
+.bar{position:relative;height:6px;background:var(--chip);border-radius:3px}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:3px;background:var(--accent)}
+.bar em{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.55}
+canvas{display:block;width:100%;height:220px}
+.log{font:12px/1.6 var(--f-mono);max-height:260px;overflow:auto;margin:0;padding:0;list-style:none}
+.log li{padding:2px 0;border-bottom:1px dashed var(--line)}
+.log time{color:var(--muted);margin-right:8px}
+.learn{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.learn div{font-size:13px} .learn b{font:500 15px var(--f-mono);display:block}
+.note{font-size:12px;color:var(--muted);max-width:75ch}
+.confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
+.empty{color:var(--muted);font-size:13px;padding:10px 0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Atalaya Bot<small>Trading intradía con machine learning · cripto 24/7 · velas de 15 min · dinero simulado</small></h1>
+    <div class="status">
+      <span id="st" class="pill"><span class="dot"></span><span id="stTxt">Conectando…</span></span>
+      <span class="pill" id="nextBar">próxima vela —</span>
+      <button id="pause" type="button">Pausar</button>
+      <span id="resetBox"><button id="reset" class="danger" type="button">Reiniciar cuenta</button></span>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="panel">
+    <h2>Evolución del capital</h2>
+    <canvas id="eq" aria-label="Gráfico de capital"></canvas>
+  </section>
+
+  <section class="panel">
+    <h2>Mercado y señales del modelo</h2>
+    <div class="scroll"><table id="mkt"><thead><tr>
+      <th>Activo</th><th>Precio</th><th>24 h</th><th>RSI</th><th>ADX</th><th>ATR %</th>
+      <th>Prob. subida</th><th>Prob. bajada</th><th>Umbral</th><th>Señal</th></tr></thead><tbody></tbody></table></div>
+    <p class="note">La probabilidad es la que estima el modelo de que el precio toque el objetivo (2×ATR) antes que el stop (1×ATR) en las próximas 8 horas, ajustada por lo que el bot ha aprendido en vivo. La marca vertical es el umbral mínimo para que la operación tenga esperanza positiva tras comisiones.</p>
+  </section>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Posiciones abiertas</h2>
+      <div class="scroll"><table id="pos"><thead><tr><th>Activo</th><th>Lado</th><th>Entrada</th><th>Actual</th><th>Stop</th><th>Objetivo</th><th>Velas</th><th>PnL</th></tr></thead><tbody></tbody></table></div>
+    </section>
+    <section class="panel">
+      <h2>Qué está aprendiendo</h2>
+      <div class="learn" id="learn"></div>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Historial de operaciones</h2>
+      <div class="scroll"><table id="trades"><thead><tr><th>Cierre</th><th>Activo</th><th>Lado</th><th>Entrada</th><th>Salida</th><th>Motivo</th><th>PnL</th></tr></thead><tbody></tbody></table></div>
+    </section>
+    <section class="panel">
+      <h2>Actividad</h2>
+      <ul class="log" id="log"></ul>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Validación histórica del modelo</h2>
+    <div class="learn" id="bt"></div>
+    <p class="note">Resultado de simular el modelo sobre meses que no vio durante el entrenamiento (validación walk-forward), con comisiones y deslizamiento. Rentabilidades pasadas no garantizan resultados futuros. Este panel funciona sólo con dinero simulado; los datos vienen de la API pública de Binance y el bot opera mientras esta pestaña esté abierta.</p>
+  </section>
+</div>
+<script src="model.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

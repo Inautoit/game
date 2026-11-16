@@ -1,0 +1,8 @@
+data_cache/
+models/
+__pycache__/
+.pytest_cache/
+paper_state.json
+journal.csv
+ml_journal.csv
+backtest_*.csv

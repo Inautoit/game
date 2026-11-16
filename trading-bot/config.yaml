@@ -1,0 +1,82 @@
+# ============================================================
+#  Configuración del bot de trading
+# ============================================================
+mode: paper            # paper | alpaca_paper | live (live exige confirmación extra)
+
+capital_inicial: 10000
+
+# Universo: acciones/ETF, cripto (-USD), forex (=X), futuros (=F)
+universe:
+  - SPY
+  - QQQ
+  - AAPL
+  - NVDA
+  - MSFT
+  - BTC-USD
+  - ETH-USD
+  - EURUSD=X
+  - GC=F
+
+data:
+  interval: 5m          # 1m (máx 7 días), 5m/15m (máx 60 días), 1h (máx 730 días)
+  period: 60d
+  cache_dir: data_cache
+
+strategy:
+  name: ensemble        # trend | mean_reversion | breakout | ensemble
+  params:
+    ema_fast: 9
+    ema_slow: 21
+    rsi_period: 14
+    rsi_low: 30
+    rsi_high: 70
+    bb_period: 20
+    bb_std: 2.0
+    adx_period: 14
+    adx_trend: 20
+    breakout_lookback: 20
+    volume_mult: 1.5
+    ensemble_threshold: 0.5
+    weights: {trend: 1.0, mean_reversion: 1.0, breakout: 1.0}
+
+risk:
+  risk_per_trade: 0.005       # 0.5% del capital arriesgado por operación
+  max_position_pct: 0.20      # máx. 20% del capital en una posición
+  max_open_positions: 4
+  stop_atr_mult: 1.5          # stop loss = 1.5 x ATR
+  take_profit_atr_mult: 3.0   # take profit = 3 x ATR (ratio 1:2)
+  trailing_atr_mult: 2.0      # trailing stop (0 = desactivado)
+  max_holding_bars: 48        # cierre forzado tras N velas
+  daily_loss_limit: 0.02      # deja de operar el día si pierde 2%
+  max_drawdown_kill: 0.10     # apaga el bot si cae 10% desde máximos
+  allow_short: true
+  flatten_eod_stocks: true    # acciones: cerrar todo antes del cierre
+  no_entry_last_bars: 3       # no abrir en las últimas N velas de la sesión
+
+costs:                        # en puntos básicos (1 bp = 0.01%)
+  stock:  {commission_bps: 1.0, slippage_bps: 2.0}
+  crypto: {commission_bps: 10.0, slippage_bps: 5.0}
+  forex:  {commission_bps: 0.5, slippage_bps: 1.0}
+  future: {commission_bps: 1.0, slippage_bps: 2.0}
+
+live:
+  poll_seconds: 60
+  state_file: paper_state.json
+  journal_file: journal.csv
+
+# ------------------------------------------------------------
+# Machine learning (estrategia "ml")
+# ------------------------------------------------------------
+ml:
+  universe: [BTC-USD, ETH-USD, SOL-USD, BNB-USD, XRP-USD]  # histórico de Binance
+  interval: 15m
+  years: 3
+  tp_atr: 2.0            # objetivo = 2 x ATR
+  sl_atr: 1.0            # stop = 1 x ATR
+  horizon: 32            # velas máximas para alcanzar objetivo/stop (8h en 15m)
+  min_edge: 0.05         # prob. exigida por encima del punto de equilibrio
+  train_months: 18       # ventana de entrenamiento móvil
+  min_train_months: 12
+  purge: 2D
+  retrain_hours: 24      # en vivo: reentrena cada día con datos nuevos + operaciones propias
+  model_path: models/model.pkl
