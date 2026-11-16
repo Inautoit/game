@@ -86,5 +86,7 @@ ml:
   min_train_months: 12
   retrain_every_months: 2
   purge: 2D
-  retrain_hours: 24      # en vivo: reentrena cada día con datos nuevos + operaciones propias
+  model: small           # complejidad del modelo (small | medium) — el laboratorio la ajusta
+  research_every_hours: 12  # el laboratorio investiga y reentrena cada 12 h
+  retrain_hours: 48      # red de seguridad: si no hay laboratorio, el bot reentrena solo cada 48 h
   model_path: models/model.pkl

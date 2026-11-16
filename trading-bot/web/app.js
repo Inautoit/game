@@ -83,6 +83,28 @@
       ["Objetivo / stop", `${r.tp}×ATR / ${r.sl}×ATR`],
     ].map(([l, v]) => `<div><span class="muted">${l}</span><b>${v}</b></div>`).join("");
 
+    const R = S.research, pr = S.params || {};
+    const labItems = [
+      ["Estado", R ? R.phase : "laboratorio no iniciado"],
+      ["Experimentos realizados", R ? (R.experiments ?? 0) : 0],
+      ["Estrategia en uso", pr.tp_atr ? `objetivo ${pr.tp_atr}×ATR · plazo ${pr.horizon} velas · exigencia +${fmt(100 * pr.min_edge, 0)} %` : "—"],
+      ["Mercados que opera", (S.enabled || []).map(c => CLS[c]).join(", ") || "—"],
+    ];
+    if (R && R.champion_result) {
+      const c = R.champion_result;
+      labItems.push(["Campeón: selección", `${c.sel_trades} op. · <span class="${cls(c.sel_pnl)}">${money(c.sel_pnl)}</span>`]);
+      labItems.push(["Campeón: examen final", `${c.exam_trades} op. · <span class="${cls(c.exam_pnl)}">${money(c.exam_pnl)}</span>`]);
+      labItems.push(["Último ciclo", `${R.last_cycle_minutes ?? "—"} min · ${R.promoted ? "nuevo campeón" : "se mantiene"}`]);
+      labItems.push(["Actualizado", when(R.updated)]);
+    }
+    $("lab").innerHTML = labItems.map(([l, v]) => `<div><span class="muted">${l}</span><b>${v}</b></div>`).join("");
+    const ex = (R && R.recent) || [];
+    $("exp").tBodies[0].innerHTML = ex.length ? ex.map(e => {
+      const p = e.params || {};
+      return `<tr><td>${when(e.time)}</td><td>${e.role}</td><td>${p.tp_atr}×</td><td>${p.horizon}</td><td>+${fmt(100 * p.min_edge, 0)}%</td><td>${p.model === "medium" ? "medio" : "sencillo"}</td>
+        <td class="${cls(e.score)}">${fmt(e.score)}</td><td>${e.sel_trades}</td><td class="${cls(e.exam_pnl)}">${money(e.exam_pnl)}</td></tr>`;
+    }).join("") : `<tr><td colspan="9" class="empty">Todavía no hay experimentos. El laboratorio hace el primero al arrancar.</td></tr>`;
+
     const b = S.backtest;
     if (b && b.metrics) {
       const x = b.metrics;

@@ -7,3 +7,4 @@ journal.csv
 ml_journal.csv
 backtest_*.csv
 web/data/
+research/

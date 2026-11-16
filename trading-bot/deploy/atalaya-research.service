@@ -1,0 +1,17 @@
+# Laboratorio: investiga el mercado, elige el mejor modelo y lo reentrena cada 12 h.
+# Prioridad baja para no frenar al bot que opera.
+[Unit]
+Description=Atalaya Bot - laboratorio de autoentrenamiento
+After=network-online.target atalaya.service
+
+[Service]
+User=atalaya
+WorkingDirectory=/opt/atalaya/trading-bot
+EnvironmentFile=-/etc/atalaya.env
+ExecStart=/opt/atalaya/venv/bin/python -W ignore main.py research --candidates 4
+Nice=15
+Restart=always
+RestartSec=300
+
+[Install]
+WantedBy=multi-user.target

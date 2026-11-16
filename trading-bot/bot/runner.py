@@ -136,6 +136,7 @@ class Runner:
         self.trades: list[dict] = []
         self.last_bars_refresh = 0.0
         self.model = None
+        self.enabled = {"crypto", "stock", "forex", "future"}
         self.model_lock = threading.Lock()
         self.status = "arrancando"
         self._load_history()
@@ -173,6 +174,21 @@ class Runner:
             self.event(f"Modelo reentrenado: {meta['rows']:,} velas, {meta['own_trades']} operaciones propias.", "up")
         with self.model_lock:
             self.model = M.load_model(str(path))
+            self.model_mtime = path.stat().st_mtime
+            # la configuración (objetivo, plazo, exigencia, mercados) viaja con el modelo
+            self.mc = {**self.cfg["ml"], **self.model["meta"].get("ml", {})}
+            self.enabled = set(self.mc.get("enabled_classes", ["crypto", "stock", "forex", "future"]))
+            self.risk.stop_atr_mult, self.risk.take_profit_atr_mult = self.mc["sl_atr"], self.mc["tp_atr"]
+            self.risk.max_holding_bars = self.mc["horizon"]
+
+    def maybe_reload(self):
+        """Si el laboratorio ha guardado un modelo nuevo, cargarlo sin parar el bot."""
+        path = Path(self.mc["model_path"])
+        if path.exists() and path.stat().st_mtime != getattr(self, "model_mtime", None):
+            self.load_or_train()
+            self.event(f"Modelo nuevo cargado del laboratorio: objetivo {self.mc['tp_atr']}×ATR, "
+                       f"plazo {self.mc['horizon']} velas, exigencia +{self.mc['min_edge']:.0%}, "
+                       f"mercados: {', '.join(CLASS_ES[c] for c in sorted(self.enabled))}.", "up")
 
     def _retrain_loop(self):
         while True:
@@ -279,7 +295,7 @@ class Runner:
         eq = self.broker.equity(self.prices)
         for c in sorted(candidates, key=lambda c: -c["score"]):
             sym = c["symbol"]
-            if sym in self.broker.positions or not market_open(sym, now):
+            if sym in self.broker.positions or not market_open(sym, now) or c["cls"] not in self.enabled:
                 continue
             if not self.risk.can_open(len(self.broker.positions), c["entry"]):
                 break
@@ -298,6 +314,7 @@ class Runner:
 
     def step(self):
         now = datetime.now(timezone.utc)
+        self.maybe_reload()
         # velas: refresco cada 5 min (o al cambiar de hora)
         if time.time() - self.last_bars_refresh > 300 or now.minute < 2:
             self.refresh_bars()
@@ -354,7 +371,19 @@ class Runner:
             eqb = b.get("equity", [])
             step = max(1, len(eqb) // 600)
             bt["equity"] = [[int(pd.Timestamp(t).timestamp() * 1000), v] for t, v in eqb[::step]]
+        research = None
+        rp = Path("research/state.json")
+        if rp.exists():
+            try:
+                research = json.loads(rp.read_text())
+                ex = Path("research/experiments.jsonl")
+                if ex.exists():
+                    research["recent"] = [json.loads(x) for x in ex.read_text().splitlines()[-12:]][::-1]
+            except Exception:  # noqa: BLE001
+                research = None
         state = {
+            "research": research, "enabled": sorted(self.enabled),
+            "params": {k: self.mc.get(k) for k in ("tp_atr", "sl_atr", "horizon", "min_edge", "model")},
             "updated": now.isoformat(), "status": self.status, "mode": self.cfg.get("mode", "paper"),
             "initial": float(self.cfg.get("capital_inicial", 10_000)), "equity_now": eq, "cash": self.broker.cash,
             "killed": self.risk.killed, "halted": self.risk.halted_today, "n_markets": len(self.universe),
@@ -374,8 +403,24 @@ class Runner:
 
     # ---------------- arranque
     def serve(self, port: int):
-        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(WEB))
-        handler.log_message = lambda *a, **k: None
+        import base64
+        import os
+        pw = os.environ.get("ATALAYA_PASSWORD")
+        token = base64.b64encode(f"{os.environ.get('ATALAYA_USER', 'atalaya')}:{pw}".encode()).decode() if pw else None
+
+        class Handler(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *a, **k):
+                pass
+
+            def do_GET(self):
+                if token and self.headers.get("Authorization") != f"Basic {token}":
+                    self.send_response(401)
+                    self.send_header("WWW-Authenticate", 'Basic realm="Atalaya"')
+                    self.end_headers()
+                    return
+                super().do_GET()
+
+        handler = functools.partial(Handler, directory=str(WEB))
         srv = http.server.ThreadingHTTPServer(("0.0.0.0", port), handler)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         log.info("Panel web en http://localhost:%d", port)

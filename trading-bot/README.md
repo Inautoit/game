@@ -52,7 +52,22 @@ python main.py run                       # BOT CONTINUO en 134 mercados + panel 
 - **Reentrena cada día** con los datos nuevos y con sus propias operaciones.
 - Sirve el **panel web** en el puerto 8080 (también desde el móvil, con la IP del servidor).
 
+### Laboratorio de autoentrenamiento (`python main.py research`)
+
+Funciona en paralelo al bot. Cada 12 horas:
+
+1. Descarga los datos nuevos de los 134 mercados.
+2. Re-evalúa la estrategia actual (el **campeón**) y prueba 4 variantes (**aspirantes**): objetivo, plazo, exigencia mínima y complejidad del modelo. Siempre lo hace sobre meses que el modelo no vio al entrenar.
+3. Un aspirante sólo sustituye al campeón si es claramente mejor **y** gana dinero en los últimos 3 meses (el examen final, que no se usa para elegir). Así evita engañarse con el azar.
+4. Desactiva los tipos de mercado que pierden en la validación.
+5. Reentrena al campeón con todo lo reciente y con las operaciones propias del bot. El bot carga el modelo nuevo sin pararse.
+
+Todo queda registrado en `research/experiments.jsonl` y se ve en el panel.
+
 ### Dejarlo funcionando 24/7
+
+**Guía paso a paso para Oracle Cloud (gratis): [`deploy/ORACLE.md`](deploy/ORACLE.md).**
+
 
 Necesita un ordenador siempre encendido:
 

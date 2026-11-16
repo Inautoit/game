@@ -118,11 +118,26 @@ def build_dataset(data: dict[str, pd.DataFrame], ml: dict, params: dict | None =
     return pd.concat(parts).sort_index()
 
 
-def new_model(seed: int = 0) -> HistGradientBoostingClassifier:
-    # Modelo deliberadamente "humilde": pocas hojas, muchas muestras por hoja, regularizado.
-    return HistGradientBoostingClassifier(max_iter=300, learning_rate=0.03, max_leaf_nodes=15,
-                                          min_samples_leaf=500, l2_regularization=1.0,
-                                          early_stopping=False, random_state=seed)
+MODEL_KINDS = {
+    # "humilde": pocas hojas, muchas muestras por hoja, regularizado (difícil de sobreajustar)
+    "small": dict(max_iter=300, learning_rate=0.03, max_leaf_nodes=15, min_samples_leaf=500),
+    "medium": dict(max_iter=300, learning_rate=0.05, max_leaf_nodes=31, min_samples_leaf=200),
+}
+
+
+def new_model(seed: int = 0, kind: str = "small") -> HistGradientBoostingClassifier:
+    return HistGradientBoostingClassifier(**MODEL_KINDS.get(kind, MODEL_KINDS["small"]),
+                                          l2_regularization=1.0, early_stopping=False, random_state=seed)
+
+
+def label_dataset(feats: dict[str, pd.DataFrame], data: dict[str, pd.DataFrame], ml: dict) -> pd.DataFrame:
+    """Como build_dataset pero reutilizando features ya calculadas (para investigar rápido)."""
+    parts = []
+    for sym, f in feats.items():
+        yl, ys = triple_barrier(data[sym], f["atr"], ml["tp_atr"], ml["sl_atr"], ml["horizon"])
+        g = f.assign(y_long=yl, y_short=ys, symbol=sym)
+        parts.append(g.dropna(subset=FEATURES + ["y_long", "y_short"]))
+    return pd.concat(parts).sort_index()
 
 
 def breakeven_prob(ml: dict, cost_frac: float, atr_pct: float) -> float:
@@ -130,13 +145,16 @@ def breakeven_prob(ml: dict, cost_frac: float, atr_pct: float) -> float:
     return (ml["sl_atr"] + cost_atr) / (ml["tp_atr"] + ml["sl_atr"])
 
 
-def walk_forward(ds: pd.DataFrame, ml: dict, train_months: int = 18, sample_weight=None) -> pd.DataFrame:
+def walk_forward(ds: pd.DataFrame, ml: dict, train_months: int = 18, sample_weight=None,
+                 test_months: int | None = None) -> pd.DataFrame:
     """Predicciones fuera de muestra mes a mes. Devuelve ds con columnas p_long, p_short."""
     out = ds.copy()
     out["p_long"] = np.nan
     out["p_short"] = np.nan
     months = pd.period_range(ds.index.min().to_period("M"), ds.index.max().to_period("M"), freq="M")
     first_test = ml.get("min_train_months", 12)
+    if test_months:
+        first_test = max(first_test, len(months) - test_months)
     purge = pd.Timedelta(ml.get("purge", "2D"))
     step = ml.get("retrain_every_months", 1)
     for i, m in enumerate(months[first_test::step], start=first_test):
@@ -149,7 +167,7 @@ def walk_forward(ds: pd.DataFrame, ml: dict, train_months: int = 18, sample_weig
             continue
         X, Xt = tr[FEATURES], ds.loc[te_mask, FEATURES]
         for side in ("long", "short"):
-            mdl = new_model(i)
+            mdl = new_model(i, ml.get("model", "small"))
             mdl.fit(X, tr[f"y_{side}"].astype(int))
             out.loc[te_mask, f"p_{side}"] = mdl.predict_proba(Xt)[:, 1]
         log.info("walk-forward %s: entrenado con %d filas, test %d", m, len(tr), te_mask.sum())
@@ -177,7 +195,7 @@ def fit_final(ds: pd.DataFrame, ml: dict, path: str, journal: pd.DataFrame | Non
                 ys[f"X_{side}"] = X_side
     models = {}
     for side in ("long", "short"):
-        mdl = new_model()
+        mdl = new_model(0, ml.get("model", "small"))
         mdl.fit(ys.get(f"X_{side}", X), ys[side], sample_weight=ys.get(f"w_{side}", w))
         models[side] = mdl
     meta = {"features": FEATURES, "trained_until": str(ds.index.max()), "rows": int(len(tr)),

@@ -4,6 +4,7 @@
   python main.py backtest --demo     # backtest con datos sintéticos (sin internet)
   python main.py compare             # compara todas las estrategias
   python main.py ml-train            # entrena y valida el modelo con todos los mercados
+  python main.py research            # LABORATORIO: investiga y se autoentrena cada 12 h
   python main.py run                 # BOT CONTINUO en todos los mercados + panel en :8080
   python main.py paper               # paper trading con estrategias de reglas
   python main.py scan                # señales actuales de cada activo
@@ -168,6 +169,17 @@ def cmd_run(cfg, args):
     Runner(cfg).run(port=args.port, once=args.once, poll=cfg.get("live", {}).get("poll_seconds", 60))
 
 
+def cmd_research(cfg, args):
+    """Laboratorio: investiga variantes, elige campeón honestamente y reentrena."""
+    from bot.research import Lab
+    lab = Lab(cfg, candidates=args.candidates)
+    if args.once:
+        champ, promoted = lab.cycle()
+        print("Campeón:", champ, "| ascendido nuevo:" if promoted else "| se mantiene", promoted)
+    else:
+        lab.loop(cfg["ml"].get("research_every_hours", 12))
+
+
 def cmd_paper(cfg, args):
     from bot.live import LiveTrader
     LiveTrader(cfg).run(once=args.once)
@@ -175,13 +187,14 @@ def cmd_paper(cfg, args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["run", "backtest", "compare", "scan", "paper", "ml-train"])
+    ap.add_argument("cmd", choices=["run", "research", "backtest", "compare", "scan", "paper", "ml-train"])
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--demo", action="store_true", help="usar datos sintéticos")
     ap.add_argument("--once", action="store_true", help="un solo ciclo")
+    ap.add_argument("--candidates", type=int, default=4, help="research: aspirantes por ciclo")
     ap.add_argument("--port", type=int, default=8080, help="puerto del panel web (0 = sin web)")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger("yfinance").setLevel(logging.CRITICAL)
     conf = load_config(a.config)
-    {"backtest": cmd_backtest, "compare": cmd_compare, "scan": cmd_scan, "paper": cmd_paper, "ml-train": cmd_ml_train, "run": cmd_run}[a.cmd](conf, a)
+    {"backtest": cmd_backtest, "compare": cmd_compare, "scan": cmd_scan, "paper": cmd_paper, "ml-train": cmd_ml_train, "run": cmd_run, "research": cmd_research}[a.cmd](conf, a)
