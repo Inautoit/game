@@ -89,6 +89,7 @@
       ["Experimentos realizados", R ? (R.experiments ?? 0) : 0],
       ["Estrategia en uso", pr.tp_atr ? `objetivo ${pr.tp_atr}×ATR · plazo ${pr.horizon} velas · exigencia +${fmt(100 * pr.min_edge, 0)} %` : "—"],
       ["Mercados que opera", (S.enabled || []).map(c => CLS[c]).join(", ") || "—"],
+      ["Confianza → riesgo usado", S.confidence != null ? `${fmt(100 * S.confidence, 0)} % → ${fmt(100 * S.risk.risk_per_trade, 2)} % por operación` : "—"],
     ];
     if (R && R.champion_result) {
       const c = R.champion_result;

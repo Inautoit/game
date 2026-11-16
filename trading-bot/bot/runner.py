@@ -123,6 +123,8 @@ class Runner:
         self.broker = PaperBroker(cfg, state) if mode == "paper" else \
             AlpacaBroker(cfg, state, live=(mode == "live"))
         self.risk = RiskManager.from_config(cfg)
+        self.base_risk = self.risk.risk_per_trade
+        self.confidence = 1.0
         self.risk.stop_atr_mult, self.risk.take_profit_atr_mult = self.mc["sl_atr"], self.mc["tp_atr"]
         self.risk.trailing_atr_mult, self.risk.max_holding_bars = 0, self.mc["horizon"]
         self.journal = Path(lc.get("journal_file", "journal.csv"))
@@ -180,13 +182,18 @@ class Runner:
             self.enabled = set(self.mc.get("enabled_classes", ["crypto", "stock", "forex", "future"]))
             self.risk.stop_atr_mult, self.risk.take_profit_atr_mult = self.mc["sl_atr"], self.mc["tp_atr"]
             self.risk.max_holding_bars = self.mc["horizon"]
+            # Riesgo según la confianza: puntuación ≈ t-estadístico de la ventaja en validación.
+            # < 0.5 → 25 % del riesgo normal; ≥ 2 (evidencia sólida) → 100 %.
+            sc = self.mc.get("champion_score")
+            self.confidence = 0.5 if sc is None else float(np.clip(sc / 2, 0.25, 1.0))
+            self.risk.risk_per_trade = self.base_risk * self.confidence
 
     def maybe_reload(self):
         """Si el laboratorio ha guardado un modelo nuevo, cargarlo sin parar el bot."""
         path = Path(self.mc["model_path"])
         if path.exists() and path.stat().st_mtime != getattr(self, "model_mtime", None):
             self.load_or_train()
-            self.event(f"Modelo nuevo cargado del laboratorio: objetivo {self.mc['tp_atr']}×ATR, "
+            self.event(f"Modelo nuevo cargado del laboratorio (confianza {self.confidence:.0%}): objetivo {self.mc['tp_atr']}×ATR, "
                        f"plazo {self.mc['horizon']} velas, exigencia +{self.mc['min_edge']:.0%}, "
                        f"mercados: {', '.join(CLASS_ES[c] for c in sorted(self.enabled))}.", "up")
 
@@ -388,6 +395,7 @@ class Runner:
             "initial": float(self.cfg.get("capital_inicial", 10_000)), "equity_now": eq, "cash": self.broker.cash,
             "killed": self.risk.killed, "halted": self.risk.halted_today, "n_markets": len(self.universe),
             "n_analysed": len(self.scan), "new_bars": n_new, "interval": self.interval,
+            "confidence": self.confidence,
             "risk": {"max_open": self.risk.max_open_positions, "risk_per_trade": self.risk.risk_per_trade,
                      "tp": self.mc["tp_atr"], "sl": self.mc["sl_atr"], "horizon": self.mc["horizon"]},
             "model": {"trained_until": meta.get("trained_until"), "rows": meta.get("rows"),

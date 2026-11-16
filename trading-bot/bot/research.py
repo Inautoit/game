@@ -46,7 +46,10 @@ def bt_cfg(cfg: dict, ml: dict) -> dict:
     c = copy.deepcopy(cfg)
     c["strategy"] = {"name": "ml", "params": {**cfg["strategy"].get("params", {}), "ml": ml}}
     c["risk"].update({"stop_atr_mult": ml["sl_atr"], "take_profit_atr_mult": ml["tp_atr"],
-                      "trailing_atr_mult": 0, "max_holding_bars": ml["horizon"], "flatten_eod_stocks": False})
+                      "trailing_atr_mult": 0, "max_holding_bars": ml["horizon"], "flatten_eod_stocks": False,
+                      # Para INVESTIGAR se mide la estrategia todo el periodo: los frenos de emergencia
+                      # (que sí actúan operando) cortarían la muestra y falsearían la comparación.
+                      "max_drawdown_kill": 1.0, "daily_loss_limit": 1.0})
     return c
 
 
@@ -177,7 +180,8 @@ class Lab:
             "period": best["period"], "auc": None, "trades": []}, default=str))
         # reentrenar el campeón con lo más reciente + operaciones propias
         self._status(phase="reentrenando al campeón")
-        ml = {**self.base, **best["params"], "enabled_classes": best["enabled_classes"]}
+        ml = {**self.base, **best["params"], "enabled_classes": best["enabled_classes"],
+              "champion_score": best["score"]}
         key = (ml["tp_atr"], ml["sl_atr"], ml["horizon"])
         ds = label_cache[key] if key in label_cache else M.label_dataset(feats, data, ml)
         j = Path("ml_journal.csv")
