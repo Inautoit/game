@@ -1138,7 +1138,7 @@ let repModo = leerLs('rep.modo', 'acum'), repBloques = [];
 // Qué enseña cada casilla: el % (por defecto) o el N (contactadas / tratadas).
 let repVer = leerLs('rep.ver', 'pct');
 $('repVer').addEventListener('click', () => { repVer = repVer === 'pct' ? 'n' : 'pct'; store('rep.ver', repVer); pintarReporte(); });
-for (const [btn, m] of [['repAcum', 'acum'], ['repDias', 'dias']]) $(btn).addEventListener('click', () => { repModo = m; store('rep.modo', m); pintarReporte(); });
+for (const [btn, m] of [['repAcum', 'acum'], ['repSemanas', 'semanas'], ['repDias', 'dias']]) $(btn).addEventListener('click', () => { repModo = m; store('rep.modo', m); pintarReporte(); });
 $('repSem').value = leerLs('rep.sem', '1');
 $('repN').value = leerLs('rep.n', '5');
 $('repSem').addEventListener('change', () => { store('rep.sem', $('repSem').value); pintarReporte(); });
@@ -1180,7 +1180,8 @@ $('repCopiar').addEventListener('click', async () => {
 async function pintarReporte() {
   $('repTit').classList.remove('hidden');
   $('repCard').classList.remove('hidden');
-  for (const [btn, m] of [['repAcum', 'acum'], ['repDias', 'dias']]) $(btn).classList.toggle('sec', repModo !== m);
+  for (const [btn, m] of [['repAcum', 'acum'], ['repSemanas', 'semanas'], ['repDias', 'dias']]) $(btn).classList.toggle('sec', repModo !== m);
+  $('repSemTxt').textContent = repModo === 'semanas' ? 'Hasta la semana' : 'Semana';
   $('repVer').textContent = repVer === 'pct' ? 'Ver N' : 'Ver %';
   // En «Por días» cada casilla lleva el % y el N juntos: el botón solo sirve en el acumulado.
   $('repVer').classList.toggle('hidden', repModo === 'dias');
@@ -1199,10 +1200,16 @@ async function pintarReporte() {
   const cols = [];
   for (const mes of elegidos) {
     const lunes = sumarDias(inicioBbdd(mes), 7 * (k - 1));
-    const dias = Array.from({ length: n }, (_, i) => sumarDias(lunes, i)).filter((d) => d <= ayer);
-    if (!dias.length) { cols.push({ mes, dias, vacio: true }); continue; }
+    const diasSem = (j, m) => Array.from({ length: m }, (_, i) => sumarDias(sumarDias(inicioBbdd(mes), 7 * (j - 1)), i)).filter((d) => d <= ayer);
+    // Por semanas: S1 … Sk (la última con los días elegidos) y el global de todas.
+    const pers = repModo === 'semanas' ? Array.from({ length: k }, (_, j) => ({ etq: 'S' + (j + 1), dias: diasSem(j + 1, j + 1 === k ? n : 5) })) : null;
+    if (pers) pers.push({ etq: 'Global', dias: pers.flatMap((p) => p.dias), global: true });
+    const dias = pers ? pers.at(-1).dias : Array.from({ length: n }, (_, i) => sumarDias(lunes, i)).filter((d) => d <= ayer);
+    if (!dias.length) { cols.push({ mes, dias, vacio: true, pers }); continue; }
     const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(dias[0], dias.at(-1)).map(logsParseados)]);
-    const logs = [].concat(...porMes);
+    // Solo días laborables (el global abarca fines de semana entre medias).
+    const laborable = new Set(dias);
+    const logs = [].concat(...porMes).filter((c) => !pers || (c.fecha && laborable.has(isoDia(c.fecha))));
     const grupos = {}, nombresGrupo = {}, grupoDe = gruposRep(bb.campanas);
     for (const [c, ids] of Object.entries(bb.campanas)) {
       const g = grupoDe[c];
@@ -1215,13 +1222,22 @@ async function pintarReporte() {
     for (const [g, set] of Object.entries(grupos)) {
       const ids = [...set], v = ventanas(bb, nombresGrupo[g]);
       const u = calcular(ids, logs, dias[0], dias.at(-1), ...v).resumen, sd = sumaDiaria(ids, logs, dias[0], dias.at(-1), ...v);
+      if (pers) {
+        res[g] = { porSem: pers.map((p) => {
+          if (!p.dias.length) return null;
+          const a = p.dias[0], b = p.dias.at(-1);
+          const uu = p.global ? u : calcular(ids, logs, a, b, ...v).resumen, ss = p.global ? sd : sumaDiaria(ids, logs, a, b, ...v);
+          return { trat: { c: ss.contactadasDia, t: ss.tratadasDia }, unico: { c: uu.contactadas, t: uu.contactadas + uu.ilocalizadas } };
+        }) };
+        continue;
+      }
       res[g] = {
         trat: { c: sd.contactadasDia, t: sd.tratadasDia },
         unico: { c: u.contactadas, t: u.contactadas + u.ilocalizadas },
         porDia: repModo === 'dias' ? dias.map((d) => { const r = delDia(ids, logs, d, ...v); return { c: r.contactadas, t: r.instLlamadas }; }) : null,
       };
     }
-    cols.push({ mes, dias, res });
+    cols.push({ mes, dias, res, pers });
   }
   const pc = (x) => (x && x.t ? `${fmt((100 * x.c) / x.t, 1)} %` : '—');
   const nn = (x) => (x && x.t ? `${fmt(x.c)} / ${fmt(x.t)}` : '');
@@ -1238,6 +1254,20 @@ async function pintarReporte() {
   const exp = (x) => (!x ? { txt: 'N/A' } : !x.t ? { txt: '—' } : repModo === 'dias' ? { txt: `${pc(x)} (${nn(x)})` }
     : repVer === 'pct' ? { pct: x.c / x.t } : { txt: nn(x) });
   const tabla = (titulo, sub, clave) => {
+    if (repModo === 'semanas') {
+      const scols = cols.flatMap((c) => (c.pers || []).map((p, j) => ({ c, p, j })));
+      const rg = (p) => (p.dias.length ? `${fDia(p.dias[0]).slice(0, 5)}–${fDia(p.dias.at(-1)).slice(0, 5)}` : 'sin días');
+      const mesC = (c) => escapeHtml(nombreMes(c.mes).replace(/ de \d{4}$/, ''));
+      const st = (p, j, c) => (p.global ? ' style="background:var(--surface-2, rgba(127,127,127,.08)); font-weight:600"' : '') ;
+      html += `<h3 class="chart-t">${titulo} <small>· ${sub}</small></h3><div class="tablewrap"><table><thead><tr><th>Campaña</th>${scols.map(({ c, p, j }) =>
+        `<th class="n"${st(p, j, c)}>${mesC(c)} · ${p.etq}<br><span style="font-weight:400">${rg(p)}</span></th>`).join('')}</tr></thead><tbody>` +
+        REP_FILAS.map(([g, nombre, neg]) => `<tr${neg ? ' style="font-weight:600"' : ''}><td>${nombre}</td>${scols.map(({ c, p, j }) =>
+          `<td class="n"${st(p, j, c)}>${c.vacio || !p.dias.length ? '—' : c.res[g] ? val(c.res[g].porSem[j]?.[clave]) : 'N/A'}</td>`).join('')}</tr>`).join('') + '</tbody></table></div>';
+      bloques.push({ titulo, cab: ['Campaña', ...scols.map(({ c, p }) => `${nombreMes(c.mes).replace(/ de \d{4}$/, '')} · ${p.etq} (${rg(p)})`)],
+        filas: REP_FILAS.map(([g, nombre, neg]) => ({ neg, celdas: [{ txt: nombre }, ...scols.map(({ c, p, j }) =>
+          (c.vacio || !p.dias.length ? { txt: '—' } : c.res[g] ? exp(c.res[g].porSem[j]?.[clave]) : { txt: 'N/A' }))] })) });
+      return;
+    }
     if (repModo === 'acum') {
       html += `<h3 class="chart-t">${titulo} <small>· ${sub}</small></h3><div class="tablewrap"><table><thead><tr><th>Campaña</th>${cols.map((c) =>
         `<th class="n">${etqCol(c)}<br><span style="font-weight:400">${rango(c)}</span></th>`).join('')}</tr></thead><tbody>` +
@@ -1255,7 +1285,7 @@ async function pintarReporte() {
         filas: REP_FILAS.map(([g, nombre, neg]) => ({ neg, celdas: [{ txt: nombre }, ...dcols.map(({ c, i }) => exp(c.res[g]?.porDia[i]))] })) });
     }
   };
-  if (repModo === 'acum') {
+  if (repModo === 'acum' || repModo === 'semanas') {
     tabla('Contacto en base a tratado (intentos)', 'una instalación cuenta cada día que se llama, como el cuadro diario', 'trat');
     tabla('Contacto único', 'cada instalación cuenta una sola vez en esos días', 'unico');
   } else {
@@ -1263,7 +1293,8 @@ async function pintarReporte() {
   }
   $('repTablas').innerHTML = html;
   repBloques = bloques;
-  $('repNota').textContent = 'Cada BBDD empieza el último lunes del mes anterior (la BBDD de noviembre, el 26/10). Solo días de lunes a viernes y hasta ayer. ' +
+  $('repNota').textContent = (repModo === 'semanas' ? 'Por semanas: cada semana de lunes a viernes y, a la derecha de cada mes, el Global de todas juntas (el contacto único global cuenta cada instalación una vez en todo el periodo). ' : '') +
+    'Cada BBDD empieza el último lunes del mes anterior (la BBDD de noviembre, el 26/10). Solo días de lunes a viernes y hasta ayer. ' +
     '«Sin separar» son las BBDD que no distinguen con/sin OPC (p. ej. septiembre y octubre); TMK incluye TMK PILOTO. % = contactadas / tratadas; con «Ver N» se ven contactadas / tratadas.';
 }
 
