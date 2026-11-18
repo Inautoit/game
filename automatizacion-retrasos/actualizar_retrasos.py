@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import configparser
 import datetime as dt
+import os
 import re
 import shutil
 import sys
@@ -31,9 +32,14 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 BASE = Path(__file__).resolve().parent
 CONFIG = BASE / "config.ini"
-DESCARGAS = BASE / "descargas"
-PERFIL_NAVEGADOR = BASE / "perfil_navegador"
-LOG_FILE = BASE / "ultima_ejecucion.log"
+# Datos de cada persona en su propio PC: así varias personas pueden ejecutar
+# la herramienta desde la misma carpeta compartida sin pisarse.
+_LOCAL = os.environ.get("LOCALAPPDATA")
+DATOS_USUARIO = Path(_LOCAL) / "ActualizarRetrasos" if _LOCAL else BASE
+DATOS_USUARIO.mkdir(parents=True, exist_ok=True)
+DESCARGAS = DATOS_USUARIO / "descargas"
+PERFIL_NAVEGADOR = DATOS_USUARIO / "perfil_navegador"
+LOG_FILE = DATOS_USUARIO / "ultima_ejecucion.log"
 
 MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
          "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]

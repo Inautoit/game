@@ -10,6 +10,18 @@ Un botón que:
 
 El archivo del cuadrante se elige solo según el mes: en diciembre buscará `12_Cuadrante*2026.xlsm`, y en enero, la carpeta `2027`.
 
+## Repartirlo al equipo sin que nadie meta datos
+
+1. Crea `config.ini` (copia de `config.example.ini`) con la matrícula y el correo.
+   `config.ini` **no se sube a GitHub** (está en `.gitignore`).
+2. Deja la carpeta completa, con ese `config.ini`, en una carpeta compartida de red
+   o envíala en un ZIP.
+3. Cada persona solo hace doble clic en `Actualizar Retrasos.bat`. Las sesiones y
+   descargas de cada una se guardan en su PC (`%LOCALAPPDATA%\ActualizarRetrasos`),
+   así que pueden usarla a la vez desde la misma carpeta.
+
+Cada persona necesita Python y ejecutar `1_Instalar.bat` una vez en su PC.
+
 ## Instalación (una vez, en tu PC con Windows)
 
 1. Instala **Python 3.10 o superior** desde <https://www.python.org/downloads/>
@@ -30,7 +42,7 @@ El archivo del cuadrante se elige solo según el mes: en diciembre buscará `12_
 
 En el *Programador de tareas* de Windows, crea una tarea básica que ejecute
 `Actualizar Retrasos (automatico).bat` a la hora que quieras. Lo que pase queda
-en `ultima_ejecucion.log`.
+en `%LOCALAPPDATA%\ActualizarRetrasos\ultima_ejecucion.log`.
 
 ## Opciones de `config.ini`
 
