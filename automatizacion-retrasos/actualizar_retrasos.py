@@ -9,9 +9,10 @@ Con un solo botón:
      en "Cuadrante" y "Cambios de turno".
 
 Uso:
-  python actualizar_retrasos.py                -> abre la ventana con el botón
-  python actualizar_retrasos.py --sin-ventana  -> lo ejecuta directamente
-                                                  (para el Programador de tareas)
+  ActualizarRetrasos.exe                -> abre la ventana con el botón
+  ActualizarRetrasos.exe --sin-ventana  -> lo ejecuta directamente
+                                           (para el Programador de tareas)
+  (o "python actualizar_retrasos.py ..." si se usa el script directamente)
 
 La configuración está en config.ini (copia config.example.ini).
 """
@@ -30,7 +31,11 @@ import traceback
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-BASE = Path(__file__).resolve().parent
+# Carpeta del programa: junto al .exe si está empaquetado, o junto al script.
+if getattr(sys, "frozen", False):
+    BASE = Path(sys.executable).resolve().parent
+else:
+    BASE = Path(__file__).resolve().parent
 CONFIG = BASE / "config.ini"
 # Datos de cada persona en su propio PC: así varias personas pueden ejecutar
 # la herramienta desde la misma carpeta compartida sin pisarse.
@@ -313,7 +318,10 @@ def crear_logger(extra=None):
     def log(msg: str):
         with LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(msg + "\n")
-        print(msg, flush=True)
+        try:
+            print(msg, flush=True)
+        except Exception:  # el .exe con ventana no tiene consola
+            pass
         if extra:
             extra(msg)
     return log
