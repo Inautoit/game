@@ -762,7 +762,7 @@ body.tv .tv-results:not([hidden]) { display: flex; position: absolute; inset: 0;
 /* Móvil como mando: sin dibujar la pista (se ve en la tele), gatillo grande y lo justo de información */
 body.mando #game { visibility: hidden; }
 body.mando #hud { background: radial-gradient(ellipse at 30% 30%, color-mix(in srgb, var(--mcar, #333) 35%, #121826), #0b0f18 75%); }
-body.mando .hud-rows, body.mando #lapList, body.mando #tele, body.mando #camBtn { display: none !important; }
+body.mando .hud-rows, body.mando #lapList, body.mando #tele { display: none !important; }
 body.mando #hud.intro > *:not(.intro-card) { opacity: 1; pointer-events: auto; }
 body.mando .intro-card { display: none; }
 body.mando .mando-info { display: flex; flex-direction: column; justify-content: center; gap: 1.6vh; position: absolute; left: calc(env(safe-area-inset-left) + 6vw); top: 0; bottom: 0; right: 46vw; }
@@ -792,3 +792,21 @@ body.mando .pad-label { font-size: 18px; }
 }
 #tv.open { pointer-events: auto; }
 body.mando .hud-top { justify-content: flex-end; }
+
+/* Tele con pantalla partida: un trozo por piloto, con su nombre, y en el centro el minimapa */
+.tv-split, .tv-center { display: none; }
+body.tv.split .tv-board { display: none; }
+body.tv.split .tv-split { display: block; position: absolute; inset: 0; pointer-events: none; }
+.tv-split .lab { position: absolute; display: flex; align-items: center; gap: 0.8vw; padding: 0.7vh 1vw; margin: 1.4vh 1vw; border-radius: 12px; background: rgba(10, 12, 18, 0.78); border-left: 7px solid var(--car); font-size: clamp(14px, 1.4vw, 26px); }
+.tv-split .lab b { font: italic 800 1.4em/1 var(--font-d); }
+.tv-split .lab span { font-weight: 700; }
+.tv-split .lab em { font-style: normal; color: var(--ink-2); font-size: 0.8em; }
+.tv-split .lab.out { box-shadow: 0 0 0 3px var(--red); }
+.tv-split .line { position: absolute; background: #0b0f18; }
+body.tv.split .tv-center { display: flex; flex-direction: column; align-items: center; gap: 0.6vh; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 1.2vh 1vw; border-radius: 18px; background: rgba(10, 12, 18, 0.88); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08), 0 10px 30px rgba(0, 0, 0, 0.5); }
+body.tv.split.two .tv-center { top: auto; bottom: 2.5vh; transform: translateX(-50%); }
+.tv-center b { font: italic 800 clamp(16px, 1.6vw, 30px)/1 var(--font-d); text-transform: uppercase; letter-spacing: 0.04em; }
+#tvMap { width: min(18vw, 300px); height: auto; }
+#tvOrder { display: flex; gap: 0.5vw; }
+#tvOrder i { display: grid; place-items: center; width: 2.2vw; height: 2.2vw; max-width: 38px; max-height: 38px; border-radius: 50%; font: italic 800 clamp(12px, 1.1vw, 20px)/1 var(--font-d); color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); background: var(--car); }
+body.mando .hud-btns .icon-btn { width: 54px; height: 54px; }

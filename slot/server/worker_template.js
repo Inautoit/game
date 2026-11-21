@@ -436,6 +436,7 @@ export class Room {
     this.state = state;
     this.players = new Map();  // id → { ws, name, liv, cls, lane, ready, host, fin }
     this.screens = new Map();  // id → ws: teles que solo muestran la carrera (los móviles son los mandos)
+    this.view = 'auto';        // vista en la tele: auto | partida (pantalla partida) | mesa (toda la mesa)
     this.track = null;         // { kind: 'oficial'|'comunidad', id, name, lanes, laps, def? }
     this.phase = 'lobby';      // lobby | race
     this.startAt = 0;
@@ -455,8 +456,8 @@ export class Room {
   snapshot() {
     return {
       t: 'room', phase: this.phase, track: this.track, startAt: this.startAt, cpu: this.cpu, quick: this.quick, autoAt: this.autoAt,
-      bots: this.bots, champ: this.champ, screens: this.screens.size,
-      players: [...this.players.entries()].map(([id, p]) => ({ id, name: p.name, liv: p.liv, cls: p.cls, car: p.car, lane: p.lane, ready: p.ready, host: p.host, fin: p.fin })),
+      bots: this.bots, champ: this.champ, screens: this.screens.size, view: this.view,
+      players: [...this.players.entries()].map(([id, p]) => ({ id, name: p.name, liv: p.liv, cls: p.cls, car: p.car, lane: p.lane, ready: p.ready, host: p.host, fin: p.fin, cam: p.cam || 'heli' })),
     };
   }
   pickLiv(want, exceptId) {
@@ -642,6 +643,9 @@ export class Room {
         return;
       }
       case 'cpu': if (me.host && this.phase === 'lobby' && !this.quick) { this.cpu = !!m.v; this.all(this.snapshot()); } return;
+      // Vista de la tele (la elige quien da la salida) y la cámara de cada piloto en su parte de la pantalla
+      case 'view': if (me.host && ['auto', 'partida', 'mesa'].includes(m.v)) { this.view = m.v; this.all(this.snapshot()); } return;
+      case 'cam': if (['heli', 'tv', 'persecucion', 'bordo'].includes(m.m)) { me.cam = m.m; for (const ws of this.screens.values()) this.send(ws, { t: 'cam', id, m: m.m }); } return;
       case 'me': {
         if (this.phase !== 'lobby') return;
         me.liv = this.pickLiv(clean(m.liv, 12), id); me.cls = m.cls === 'pro' ? 'pro' : 'iman'; me.car = carOf(m.car);

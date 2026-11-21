@@ -178,6 +178,7 @@
         </div>
         <div class="ed-row on-mode" id="onModeRow"><span class="lbl">Modo</span><div id="onMode" class="seg"></div></div>
         <label class="toggle on-mando" id="onMandoRow" hidden><span>📺 Hay una tele en la sala<small>Usa el móvil solo como mando y mira la carrera en la tele</small></span><input type="checkbox" id="onMando"><i></i></label>
+        <div class="ed-row on-view" id="onViewRow" hidden><span class="lbl">Vista en la tele</span><div id="onView" class="seg"></div></div>
         <label class="toggle" id="onCpuRow"><span>Rellenar con CPU<small>Coches de la CPU en los carriles libres</small></span><input type="checkbox" id="onCpu"><i></i></label>
         <div id="onChamp" class="res-champ" hidden></div>
         <div class="ed-row on-laps" id="onLapsRow"><span class="lbl">Vueltas de la carrera</span><div class="stepper"><button id="onLapsM" aria-label="Menos vueltas">−</button><b id="onLaps">5</b><button id="onLapsP" aria-label="Más vueltas">+</button></div></div>
@@ -272,6 +273,8 @@
     <div id="pads"></div>
     <div id="tvBoard" class="tv-board" aria-live="off"></div>
     <div id="tvLights" class="tv-lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <div id="tvSplit" class="tv-split" aria-hidden="true"></div>
+    <div id="tvCenter" class="tv-center" aria-live="off"><b id="tvLap"></b><canvas id="tvMap" width="300" height="220"></canvas><div id="tvOrder"></div></div>
     <div id="tvResults" class="tv-results" hidden></div>
     <div id="mandoInfo" class="mando-info"></div>
   </div>

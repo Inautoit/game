@@ -2274,6 +2274,7 @@ function loop(now) {
   if (race && race.screen && (racing || state === 'intro')) updateTvBoard();
   if (mandoOn) return;
   updateCrowd(dt);
+  if (race && race.screen && racing && tvRenderSplit(dt)) return;
   renderFrame(dt);
 }
 
@@ -3116,6 +3117,7 @@ function onRoomMessage(m) {
     if (state === 'results' && race && race.mode === 'online' && m.phase === 'lobby' && m.champ) renderOnlineChamp($('resChamp'), m.champ);
     return;
   }
+  if (m.t === 'cam') { tvCams[m.id] = m.m; return; }
   if (!race || race.mode !== 'online') return;
   const c = cars.find((x) => x.remote === m.id);
   if (m.t === 'st' && c) {
@@ -3200,6 +3202,8 @@ function renderLobby() {
   $('onCpuRow').hidden = !host || rs.quick;
   $('onCpu').checked = !!rs.cpu;
   $('onMandoRow').hidden = !rs.screens;
+  $('onViewRow').hidden = !rs.screens || !host;
+  if (rs.screens && host) segButtons($('onView'), [['auto', 'Automática'], ['partida', 'Partida'], ['mesa', 'Mesa entera']], rs.view || 'auto', (v) => room.send({ t: 'view', v }));
   $('onMando').checked = settings.mandoTele !== false;
   segButtons($('onMode'), [['race', 'Carrera'], ['club', 'Copa Club'], ['gp', 'Copa GP']], rs.champ && !rs.champ.final ? rs.champ.cup : 'race', (id) => {
     room.send({ t: 'champ', cup: id === 'race' ? null : id, laps: rs.track ? rs.track.laps : 3 });
@@ -3838,6 +3842,13 @@ function resume() {
   last = performance.now();
 }
 function toggleCam() {
+  if (race && race.mando && room) {
+    mandoCam = TV_CAMS[(TV_CAMS.indexOf(mandoCam) + 1) % TV_CAMS.length];
+    room.send({ t: 'cam', m: mandoCam });
+    toast('En la tele: ' + CAM_NAME[mandoCam]);
+    mandoTick = 5;
+    return;
+  }
   camMode = CAMS[(CAMS.indexOf(camMode) + 1) % CAMS.length];
   toast('' + CAM_NAME[camMode]);
 }
@@ -3996,6 +4007,7 @@ function tvConnect(code) {
 }
 function tvLobby() {
   clearTimeout(tvTimer);
+  document.body.classList.remove('split', 'two');
   $('tvResults').hidden = true;
   state = 'tvlobby';
   demoRace();
@@ -4007,7 +4019,7 @@ function tvRender() {
   if (!TV || state !== 'tvlobby') return;
   const rs = roomState, def = rs && roomDef(rs.track);
   $('tvTrack').textContent = def ? def.name : 'Lo elige el primer piloto';
-  $('tvTrackMeta').textContent = def ? `${lenTxt(def)} · ${def.lanes} carriles · ${rs.track.laps} ${rs.track.laps === 1 ? 'vuelta' : 'vueltas'}${rs.cpu ? ' · con CPU' : ''}` : '';
+  $('tvTrackMeta').textContent = def ? `${lenTxt(def)} · ${def.lanes} carriles · ${rs.track.laps} ${rs.track.laps === 1 ? 'vuelta' : 'vueltas'}${rs.cpu ? ' · con CPU' : ''} · ${VIEW_NAME[rs.view || 'auto']}` : '';
   const box = $('tvPlayers'); box.innerHTML = '';
   const lanes = def ? def.lanes : 4;
   for (let l = 0; l < lanes; l++) {
@@ -4033,6 +4045,8 @@ function tvRoom(m, was) {
 function tvStartRace(rs) {
   const def = roomDef(rs.track);
   if (!def) return;
+  for (const p of rs.players) tvCams[p.id] = p.cam || 'heli';
+  tvViews.length = 0;
   clearTimeout(tvTimer);
   $('tvResults').hidden = true;
   startRace({ def, mode: 'online', entries: [], online: { lane: -1, players: rs.players, bots: rs.bots || [], amHost: false, me: myId, startAt: rs.startAt, laps: rs.track.laps, screen: true } });
@@ -4056,6 +4070,7 @@ function updateTvBoard() {
     st.textContent = c.finished ? (c.finishTime < 9000 ? (i === 0 ? fmt(c.finishTime) : 'Meta') : 'Abandona') : c.crash ? '¡Fuera!' : `V ${Math.max(1, c.lap)}/${race.laps}`;
     row.append(pos, nm, st); box.appendChild(row);
   });
+  updateTvSplitUI();
   const lights = $('tvLights');
   lights.classList.toggle('on', state === 'countdown' && !race.started);
   [...lights.children].forEach((el, k) => el.classList.toggle('lit', k < race.lightsOn));
@@ -4108,10 +4123,140 @@ function updateMando(active) {
   const order = standings();
   box.querySelector('.pos').innerHTML = `${order.indexOf(me) + 1}º<small>/${cars.length}</small>`;
   box.querySelector('.lap').textContent = me.finished ? '¡Meta!' : `Vuelta ${Math.max(1, me.lap)}/${race.laps}`;
-  box.querySelector('.times').textContent = `Última ${fmt(me.last)} · Mejor ${fmt(me.best)}`;
+  box.querySelector('.times').textContent = `Última ${fmt(me.last)} · Mejor ${fmt(me.best)}` + (roomState && tvSplitView(roomState) ? ` · 📷 ${CAM_NAME[mandoCam]}` : '');
   const msg = box.querySelector('.msg');
   msg.textContent = state === 'intro' ? 'Mira la tele: presentación del circuito' : state === 'countdown' ? (race.lightsOn ? 'Atento al semáforo…' : 'Preparados…') : me.crash ? '¡Te has salido!' : me.finished ? 'Esperando al resto…' : '';
   msg.className = 'msg' + (me.crash ? ' bad' : '');
+}
+
+// ---- Tele con pantalla partida: un trozo por piloto (con la cámara que elija en su móvil) y un minimapa ----
+const TV_CAMS = ['heli', 'tv', 'persecucion', 'bordo'];
+const VIEW_NAME = { auto: 'vista automática', partida: 'pantalla partida', mesa: 'mesa entera' };
+const tvCams = {};          // id del piloto → su cámara
+const tvViews = [];         // estado de la cámara de cada trozo
+let mandoCam = 'heli';      // la cámara que este móvil ha elegido para su trozo de la tele
+// ¿Pantalla partida? Automática: sí en los circuitos largos (en los cortos se ve bien toda la mesa)
+function tvSplitView(rs) {
+  const v = (rs && rs.view) || 'auto';
+  if (v === 'mesa') return false;
+  if (v === 'partida') return true;
+  return !!T && (T.big || T.L * SCALE > 14);
+}
+const tvPilots = () => cars.filter((c) => c.remote && race.online && race.online.players.some((p) => p.id === c.remote)).sort((a, b) => a.lane - b.lane);
+function tvRects(n) {
+  if (n <= 1) return [[0, 0, 1, 1]];
+  if (n === 2) return [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]];
+  return [[0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5], [0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5]];   // (abajo-izquierda = 0,0)
+}
+// Cámara que sigue a un coche (las mismas que en el juego normal), con su propio estado por trozo
+function tvFollow(v, c, mode, dt, aspect) {
+  const p = at(c.st.s, c.d), ox = -T.center.x, oz = -T.center.z;
+  const psi = p.h + (c.crash ? 0 : c.st.th * 0.5), fx = Math.cos(psi), fz = Math.sin(psi);
+  const goalP = new THREE.Vector3(), goalT = new THREE.Vector3();
+  let k = 1 - Math.exp(-dt * 8);
+  if (mode === 'heli') {
+    const ahead = at(c.st.s + 3.5, c.d);
+    let dh = ahead.h - (v.heliH ?? ahead.h); dh -= Math.round(dh / (2 * Math.PI)) * 2 * Math.PI;
+    v.heliH = (v.heliH ?? ahead.h) + dh * Math.min(1, dt * 2.5);
+    const hx = Math.cos(v.heliH), hz = Math.sin(v.heliH), portrait = aspect < 1;
+    const back = portrait ? 6 : 5.5, up = portrait ? 8 : 7, fwd = portrait ? 2 : 1.75;
+    goalP.set(p.x - hx * back + ox, p.y + up, p.z - hz * back + oz);
+    goalT.set(p.x + hx * fwd + ox, p.y, p.z + hz * fwd + oz);
+    k = 1 - Math.exp(-dt * 10); v.cam.fov = 50;
+  } else if (mode === 'persecucion') {
+    goalP.set(p.x - fx * 3.3 + ox, p.y + 2.1, p.z - fz * 3.3 + oz);
+    goalT.set(p.x + fx * 1.6 + ox, p.y - 0.3, p.z + fz * 1.6 + oz);
+    k = Math.min(1, dt * 7); v.cam.fov = 34;
+  } else if (mode === 'bordo') {
+    goalP.set(p.x - fx * 1.25 + ox, p.y + 0.55, p.z - fz * 1.25 + oz);
+    goalT.set(p.x + fx * 2.2 + ox, p.y + 0.12, p.z + fz * 2.2 + oz);
+    k = Math.min(1, dt * 15); v.cam.fov = 52;
+  } else {   // tele: alta, mirando por delante del coche
+    const laGoal = c.crash ? 0 : clamp(Math.max(0, c.st.v) * 0.3 / SCALE, 1.5, 7.5);
+    v.look = (v.look || 0) + (laGoal - (v.look || 0)) * Math.min(1, dt * 1.5);
+    const q = at(c.st.s + v.look, c.d), D = 17, el = (58 * Math.PI) / 180;
+    goalT.set(q.x + ox, q.y, q.z + oz);
+    goalP.set(q.x + ox, q.y + Math.sin(el) * D, q.z + oz + Math.cos(el) * D);
+    k = 1 - Math.exp(-dt * 12); v.cam.fov = 34;
+  }
+  if (v.snap || v.mode !== mode) { v.pos.copy(goalP); v.target.copy(goalT); v.snap = false; v.mode = mode; }
+  else { v.pos.lerp(goalP, k); v.target.lerp(goalT, k); }
+}
+function tvRenderSplit(dt) {
+  const split = state !== 'intro' && tvSplitView(roomState);
+  const pilots = split ? tvPilots() : [];
+  document.body.classList.toggle('split', pilots.length > 0);
+  document.body.classList.toggle('two', pilots.length === 2);
+  if (!pilots.length) return false;
+  const Wd = innerWidth, Hd = innerHeight, rects = tvRects(pilots.length);
+  renderer.setScissorTest(true);
+  renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // las sombras se calculan una vez
+  rects.forEach((r, i) => {
+    const v = tvViews[i] || (tvViews[i] = { cam: new THREE.PerspectiveCamera(40, 1, 0.1, 400), pos: new THREE.Vector3(), target: new THREE.Vector3(), snap: true });
+    const x = r[0] * Wd, y = r[1] * Hd, w = r[2] * Wd, h = r[3] * Hd;
+    v.cam.aspect = w / h;
+    const c = pilots[i];
+    if (c) tvFollow(v, c, tvCams[c.remote] || 'heli', dt, v.cam.aspect);
+    else {   // con 3 pilotos, el cuarto trozo enseña toda la mesa
+      const a = camera.aspect, f = camera.fov; camera.aspect = v.cam.aspect; camera.fov = 34;
+      overviewCamera(v.pos, v.target); camera.aspect = a; camera.fov = f; v.cam.fov = 34;
+    }
+    v.cam.updateProjectionMatrix();
+    v.cam.position.copy(v.pos); v.cam.lookAt(v.target);
+    renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h);
+    renderer.render(scene, v.cam);
+    renderer.shadowMap.needsUpdate = false;
+  });
+  renderer.setScissorTest(false); renderer.setViewport(0, 0, Wd, Hd); renderer.shadowMap.autoUpdate = true;
+  return true;
+}
+// Rótulos de cada trozo y minimapa del centro
+function updateTvSplitUI() {
+  const box = $('tvSplit');
+  if (!document.body.classList.contains('split')) { if (box.childNodes.length) box.innerHTML = ''; return; }
+  const pilots = tvPilots(), rects = tvRects(pilots.length), order = standings();
+  box.innerHTML = '';
+  rects.forEach((r, i) => {
+    const c = pilots[i];
+    const lab = document.createElement('div'); lab.className = 'lab' + (c && c.crash ? ' out' : '');
+    lab.style.left = `${r[0] * 100}%`; lab.style.top = `${(1 - r[1] - r[3]) * 100}%`;
+    if (c) {
+      lab.style.setProperty('--car', hexOf(c.liv.color));
+      const b = document.createElement('b'); b.textContent = `${order.indexOf(c) + 1}º`;
+      const s = document.createElement('span'); s.textContent = c.name;
+      const e = document.createElement('em'); e.textContent = c.finished ? 'Meta' : c.crash ? '¡Fuera!' : `V ${Math.max(1, c.lap)}/${race.laps}`;
+      lab.append(b, s, e);
+    } else { lab.style.setProperty('--car', '#888'); const s = document.createElement('span'); s.textContent = 'Toda la mesa'; lab.append(s); }
+    box.appendChild(lab);
+  });
+  // Líneas que separan los trozos
+  const lines = pilots.length === 2 ? [[50, 0, 0.4, 100]] : [[50, 0, 0.4, 100], [0, 50, 100, 0.6]];
+  for (const [l, tp, w, h] of lines) { const d = document.createElement('div'); d.className = 'line'; Object.assign(d.style, { left: `calc(${l}% - ${w === 0.4 ? 3 : 0}px)`, top: `calc(${tp}% - ${h === 0.6 ? 3 : 0}px)`, width: w === 0.4 ? '6px' : `${w}%`, height: h === 0.6 ? '6px' : `${h}%` }); box.appendChild(d); }
+  const lead = order[0];
+  $('tvLap').textContent = state === 'countdown' && !race.started ? 'Preparados' : `Vuelta ${lead ? Math.min(race.laps, Math.max(1, lead.lap)) : 1}/${race.laps}`;
+  // Minimapa: el circuito y un punto por coche
+  const cv = $('tvMap'), g = cv.getContext('2d');
+  if (!race.map) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const q of T.pts) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); z0 = Math.min(z0, q.z); z1 = Math.max(z1, q.z); }
+    const sc = Math.min((cv.width - 30) / (x1 - x0 || 1), (cv.height - 30) / (z1 - z0 || 1));
+    race.map = { sc, ox: (cv.width - (x1 - x0) * sc) / 2 - x0 * sc, oz: (cv.height - (z1 - z0) * sc) / 2 - z0 * sc };
+  }
+  const M = race.map, P = (q) => [q.x * M.sc + M.ox, q.z * M.sc + M.oz];
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  for (const [w, col] of [[11, '#2a3142'], [5, '#5b6378']]) {
+    g.beginPath();
+    T.pts.forEach((q, i) => { if (i % 4) return; const [a, b] = P(q); if (!i) g.moveTo(a, b); else g.lineTo(a, b); });
+    g.closePath(); g.lineWidth = w; g.strokeStyle = col; g.stroke();
+  }
+  for (const c of [...cars].reverse()) {
+    const [a, b] = P(at(c.st.s, c.d));
+    g.beginPath(); g.arc(a, b, c === lead ? 8 : 6.5, 0, Math.PI * 2);
+    g.fillStyle = hexOf(c.liv.color); g.fill(); g.lineWidth = 2.5; g.strokeStyle = c.crash ? '#ff3b30' : '#fff'; g.stroke();
+  }
+  const ord = $('tvOrder'); ord.innerHTML = '';
+  order.forEach((c, i) => { const d = document.createElement('i'); d.style.setProperty('--car', hexOf(c.liv.color)); d.textContent = i + 1; d.title = c.name; ord.appendChild(d); });
 }
 $('onTv').addEventListener('click', () => { sfx.click(); location.search = '?tele=1'; });
 $('onMando').addEventListener('change', (e) => { settings.mandoTele = e.target.checked; saveSettings(); });
@@ -4166,6 +4311,7 @@ window.__slot = {
   get actx() { return actx; }, get slotBuf() { return slotBuf; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },
+  get tvCams() { return tvCams; },
   get tvLag() { const a = [...tvLagStat].sort((x, y) => x - y); return a.length ? Math.round(a[a.length >> 1]) : null; },
   forceShot: (type, dur = 3) => { forcedShot = type ? { type, dur } : null; if (shot) shot.t = shot.dur; },
 };
