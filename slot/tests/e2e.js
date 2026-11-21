@@ -343,6 +343,93 @@ T('online: sala con dos jugadores, presentación igual para los dos y salida', a
   noErrors(a); noErrors(b); await close(a); await close(b);
 });
 
+// ---------------------------------------------------------------- Modo tele (la tele muestra la carrera; los móviles son los mandos)
+async function openAt(url, vp, init) {
+  const v = VIEWPORTS[vp] || vp;
+  const ctx = await browser.newContext({ viewport: { width: v.width, height: v.height }, isMobile: !!v.isMobile, hasTouch: !!v.hasTouch, deviceScaleFactor: 1 });
+  const p = await ctx.newPage();
+  p.errors = [];
+  p.on('pageerror', (e) => p.errors.push('pageerror: ' + e.message));
+  p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: the server responded with a status of (404|401|409|429)/.test(m.text())) p.errors.push('console: ' + m.text().slice(0, 300)); });
+  if (init) await p.addInitScript(init);
+  const t0 = Date.now();
+  await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 180000 });
+  await p.waitForFunction(() => window.__slot, null, { timeout: 180000 });
+  if (process.env.PASOS) console.log('        · abierta en', Date.now() - t0, 'ms', url.slice(-30));
+  return p;
+}
+T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carrera se ve en la tele', async () => {
+  const tv = await openAt(BASE + '?tele=1', { width: 640, height: 360 }, "localStorage.setItem('slot.quality','2');");
+  await tv.waitForFunction(() => /^[A-Z]{4}$/.test(document.getElementById('tvCode').textContent), null, { timeout: 30000 });
+  if (process.env.PASOS) console.log('        · paso 2');
+  const code = await tv.evaluate(() => document.getElementById('tvCode').textContent);
+  assert(await visible(tv, '#tv'), 'no se ve la sala de la tele');
+  await tv.waitForFunction(() => { const c = document.getElementById('tvQr'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let k = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 50) k++; return k > 200; }, null, { timeout: 20000 });
+  if (process.env.PASOS) console.log('        · paso 5');
+  assert((await state(tv)) === 'tvlobby', 'la tele no está en su sala: ' + await state(tv));
+  const who = (n) => `localStorage.setItem('slot.seenHelp2','true'); localStorage.setItem('slot.quality','2'); localStorage.setItem('slot.settings', JSON.stringify({ pilot: '${n}', music: false }));`;
+  const a = await openAt(BASE + `?sala=${code}&mando=1`, { width: 360, height: 640, isMobile: true, hasTouch: true }, who('Ana'));
+  await a.waitForFunction(() => window.__slot.roomState && window.__slot.roomState.players.length === 1, null, { timeout: 30000 });
+  if (process.env.PASOS) console.log('        · paso 9');
+  const b = await openAt(BASE + `?sala=${code}&mando=1`, { width: 640, height: 360, isMobile: true, hasTouch: true }, who('Beto'));
+  await b.waitForFunction(() => window.__slot.roomState && window.__slot.roomState.players.length === 2, null, { timeout: 30000 });
+  if (process.env.PASOS) console.log('        · paso 11');
+  await tv.waitForFunction(() => /Ana/.test(document.getElementById('tvPlayers').textContent) && /Beto/.test(document.getElementById('tvPlayers').textContent), null, { timeout: 20000 });
+  if (process.env.PASOS) console.log('        · paso 12');
+  assert(await visible(a, '#onMandoRow'), 'el móvil no avisa de que hay una tele');
+  await click(a, '#onPickTrack'); await sleep(500); await click(a, '#circList .circ'); await sleep(1500);
+  for (let i = 0; i < 10; i++) { await click(a, '#onLapsM'); await sleep(200); }
+  for (let i = 0; i < 2; i++) { await click(a, '#onLapsP'); await sleep(200); }   // 3 vueltas
+  await tv.waitForFunction(() => /Óvalo|vuelta/.test(document.getElementById('tvTrackMeta').textContent + document.getElementById('tvTrack').textContent), null, { timeout: 20000 });
+  if (process.env.PASOS) console.log('        · paso 16');
+  await tv.screenshot({ path: `${OUT}/tele_sala.png` });
+  await click(b, '#onReady'); await sleep(2000);
+  await click(a, '#onReady');
+  for (const p of [tv, a, b]) await p.waitForFunction(() => window.__slot.state === 'intro', null, { timeout: 30000 });
+  assert(await tv.evaluate(() => window.__slot.race.screen && window.__slot.cars.length === 2 && window.__slot.cars.every((c) => !c.human)), 'la tele no muestra los dos coches de la sala');
+  assert(await a.evaluate(() => document.body.classList.contains('mando')), 'el móvil no se ha puesto en modo mando');
+  await tv.evaluate(() => { const r = document.getElementById('tvResults'); new MutationObserver(() => { if (!r.hidden) window.__resSeen = true; }).observe(r, { attributes: true }); });
+  for (const p of [tv, a, b]) await p.waitForFunction(() => window.__slot.state === 'race', null, { timeout: 90000 });
+  await a.evaluate(() => { window.__iv = setInterval(() => window.__slot.setPad(0, 0.42), 30); });
+  await b.evaluate(() => { window.__iv = setInterval(() => window.__slot.setPad(0, 0.38), 30); });
+  await sleep(1500);
+  // La tele mueve el coche de Ana casi a la vez que su móvil: se graba la posición con la hora en los dos
+  // aparatos y se mira cuánto tarda la tele en llegar al mismo punto
+  const rec = (pred) => `window.__rec = []; window.__ri = setInterval(() => { const S = window.__slot; const c = S.cars.find(${pred}); if (c) window.__rec.push([Date.now(), c.lap * S.T.L + c.st.s]); }, 20);`;
+  await a.evaluate(rec('(x) => x.human')); await tv.evaluate(rec("(x) => x.name === 'Ana'"));
+  const fps = (p) => p.evaluate(() => new Promise((res) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 3000) requestAnimationFrame(f); else res(Math.round(n / 3)); }; requestAnimationFrame(f); }));
+  await sleep(3500);
+  const ftv = await tv.evaluate(() => window.__rec.length);
+  const ra = await a.evaluate(() => { clearInterval(window.__ri); return window.__rec; });
+  const rt = await tv.evaluate(() => { clearInterval(window.__ri); return window.__rec; });
+  const lag = [];
+  for (const [tt, s] of rt) {
+    const k = ra.findIndex((q, i) => i > 0 && ra[i - 1][1] <= s && q[1] >= s && q[1] > ra[i - 1][1]);
+    if (k > 0) { const [t0, s0] = ra[k - 1], [t1, s1] = ra[k]; lag.push(tt - (t0 + (t1 - t0) * (s - s0) / (s1 - s0))); }
+  }
+  assert(lag.length > 3, `el coche de Ana no se mueve en la tele: móvil ${ra.length} posiciones ${ra.length ? ra[0][1].toFixed(1) + '→' + ra[ra.length - 1][1].toFixed(1) : ''} · tele ${rt.length} ${rt.length ? rt[0][1].toFixed(1) + '→' + rt[rt.length - 1][1].toFixed(1) : ''} · red ${await tv.evaluate(() => window.__slot.tvLag)} ms`);
+  const med = lag.sort((x, y) => x - y)[Math.floor(lag.length / 2)];
+  const net = await tv.evaluate(() => window.__slot.tvLag);
+  console.log(`        posiciones del mando → tele: ${net} ms por la red · coche en pantalla ${Math.round(med)} ms detrás (aquí la tele, sin tarjeta gráfica, solo registró ${ftv} posiciones en 3,5 s)`);
+  assert(net !== null && net < 1500, `las posiciones tardan demasiado en llegar a la tele: ${net} ms`);
+  assert(await visible(tv, '#tvBoard'), 'no se ve la clasificación en la tele');
+  assert(/Ana/.test(await tv.evaluate(() => document.getElementById('tvBoard').textContent)), 'la clasificación de la tele no tiene a los pilotos');
+  assert(await visible(a, '#mandoInfo') && await visible(a, '.pad'), 'el móvil no muestra el mando');
+  await tv.screenshot({ path: `${OUT}/tele_carrera.png` });
+  await a.screenshot({ path: `${OUT}/tele_mando.png` }); await b.screenshot({ path: `${OUT}/tele_mando_h.png` });
+  // Final: resultados en la tele y vuelta a la sala
+  await tv.waitForFunction(() => window.__resSeen, null, { timeout: 150000 }).catch(async (e) => { throw new Error('la tele no enseña los resultados · errores: ' + tv.errors.join(' | ') + ' · estado ' + await tv.evaluate(() => window.__slot.state + ' ' + JSON.stringify(window.__slot.cars.map((c) => [c.name, c.finished, c.finishTime])) + ' sala ' + (window.__slot.roomState && window.__slot.roomState.phase))); });
+  if (process.env.PASOS) console.log('        · paso 44');
+  await tv.screenshot({ path: `${OUT}/tele_resultados.png` });
+  await tv.waitForFunction(() => window.__slot.state === 'tvlobby', null, { timeout: 60000 });
+  if (process.env.PASOS) console.log('        · paso 46');
+  noErrors(tv); noErrors(a); noErrors(b);
+  await close(a); await close(b);
+  await tv.waitForFunction(() => /Esperando pilotos/.test(document.getElementById('tvStatus').textContent), null, { timeout: 20000 });
+  if (process.env.PASOS) console.log('        · paso 49');
+  await close(tv);
+});
+
 // ---------------------------------------------------------------- App nativa (Capacitor simulado)
 const nativeMock = (latest) => `
   window.__calls = [];

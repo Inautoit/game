@@ -2,7 +2,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { TRACKS, PREMIUM, PREMIUM_SEASON, findTrack, setPremium, sample, laneOffsets, LANE_W, DS } from './tracks.js';
 import { PALETTE, RADII, newDraft, radiusOf, closeDraft, draftDef, drawEditor } from './editor.js';
-import { RoomClient, sampleRemote, NET_DELAY } from './online.js';
+import { RoomClient, sampleRemote, NET_DELAY, TV_DELAY } from './online.js';
 import { replay } from './verify.js';
 import { createMusic } from './music.js';
 import { GAME_VERSION } from './version.js';
@@ -119,7 +119,8 @@ function initAudio() {
   }
   if (actx.state === 'suspended') actx.resume();
 }
-function setMuted() { if (master) master.gain.value = settings.sound ? 0.9 : 0; }
+let mandoOn = false;   // este móvil es solo el mando: la carrera se ve (y se oye) en la tele
+function setMuted() { if (master) master.gain.value = settings.sound && !mandoOn ? 0.9 : 0; }
 function tone(f1, f2, dur, type = 'square', vol = 0.1, delay = 0) {
   if (!actx) return;
   const t = actx.currentTime + delay;
@@ -1762,7 +1763,9 @@ function startRace({ def, trackIdx, mode, entries, online, laps: lapsOverride })
   race = {
     trackIdx, def, mode, online, laps: mode === 'practica' ? Infinity : (online ? online.laps : lapsOverride || def.laps), simT: 0, acc: 0,
     goT: mode === 'practica' ? 1.2 : online ? Math.max(1, (online.startAt - room.serverNow()) / 1000) : 4.2 + Math.random() * 0.8, lightsOn: 0, started: false, finishedAt: null, humans, entries,
-    cls: classOf(entries[0].setupRaw),
+    cls: entries[0] ? classOf(entries[0].setupRaw) : 'iman',
+    screen: !!(online && online.screen),
+    mando: !!(online && !online.screen && online.screens && settings.mandoTele !== false),
   };
   // Clasificación mundial (práctica en circuitos oficiales o publicados)
   race.rankKey = mode === 'practica' ? rankKeyOf(def) : null;
@@ -1972,7 +1975,7 @@ function stepRace(dt) {
   }
   updateSparks(dt);
   // Fin
-  if (race.mode !== 'practica') {
+  if (race.mode !== 'practica' && !race.screen) {
     const humansDone = cars.filter((c) => c.human).every((c) => c.finished);
     if (humansDone && race.finishedAt === null) race.finishedAt = race.simT;
     if (race.finishedAt !== null && race.simT - race.finishedAt > 1.6 && state === 'race') endRace();
@@ -2169,7 +2172,7 @@ function loop(now) {
     stepRace(dt);
     updateHud();
     updateTele();
-  } else if (state === 'menu' || state === 'circuits' || state === 'garage') {
+  } else if (state === 'menu' || state === 'circuits' || state === 'garage' || state === 'tvlobby') {
     if (race && race.demo) {
       // A cámara lenta, como en un anuncio: se ve cada derrape
       const sdt = dt * DEMO_SPEED;
@@ -2246,14 +2249,14 @@ function loop(now) {
     const kf = 1 - Math.exp(-dt * 12);
     camPos.lerp(camGoalPos, kf);
     camTarget.lerp(camGoalTarget, kf);
-  } else if (state === 'menu' && race && race.demo && cars.length) {
+  } else if ((state === 'menu' || state === 'tvlobby') && race && race.demo && cars.length) {
     menuCamera(dt);
   } else {
     overviewCamera(camGoalPos, camGoalTarget);
     camPos.lerp(camGoalPos, Math.min(1, dt * 3));
     camTarget.lerp(camGoalTarget, Math.min(1, dt * 3));
   }
-  const inMenu = state === 'menu' && !!shot;
+  const inMenu = (state === 'menu' || state === 'tvlobby') && !!shot;
   const wantOffset = racing && camMode === 'tv' && camera.aspect < 1 ? 0.09 : inMenu && camera.aspect < 1 ? 0.2 : 0;
   // En el menú horizontal el vídeo se centra en la mitad derecha (la izquierda es el menú)
   const wantOffX = inMenu && camera.aspect >= 1 && innerWidth >= 700 ? -0.17 : 0;
@@ -2267,6 +2270,9 @@ function loop(now) {
   if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
   camera.lookAt(camTarget);
   camera.updateMatrixWorld();
+  updateMando(racing || state === 'intro');
+  if (race && race.screen && (racing || state === 'intro')) updateTvBoard();
+  if (mandoOn) return;
   updateCrowd(dt);
   renderFrame(dt);
 }
@@ -2278,7 +2284,7 @@ const ui = {
   splash: $('splash'), menu: $('menu'), circuits: $('circuits'), garage: $('garage'), hud: $('hud'),
   count: $('count'), toast: $('toast'), hudRows: $('hudRows'), timing: $('timing'),
 };
-const SCREENS = { menu: ui.menu, circuits: ui.circuits, garage: ui.garage, hud: ui.hud, editor: $('editor'), online: $('online'), champ: $('champ'), shop: $('shop') };
+const SCREENS = { menu: ui.menu, circuits: ui.circuits, garage: ui.garage, hud: ui.hud, editor: $('editor'), online: $('online'), champ: $('champ'), shop: $('shop'), tv: $('tv') };
 function setScreen(name) { for (const [k, el] of Object.entries(SCREENS)) el.classList.toggle('open', k === name); }
 function openModal(id) { if (id === 'mSettings') fillSettings(); if (id === 'mStats') fillStats(); $(id).classList.add('open'); }
 function closeModal(id) { $(id).classList.remove('open'); }
@@ -3094,11 +3100,13 @@ function connectRoom(code, quick = false) {
   room.codeShown = code;
 }
 function onRoomMessage(m) {
-  if (m.t === 'welcome') { myId = m.id; onMsg(''); return; }
+  if (m.t === 'welcome') { myId = m.id; onMsg(''); if (m.screen) tvRender(); return; }
+  if (m.t === 'error' && TV) { $('tvStatus').textContent = m.msg; return; }
   if (m.t === 'error') { if (!myId) { room && room.close(); room = null; renderLobby(); onMsg(m.msg); } else { $('onLobbyMsg').textContent = m.msg; toast(m.msg); } return; }
   if (m.t === 'room') {
     const was = roomState;
     roomState = m;
+    if (TV) { tvRoom(m, was); return; }
     if (m.phase === 'race' && (!was || was.phase !== 'race') && myId) startOnlineRace(m);
     if (m.phase === 'lobby' && race && race.mode === 'online' && state !== 'results' && state !== 'online') {
       // El anfitrión ha cerrado la carrera
@@ -3111,13 +3119,22 @@ function onRoomMessage(m) {
   if (!race || race.mode !== 'online') return;
   const c = cars.find((x) => x.remote === m.id);
   if (m.t === 'st' && c) {
-    c.net.push({ at: performance.now(), s: m.s, v: m.v, th: m.th, lap: m.lap, out: m.out });
+    // En la tele: cada posición se coloca en el momento en que la tuvo el mando (hora del servidor), así los
+    // coches van fluidos aunque los datos lleguen a golpes; si no hay hora, cuando llega
+    let at = performance.now();
+    if (race.screen && Number.isFinite(m.ts) && room) {
+      at = m.ts - room.offset - performance.timeOrigin;
+      tvLagStat.push(performance.now() - at); if (tvLagStat.length > 200) tvLagStat.shift();
+      const lastN = c.net[c.net.length - 1];
+      if (lastN && at <= lastN.at) at = lastN.at + 1;   // en orden
+    }
+    c.net.push({ at, s: m.s, v: m.v, th: m.th, lap: m.lap, out: m.out });
     if (c.net.length > 40) c.net.shift();
   } else if (m.t === 'fin' && c) {
     c.finished = true; c.finishTime = m.time; c.best = m.best || c.best;
     c.lap = race.laps;
-    if (m.time < 9000) flashText(0, `${c.name} termina`);
-    if (state === 'results') endRace();
+    if (m.time < 9000 && !race.screen) flashText(0, `${c.name} termina`);
+    if (state === 'results' && !race.screen) endRace();
   } else if (m.t === 'lap' && c) {
     c.laps.push(m.time); c.last = m.time; if (m.time < c.best) c.best = m.time;
   } else if (m.t === 'left' && c) {
@@ -3182,6 +3199,8 @@ function renderLobby() {
   $('onModeRow').hidden = !host || rs.quick;
   $('onCpuRow').hidden = !host || rs.quick;
   $('onCpu').checked = !!rs.cpu;
+  $('onMandoRow').hidden = !rs.screens;
+  $('onMando').checked = settings.mandoTele !== false;
   segButtons($('onMode'), [['race', 'Carrera'], ['club', 'Copa Club'], ['gp', 'Copa GP']], rs.champ && !rs.champ.final ? rs.champ.cup : 'race', (id) => {
     room.send({ t: 'champ', cup: id === 'race' ? null : id, laps: rs.track ? rs.track.laps : 3 });
     if (id === 'race' && !rs.track) { pickForOnline = true; showCircuits(); }
@@ -3227,22 +3246,23 @@ function startOnlineRace(rs) {
   // El color que me ha dado la sala (si el mío lo tenía otro)
   const liv = LIVERIES.find((l) => l.id === me.liv);
   if (liv) onlineEntry().liv = liv;
-  startRace({ def, mode: 'online', entries: [onlineEntry()], online: { lane: me.lane, players: rs.players, bots: rs.bots || [], amHost: !!me.host, me: myId, startAt: rs.startAt, laps: rs.track.laps } });
+  startRace({ def, mode: 'online', entries: [onlineEntry()], online: { lane: me.lane, players: rs.players, bots: rs.bots || [], amHost: !!me.host, me: myId, startAt: rs.startAt, laps: rs.track.laps, screens: rs.screens || 0 } });
 }
 let sendT = 0;
 function onlineTick() {
   // Mientras no hay salida, se ajusta el semáforo al reloj del servidor
   if (!race.started && race.online && room) race.goT = race.simT + (race.online.startAt - room.serverNow()) / 1000;
   const now = performance.now();
-  if (now - sendT < 50 || !room) return;
+  if (now - sendT < (roomState && roomState.screens ? 33 : 50) || !room) return;
   sendT = now;
   for (const c of cars) {
     if (!c.human && !c.botId) continue;
-    room.send({ t: 'st', s: +c.st.s.toFixed(4), v: +c.st.v.toFixed(3), th: +c.st.th.toFixed(3), lap: c.lap, out: !!c.crash, ...(c.botId ? { bot: c.botId } : {}) });
+    room.send({ t: 'st', s: +c.st.s.toFixed(4), v: +c.st.v.toFixed(3), th: +c.st.th.toFixed(3), lap: c.lap, out: !!c.crash, ts: Math.round(room.serverNow()), ...(c.botId ? { bot: c.botId } : {}) });
   }
 }
 function updateRemote(c) {
-  const r = sampleRemote(c.net, performance.now() - NET_DELAY, T.L);
+  // En la tele se pinta con menos retraso (y se adelanta un poco el movimiento) para que vaya al compás de los mandos
+  const r = race.screen ? sampleRemote(c.net, performance.now() - TV_DELAY, T.L, 120) : sampleRemote(c.net, performance.now() - NET_DELAY, T.L);
   if (!r) return;
   if (r.out && !c.crash) { crashCar(c); return; }
   if (c.crash) return;
@@ -3798,6 +3818,7 @@ for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, (e) => 
 }, { capture: true });
 
 function pause() {
+  if (race && race.screen) return;   // la tele no tiene pausa: manda la sala
   if (state === 'intro' && !race.intro.fixed) { endIntro(); return; }
   if (state !== 'race' && state !== 'countdown' && state !== 'intro') return;
   if (race.mode === 'online') { $('quitBtn').querySelector('.btn-main').textContent = 'Abandonar carrera'; openModal('mPause'); return; }
@@ -3922,11 +3943,185 @@ window.addEventListener('orientationchange', () => setTimeout(fitCamera, 250));
 window.addEventListener('gamepadconnected', () => toast('Mando conectado: usa el gatillo derecho'));
 
 // ---------------------------------------------------------------------------
+// Modo tele: este aparato (tele, iPad con AirPlay, portátil con HDMI…) muestra la carrera de la sala
+// vista desde arriba, como una pista de verdad, y los móviles de los pilotos son solo los mandos
+// ---------------------------------------------------------------------------
+const TV = /^\/tele\/?$/.test(location.pathname) || new URLSearchParams(location.search).has('tele');
+let tvTimer = null, tvTick = 0, mandoTick = 0, wakeLock = null;
+const tvLagStat = [];   // cuánto tardan en llegar a la tele las posiciones de los mandos (ms)
+const hexOf = (n) => '#' + n.toString(16).padStart(6, '0');
+// Que la pantalla no se apague sola mientras se juega
+function keepAwake() {
+  try { if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request('screen').then((w) => { wakeLock = w; w.addEventListener('release', () => { wakeLock = null; }); }).catch(() => {}); } catch { /* sin bloqueo */ }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && (TV || mandoOn)) keepAwake(); });
+// Dirección para entrar con el móvil (la del juego publicado; en pruebas, la de este servidor)
+const joinBase = () => (API === '' && !NATIVE ? location.origin + '/' : SITE);
+function drawQr(url) {
+  import('../vendor/qrcode.js').then((m) => {
+    const q = m.default(0, 'M'); q.addData(url); q.make();
+    const n = q.getModuleCount(), k = Math.max(4, Math.floor(400 / (n + 8))), cv = $('tvQr');
+    cv.width = cv.height = (n + 8) * k;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = '#0b0f18';
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) g.fillRect((x + 4) * k, (y + 4) * k, k, k);
+  }).catch(() => {});
+}
+async function tvStart() {
+  document.body.classList.add('tv');
+  if (store.get('quality', null) === null) { quality = 1; applyQuality(); }   // las teles tienen menos potencia que un móvil
+  tvLobby();
+  keepAwake();
+  $('tvHost').textContent = joinBase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const unlock = () => { initAudio(); if (actx && actx.state === 'suspended') actx.resume().catch(() => {}); if (actx && actx.state === 'running') $('tvSound').hidden = true; };
+  for (const ev of ['keydown', 'pointerdown']) addEventListener(ev, unlock);
+  let code = null;
+  for (let i = 0; i < 6 && !code; i++) {
+    try { code = (await apiPost('/api/room/new')).code; } catch (e) { $('tvStatus').textContent = e.message; await new Promise((r) => setTimeout(r, 3000)); }
+  }
+  if (code) tvConnect(code);
+}
+function tvConnect(code) {
+  if (room) room.close();
+  roomState = null; myId = null;
+  room = new RoomClient(API, code, {
+    open: () => room.send({ t: 'join', screen: true }),
+    close: () => { $('tvStatus').textContent = 'Se ha perdido la conexión. Reconectando…'; setTimeout(() => tvConnect(code), 3000); },
+    message: onRoomMessage,
+  });
+  room.codeShown = code;
+  $('tvCode').textContent = code;
+  drawQr(joinBase() + '?sala=' + code + '&mando=1');
+  tvRender();
+}
+function tvLobby() {
+  clearTimeout(tvTimer);
+  $('tvResults').hidden = true;
+  state = 'tvlobby';
+  demoRace();
+  setScreen('tv');
+  tvRender();
+}
+// Sala de espera en la tele: pilotos, circuito y qué falta para empezar
+function tvRender() {
+  if (!TV || state !== 'tvlobby') return;
+  const rs = roomState, def = rs && roomDef(rs.track);
+  $('tvTrack').textContent = def ? def.name : 'Lo elige el primer piloto';
+  $('tvTrackMeta').textContent = def ? `${lenTxt(def)} · ${def.lanes} carriles · ${rs.track.laps} ${rs.track.laps === 1 ? 'vuelta' : 'vueltas'}${rs.cpu ? ' · con CPU' : ''}` : '';
+  const box = $('tvPlayers'); box.innerHTML = '';
+  const lanes = def ? def.lanes : 4;
+  for (let l = 0; l < lanes; l++) {
+    const p = rs && rs.players.find((x) => x.lane === l);
+    const row = document.createElement('div'); row.className = 'tv-p' + (p ? '' : ' empty');
+    const liv = p && LIVERIES.find((x) => x.id === p.liv);
+    if (liv) row.style.setProperty('--car', hexOf(liv.color));
+    const nm = document.createElement('b'); nm.textContent = p ? p.name : rs && rs.cpu ? 'CPU' : 'Libre';
+    const sm = document.createElement('small'); sm.textContent = p ? carById(p.car).name : `Carril ${l + 1}`;
+    const st = document.createElement('span'); st.className = p && (p.ready || p.host) ? 'ok' : '';
+    st.textContent = !p ? '' : p.host ? 'Da la salida' : p.ready ? '✓ Listo' : 'Preparándose';
+    row.append(nm, sm, st); box.appendChild(row);
+  }
+  renderOnlineChamp($('tvChamp'), rs && rs.champ);
+  const host = rs && rs.players.find((p) => p.host);
+  $('tvStatus').textContent = !rs ? 'Conectando…' : !rs.players.length ? 'Esperando pilotos: escanead el código' : !def ? `${host ? host.name : 'El anfitrión'} está eligiendo circuito…` : `${host ? host.name : 'El anfitrión'} da la salida cuando estéis listos`;
+}
+function tvRoom(m, was) {
+  if (m.phase === 'race' && (!was || was.phase !== 'race' || !race || !race.screen)) { tvStartRace(m); return; }
+  if (m.phase === 'lobby' && race && race.screen) { tvRaceOver(); return; }
+  tvRender();
+}
+function tvStartRace(rs) {
+  const def = roomDef(rs.track);
+  if (!def) return;
+  clearTimeout(tvTimer);
+  $('tvResults').hidden = true;
+  startRace({ def, mode: 'online', entries: [], online: { lane: -1, players: rs.players, bots: rs.bots || [], amHost: false, me: myId, startAt: rs.startAt, laps: rs.track.laps, screen: true } });
+}
+// Clasificación en directo, semáforo grande y resultados
+function updateTvBoard() {
+  if (++tvTick % 8) return;
+  const box = $('tvBoard'), order = standings(), lead = order[0];
+  box.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'head';
+  const small = document.createElement('small'); small.textContent = race.def.name;
+  head.append(small, document.createTextNode(state === 'intro' ? 'Presentación' : `Vuelta ${lead ? Math.min(race.laps, Math.max(1, lead.lap)) : 1}/${race.laps}`));
+  box.appendChild(head);
+  order.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'tv-row' + (c.crash ? ' out' : '') + (c.finished ? ' fin' : '');
+    row.style.setProperty('--car', hexOf(c.liv.color));
+    const pos = document.createElement('b'); pos.textContent = `${i + 1}º`;
+    const nm = document.createElement('span'); nm.textContent = c.name;
+    const st = document.createElement('em');
+    st.textContent = c.finished ? (c.finishTime < 9000 ? (i === 0 ? fmt(c.finishTime) : 'Meta') : 'Abandona') : c.crash ? '¡Fuera!' : `V ${Math.max(1, c.lap)}/${race.laps}`;
+    row.append(pos, nm, st); box.appendChild(row);
+  });
+  const lights = $('tvLights');
+  lights.classList.toggle('on', state === 'countdown' && !race.started);
+  [...lights.children].forEach((el, k) => el.classList.toggle('lit', k < race.lightsOn));
+  if (!race.tvDone && cars.length && cars.every((c) => c.finished)) { race.tvDone = 'fin'; setTimeout(() => { if (race && race.screen) tvShowResults(); }, 1500); }
+}
+function tvShowResults() {
+  const order = standings(), win = order[0];
+  const res = $('tvResults'); res.innerHTML = '';
+  const bx = document.createElement('div'); bx.className = 'box';
+  const h = document.createElement('h2'); h.textContent = win && win.finished && win.finishTime < 9000 ? `¡Gana ${win.name}!` : 'Resultados';
+  bx.appendChild(h);
+  order.forEach((c, i) => {
+    const row = document.createElement('div'); row.className = 'tv-row'; row.style.setProperty('--car', hexOf(c.liv.color));
+    const pos = document.createElement('b'); pos.textContent = `${i + 1}º`;
+    const nm = document.createElement('span'); nm.textContent = c.name;
+    const tm = document.createElement('em');
+    tm.textContent = !c.finished || c.finishTime >= 9000 ? '–' : i === 0 ? fmt(c.finishTime) : '+' + fmt(c.finishTime - win.finishTime);
+    const bl = document.createElement('i'); bl.textContent = Number.isFinite(c.best) ? `v. rápida ${fmt(c.best)}` : '';
+    row.append(pos, nm, tm, bl); bx.appendChild(row);
+  });
+  if (roomState && roomState.champ) { const ch = document.createElement('div'); ch.className = 'res-champ'; renderOnlineChamp(ch, roomState.champ); bx.appendChild(ch); }
+  const p = document.createElement('p'); p.textContent = 'Volvemos a la sala en unos segundos';
+  bx.appendChild(p);
+  res.appendChild(bx); res.hidden = false;
+  if (win && win.finished) sfx.finish();
+}
+function tvRaceOver() {
+  if (!race || !race.screen || race.tvDone === 'lobby') return;
+  if (race.tvDone !== 'fin' || $('tvResults').hidden) tvShowResults();
+  race.tvDone = 'lobby';
+  clearTimeout(tvTimer);
+  tvTimer = setTimeout(() => { if (race && race.screen && roomState && roomState.phase === 'lobby') { clearCars(); race = null; tvLobby(); } }, 12000);
+}
+// Móvil como mando: sin dibujar la pista, gatillo grande, tu posición y la vuelta en grande
+function updateMando(active) {
+  const on = !!(active && race && race.mando && state !== 'results');
+  if (on !== mandoOn) {
+    mandoOn = on;
+    document.body.classList.toggle('mando', on);
+    setMuted();
+    if (on) { keepAwake(); const me = cars.find((c) => c.human); if (me) document.body.style.setProperty('--mcar', hexOf(me.liv.color)); }
+    $('mandoInfo').innerHTML = '';
+  }
+  if (!on || ++mandoTick % 6) return;
+  const me = cars.find((c) => c.human);
+  if (!me) return;
+  const box = $('mandoInfo');
+  if (!box.firstChild) box.innerHTML = '<div class="who"><i></i><span></span></div><div class="pos"></div><div class="lap"></div><div class="times"></div><div class="msg"></div>';
+  box.querySelector('.who span').textContent = me.name === 'Tú' ? (settings.pilot || 'Tú') : me.name;
+  const order = standings();
+  box.querySelector('.pos').innerHTML = `${order.indexOf(me) + 1}º<small>/${cars.length}</small>`;
+  box.querySelector('.lap').textContent = me.finished ? '¡Meta!' : `Vuelta ${Math.max(1, me.lap)}/${race.laps}`;
+  box.querySelector('.times').textContent = `Última ${fmt(me.last)} · Mejor ${fmt(me.best)}`;
+  const msg = box.querySelector('.msg');
+  msg.textContent = state === 'intro' ? 'Mira la tele: presentación del circuito' : state === 'countdown' ? (race.lightsOn ? 'Atento al semáforo…' : 'Preparados…') : me.crash ? '¡Te has salido!' : me.finished ? 'Esperando al resto…' : '';
+  msg.className = 'msg' + (me.crash ? ' bad' : '');
+}
+$('onTv').addEventListener('click', () => { sfx.click(); location.search = '?tele=1'; });
+$('onMando').addEventListener('change', (e) => { settings.mandoTele = e.target.checked; saveSettings(); });
+
+// ---------------------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------------------
 setupComposer();
 applyQuality();
-showMenu();
+if (TV) tvStart(); else showMenu();
 loadCarModels();
 overviewCamera(camPos, camTarget);
 // Enlace con un circuito (?circuito=…): se guarda en «Mis circuitos» y se abre en el editor
@@ -3948,14 +4143,21 @@ overviewCamera(camPos, camTarget);
 // Enlace de invitación: ?sala=ABCD abre la pantalla online con el código puesto
 {
   const sala = (new URLSearchParams(location.search).get('sala') || '').toUpperCase();
-  if (/^[A-Z]{4}$/.test(sala)) { showOnline(); $('onCode').value = sala; onMsg(settings.pilot ? 'Pulsa «Entrar» para unirte' : 'Pon tu nombre y pulsa «Entrar»'); }
+  if (!TV && /^[A-Z]{4}$/.test(sala)) {
+    showOnline(); $('onCode').value = sala;
+    // Desde el QR de la tele: este móvil será el mando; si ya sabemos tu nombre, se entra directamente
+    const fromTv = new URLSearchParams(location.search).has('mando');
+    if (fromTv) { settings.mandoTele = true; saveSettings(); history.replaceState(null, '', location.pathname); }
+    if (settings.pilot && fromTv) connectRoom(sala);
+    else onMsg(settings.pilot ? 'Pulsa «Entrar» para unirte' : 'Pon tu nombre y pulsa «Entrar»');
+  }
 }
 requestAnimationFrame(loop);
 Promise.race([document.fonts ? Promise.all([document.fonts.load('italic 700 20px "Barlow Condensed"'), document.fonts.load('500 16px Barlow')]) : null, new Promise((r) => setTimeout(r, 1500))])
   .catch(() => {})
   .then(() => setTimeout(() => {
     ui.splash.classList.add('done');
-    if (!store.get('seenHelp2', false)) { store.set('seenHelp2', true); setTimeout(() => openModal('mHelp'), 500); }
+    if (!TV && !store.get('seenHelp2', false)) { store.set('seenHelp2', true); setTimeout(() => openModal('mHelp'), 500); }
   }, 300));
 
 // Gancho para pruebas automáticas
@@ -3964,5 +4166,6 @@ window.__slot = {
   get actx() { return actx; }, get slotBuf() { return slotBuf; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },
+  get tvLag() { const a = [...tvLagStat].sort((x, y) => x - y); return a.length ? Math.round(a[a.length >> 1]) : null; },
   forceShot: (type, dur = 3) => { forcedShot = type ? { type, dur } : null; if (shot) shot.t = shot.dur; },
 };

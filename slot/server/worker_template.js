@@ -401,7 +401,9 @@ export default {
       }
     }
     // Página de promoción: /descubre (y /web) muestran descubre.html
-    const path = url.pathname === '/descubre' || url.pathname === '/descubre/' || url.pathname === '/web' || url.pathname === '/web/' ? '/descubre.html' : url.pathname;
+    if (url.pathname === '/tele/') return Response.redirect(url.origin + '/tele' + url.search, 301);
+    // /tele: el juego en modo pantalla (la tele muestra la carrera; los móviles son los mandos)
+    const path = url.pathname === '/descubre' || url.pathname === '/descubre/' || url.pathname === '/web' || url.pathname === '/web/' ? '/descubre.html' : url.pathname === '/tele' ? '/' : url.pathname;
     const f = FILES[path];
     if (!f) return new Response('No encontrado', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     return new Response(body(path, f), {
@@ -433,6 +435,7 @@ export class Room {
   constructor(state) {
     this.state = state;
     this.players = new Map();  // id → { ws, name, liv, cls, lane, ready, host, fin }
+    this.screens = new Map();  // id → ws: teles que solo muestran la carrera (los móviles son los mandos)
     this.track = null;         // { kind: 'oficial'|'comunidad', id, name, lanes, laps, def? }
     this.phase = 'lobby';      // lobby | race
     this.startAt = 0;
@@ -444,11 +447,15 @@ export class Room {
     this.mm = null;            // solo en el emparejador
   }
   send(ws, m) { try { ws.send(JSON.stringify(m)); } catch { /* cerrada */ } }
-  all(m, except) { const s = JSON.stringify(m); for (const [id, p] of this.players) if (id !== except) { try { p.ws.send(s); } catch { /* cerrada */ } } }
+  all(m, except) {
+    const s = JSON.stringify(m);
+    for (const [id, p] of this.players) if (id !== except) { try { p.ws.send(s); } catch { /* cerrada */ } }
+    for (const [id, ws] of this.screens) if (id !== except) { try { ws.send(s); } catch { /* cerrada */ } }
+  }
   snapshot() {
     return {
       t: 'room', phase: this.phase, track: this.track, startAt: this.startAt, cpu: this.cpu, quick: this.quick, autoAt: this.autoAt,
-      bots: this.bots, champ: this.champ,
+      bots: this.bots, champ: this.champ, screens: this.screens.size,
       players: [...this.players.entries()].map(([id, p]) => ({ id, name: p.name, liv: p.liv, cls: p.cls, car: p.car, lane: p.lane, ready: p.ready, host: p.host, fin: p.fin })),
     };
   }
@@ -492,6 +499,7 @@ export class Room {
     return new Response(null, { status: 101, webSocket: client });
   }
   leave(id) {
+    if (this.screens.delete(id)) { this.all(this.snapshot()); return; }
     const p = this.players.get(id);
     if (!p) return;
     this.players.delete(id);
@@ -566,7 +574,15 @@ export class Room {
     switch (m.t) {
       case 'ping': this.send(ws, { t: 'pong', c: m.c, s: Date.now() }); return;
       case 'join': {
-        if (me) return;
+        if (me || this.screens.has(id)) return;
+        // Una tele: no ocupa carril ni conduce; ve la carrera (puede entrar también con la carrera empezada)
+        if (m.screen) {
+          if (this.screens.size >= 3) { this.send(ws, { t: 'error', msg: 'Ya hay demasiadas pantallas en esta sala' }); return; }
+          this.screens.set(id, ws);
+          this.send(ws, { t: 'welcome', id, screen: true });
+          this.all(this.snapshot());
+          return;
+        }
         if (this.players.size >= MAX) { this.send(ws, { t: 'error', msg: 'La sala está llena' }); return; }
         if (this.phase === 'race') { this.send(ws, { t: 'error', msg: 'La carrera ya ha empezado. Espera a que termine' }); return; }
         // Primera persona en una sala de partida rápida: circuito al azar y salida automática
@@ -644,7 +660,7 @@ export class Room {
         if (this.phase !== 'race') return;
         let from = id;
         if (m.bot) { if (!me.host || !this.bots.some((b) => b.id === m.bot)) return; from = m.bot; }
-        this.all({ t: 'st', id: from, s: +m.s, v: +m.v, th: +m.th, lap: m.lap | 0, out: !!m.out }, id);
+        this.all({ t: 'st', id: from, s: +m.s, v: +m.v, th: +m.th, lap: m.lap | 0, out: !!m.out, ts: Number.isFinite(+m.ts) ? +m.ts : undefined }, id);
         return;
       }
       case 'lap': {

@@ -51,10 +51,18 @@ export class RoomClient {
 
 // Interpolación del coche de otro jugador: se pinta con un pequeño retraso para que vaya suave
 export const NET_DELAY = 120; // ms
-export function sampleRemote(buf, t, L) {
+export const TV_DELAY = 45;   // ms: en la tele se pinta casi al momento (y se adelanta el movimiento si falta un dato)
+// extra: cuántos ms como mucho se puede adelantar el coche cuando aún no ha llegado el siguiente dato
+export function sampleRemote(buf, t, L, extra = 0) {
   if (!buf.length) return null;
   while (buf.length > 2 && buf[1].at <= t) buf.shift();
   const a = buf[0], b = buf[1];
+  if (extra > 0 && b && buf.length === 2 && t > b.at && !b.out) {
+    // Aún no ha llegado el dato siguiente: el coche sigue a la velocidad que llevaba (como mucho «extra» ms)
+    const ta = a.lap * L + a.s, tb = b.lap * L + b.s, rate = Math.max(0, (tb - ta) / Math.max(1, b.at - a.at));
+    const total = tb + rate * Math.min(extra, t - b.at);
+    return { ...b, total, lap: Math.floor(total / L), s: total - Math.floor(total / L) * L };
+  }
   if (!b || t <= a.at) return { ...a, total: a.lap * L + a.s };
   const k = Math.min(1, (t - a.at) / Math.max(1, b.at - a.at));
   const ta = a.lap * L + a.s, tb = b.lap * L + b.s;

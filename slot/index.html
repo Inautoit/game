@@ -166,6 +166,7 @@
           <button id="onEnter" class="btn secondary"><span class="btn-main">Entrar</span></button>
         </div>
         <p id="onMsg" class="muted small center"></p>
+        <button id="onTv" class="btn ghost"><span class="btn-main">📺 Usar este aparato como tele</span><span class="btn-sub">La carrera se ve aquí y los móviles son los mandos</span></button>
       </div>
       <div id="onLobby" class="on-card" hidden>
         <div class="on-roomcode"><span>Sala</span><b id="onRoom">----</b><button id="onShare" class="btn small ghost"><span class="btn-main">Invitar</span></button></div>
@@ -176,6 +177,7 @@
           <button id="onPickTrack" class="btn small ghost"><span class="btn-main">Cambiar</span></button>
         </div>
         <div class="ed-row on-mode" id="onModeRow"><span class="lbl">Modo</span><div id="onMode" class="seg"></div></div>
+        <label class="toggle on-mando" id="onMandoRow" hidden><span>📺 Hay una tele en la sala<small>Usa el móvil solo como mando y mira la carrera en la tele</small></span><input type="checkbox" id="onMando"><i></i></label>
         <label class="toggle" id="onCpuRow"><span>Rellenar con CPU<small>Coches de la CPU en los carriles libres</small></span><input type="checkbox" id="onCpu"><i></i></label>
         <div id="onChamp" class="res-champ" hidden></div>
         <div class="ed-row on-laps" id="onLapsRow"><span class="lbl">Vueltas de la carrera</span><div class="stepper"><button id="onLapsM" aria-label="Menos vueltas">−</button><b id="onLaps">5</b><button id="onLapsP" aria-label="Más vueltas">+</button></div></div>
@@ -186,6 +188,30 @@
         <p id="onLobbyMsg" class="muted small center"></p>
       </div>
     </div>
+  </div>
+
+  <!-- Tele: sala de espera (la tele muestra la carrera; los móviles son los mandos) -->
+  <div id="tv" class="screen">
+    <div class="tv-panel">
+      <img class="tv-logo" src="icons/logo.svg" alt="Turbo Slot" width="240" height="73">
+      <div class="tv-code"><small>Código de la sala</small><b id="tvCode">····</b></div>
+      <div class="tv-join">
+        <canvas id="tvQr" width="220" height="220" aria-label="Código QR para entrar con el móvil"></canvas>
+        <ol>
+          <li>Escanea el código con el <b>móvil o tablet</b></li>
+          <li>Pon tu nombre y entra: tu móvil será <b>el mando</b></li>
+          <li>El primero que entra elige el circuito y da la salida</li>
+        </ol>
+      </div>
+      <p class="tv-url">o entra en <b id="tvHost"></b> → Online → código</p>
+    </div>
+    <div class="tv-side">
+      <div class="tv-track"><small>Circuito</small><b id="tvTrack">Lo elige el primer piloto</b><span id="tvTrackMeta"></span></div>
+      <div id="tvPlayers" class="tv-players"></div>
+      <div id="tvChamp" class="res-champ" hidden></div>
+      <p id="tvStatus" class="tv-status">Esperando pilotos…</p>
+    </div>
+    <div id="tvSound" class="tv-sound">Pulsa <b>OK</b> en el mando de la tele para activar el sonido</div>
   </div>
 
   <!-- Garaje -->
@@ -244,6 +270,10 @@
       <canvas id="tlTrace" class="tl-trace"></canvas>
     </div>
     <div id="pads"></div>
+    <div id="tvBoard" class="tv-board" aria-live="off"></div>
+    <div id="tvLights" class="tv-lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <div id="tvResults" class="tv-results" hidden></div>
+    <div id="mandoInfo" class="mando-info"></div>
   </div>
   <div id="count" class="count"></div>
 
@@ -449,6 +479,7 @@
         <li><div class="step-ico">4</div><div><b>Telemetría</b><br>La barra de <b>agarre</b> mide lo cerca que estás de salirte: verde, ámbar y rojo. Pasa del 100 % y te sales. Te dice si debes <b>frenar</b> (vas demasiado rápido para lo que viene) o si el coche <b>derrapa</b>. También verás la deriva en grados, la velocidad, la punta, la trampa de velocidad en meta, los tres sectores (morado = tu mejor) y la gráfica de la vuelta contra tu mejor vuelta.</div></li>
         <li><div class="step-ico">5</div><div><b>Crea tus circuitos</b><br>Pon rectas y curvas desde la salida: el juego cierra el circuito por ti. Pruébalo y publícalo para que lo juegue todo el mundo, en la pestaña <b>Comunidad</b>.</div></li>
         <li><div class="step-ico">6</div><div><b>Online con amigos</b><br>Crea una sala, comparte el código de 4 letras y corred a la vez, hasta 4 pilotos (uno por carril). El anfitrión elige el circuito y las vueltas.</div></li>
+        <li><div class="step-ico">📺</div><div><b>Modo tele</b><br>Abre <b>turbo-slot.inautoit.workers.dev/tele</b> en la tele (o en Online → «Usar este aparato como tele», también desde un iPad con AirPlay o un portátil con HDMI). Escanead el QR con los móviles: la carrera se ve en la tele, vista desde arriba como una pista de verdad, y cada móvil es el mando.</div></li>
         <li><div class="step-ico">7</div><div><b>Ajusta el coche</b><br>Imán, desarrollo, neumáticos, freno y curva del gatillo. Sin imán es la clase más difícil.</div></li>
         <li><div class="step-ico">8</div><div><b>Compite contra el reloj</b><br>Tiempos al milésimo y un fantasma de tu mejor vuelta en Práctica.</div></li>
         <li><div class="step-ico">9</div><div><b>Ranking mundial</b><br>Tus vueltas de Práctica en circuitos oficiales y publicados se envían solas. El servidor las repite con la misma física para comprobar que son de verdad, y el récord del mundo corre contigo como un <b>fantasma dorado</b>.</div></li>
