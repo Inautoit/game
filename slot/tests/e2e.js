@@ -379,7 +379,7 @@ T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carre
   assert(await visible(a, '#onMandoRow'), 'el móvil no avisa de que hay una tele');
   await click(a, '#onPickTrack'); await sleep(500); await click(a, '#circList .circ'); await sleep(1500);
   for (let i = 0; i < 10; i++) { await click(a, '#onLapsM'); await sleep(200); }
-  for (let i = 0; i < 2; i++) { await click(a, '#onLapsP'); await sleep(200); }   // 3 vueltas
+  for (let i = 0; i < 4; i++) { await click(a, '#onLapsP'); await sleep(200); }   // 5 vueltas
   await tv.waitForFunction(() => /Óvalo|vuelta/.test(document.getElementById('tvTrackMeta').textContent + document.getElementById('tvTrack').textContent), null, { timeout: 20000 });
   if (process.env.PASOS) console.log('        · paso 16');
   await tv.screenshot({ path: `${OUT}/tele_sala.png` });
@@ -393,6 +393,8 @@ T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carre
   await a.evaluate(() => { window.__iv = setInterval(() => window.__slot.setPad(0, 0.42), 30); });
   await b.evaluate(() => { window.__iv = setInterval(() => window.__slot.setPad(0, 0.38), 30); });
   await sleep(1500);
+  assert(await visible(a, '#mandoInfo') && await visible(a, '.pad'), 'el móvil no muestra el mando');
+  await a.screenshot({ path: `${OUT}/tele_mando.png` }); await b.screenshot({ path: `${OUT}/tele_mando_h.png` });
   // La tele mueve el coche de Ana casi a la vez que su móvil: se graba la posición con la hora en los dos
   // aparatos y se mira cuánto tarda la tele en llegar al mismo punto
   const rec = (pred) => `window.__rec = []; window.__ri = setInterval(() => { const S = window.__slot; const c = S.cars.find(${pred}); if (c) window.__rec.push([Date.now(), c.lap * S.T.L + c.st.s]); }, 20);`;
@@ -414,9 +416,7 @@ T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carre
   assert(net !== null && net < 1500, `las posiciones tardan demasiado en llegar a la tele: ${net} ms`);
   assert(await visible(tv, '#tvBoard'), 'no se ve la clasificación en la tele');
   assert(/Ana/.test(await tv.evaluate(() => document.getElementById('tvBoard').textContent)), 'la clasificación de la tele no tiene a los pilotos');
-  assert(await visible(a, '#mandoInfo') && await visible(a, '.pad'), 'el móvil no muestra el mando');
   await tv.screenshot({ path: `${OUT}/tele_carrera.png` });
-  await a.screenshot({ path: `${OUT}/tele_mando.png` }); await b.screenshot({ path: `${OUT}/tele_mando_h.png` });
   // Final: resultados en la tele y vuelta a la sala
   await tv.waitForFunction(() => window.__resSeen, null, { timeout: 150000 }).catch(async (e) => { throw new Error('la tele no enseña los resultados · errores: ' + tv.errors.join(' | ') + ' · estado ' + await tv.evaluate(() => window.__slot.state + ' ' + JSON.stringify(window.__slot.cars.map((c) => [c.name, c.finished, c.finishTime])) + ' sala ' + (window.__slot.roomState && window.__slot.roomState.phase))); });
   if (process.env.PASOS) console.log('        · paso 44');
