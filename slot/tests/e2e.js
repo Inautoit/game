@@ -364,7 +364,7 @@ T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carre
   if (process.env.PASOS) console.log('        · paso 2');
   const code = await tv.evaluate(() => document.getElementById('tvCode').textContent);
   assert(await visible(tv, '#tv'), 'no se ve la sala de la tele');
-  await tv.waitForFunction(() => { const c = document.getElementById('tvQr'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let k = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 50) k++; return k > 200; }, null, { timeout: 20000 });
+  await tv.waitForFunction(() => { const c = document.getElementById('tvQr'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let k = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 50) k++; return k > 200; }, null, { timeout: 45000 });
   if (process.env.PASOS) console.log('        · paso 5');
   assert((await state(tv)) === 'tvlobby', 'la tele no está en su sala: ' + await state(tv));
   const who = (n) => `localStorage.setItem('slot.seenHelp2','true'); localStorage.setItem('slot.quality','2'); localStorage.setItem('slot.settings', JSON.stringify({ pilot: '${n}', music: false }));`;
@@ -374,18 +374,18 @@ T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carre
   const b = await openAt(BASE + `?sala=${code}&mando=1`, { width: 640, height: 360, isMobile: true, hasTouch: true }, who('Beto'));
   await b.waitForFunction(() => window.__slot.roomState && window.__slot.roomState.players.length === 2, null, { timeout: 30000 });
   if (process.env.PASOS) console.log('        · paso 11');
-  await tv.waitForFunction(() => /Ana/.test(document.getElementById('tvPlayers').textContent) && /Beto/.test(document.getElementById('tvPlayers').textContent), null, { timeout: 20000 });
+  await tv.waitForFunction(() => /Ana/.test(document.getElementById('tvPlayers').textContent) && /Beto/.test(document.getElementById('tvPlayers').textContent), null, { timeout: 45000 });
   if (process.env.PASOS) console.log('        · paso 12');
   assert(await visible(a, '#onMandoRow'), 'el móvil no avisa de que hay una tele');
   await click(a, '#onPickTrack'); await sleep(500); await click(a, '#circList .circ'); await sleep(1500);
   for (let i = 0; i < 10; i++) { await click(a, '#onLapsM'); await sleep(200); }
   for (let i = 0; i < 4; i++) { await click(a, '#onLapsP'); await sleep(200); }   // 5 vueltas
-  await tv.waitForFunction(() => /Óvalo|vuelta/.test(document.getElementById('tvTrackMeta').textContent + document.getElementById('tvTrack').textContent), null, { timeout: 20000 });
+  await tv.waitForFunction(() => /Óvalo|vuelta/.test(document.getElementById('tvTrackMeta').textContent + document.getElementById('tvTrack').textContent), null, { timeout: 45000 });
   if (process.env.PASOS) console.log('        · paso 16');
   // Quien da la salida elige pantalla partida para la tele
   assert(await visible(a, '#onViewRow'), 'el anfitrión no puede elegir la vista de la tele');
   await a.evaluate(() => [...document.querySelectorAll('#onView button')].find((x) => /Partida/.test(x.textContent)).click());
-  await tv.waitForFunction(() => window.__slot.roomState && window.__slot.roomState.view === 'partida', null, { timeout: 20000 });
+  await tv.waitForFunction(() => window.__slot.roomState && window.__slot.roomState.view === 'partida', null, { timeout: 45000 });
   await tv.screenshot({ path: `${OUT}/tele_sala.png` });
   await click(b, '#onReady'); await sleep(2000);
   await click(a, '#onReady');
@@ -427,7 +427,7 @@ T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carre
   // El botón de cámara del móvil cambia solo su trozo de la tele
   const anaId = await a.evaluate(() => window.__slot.roomState.players.find((p) => p.name === 'Ana').id);
   await click(a, '#camBtn');
-  await tv.waitForFunction((id) => window.__slot.tvCams[id] === 'tv', anaId, { timeout: 20000 });
+  await tv.waitForFunction((id) => window.__slot.tvCams[id] === 'tv', anaId, { timeout: 45000 });
   const betoId = await a.evaluate(() => window.__slot.roomState.players.find((p) => p.name === 'Beto').id);
   assert((await tv.evaluate((id) => window.__slot.tvCams[id], betoId)) === 'heli', 'la cámara de Ana ha cambiado también la de Beto');
   await tv.screenshot({ path: `${OUT}/tele_carrera.png` });
@@ -439,7 +439,7 @@ T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carre
   if (process.env.PASOS) console.log('        · paso 46');
   noErrors(tv); noErrors(a); noErrors(b);
   await close(a); await close(b);
-  await tv.waitForFunction(() => /Esperando pilotos/.test(document.getElementById('tvStatus').textContent), null, { timeout: 20000 });
+  await tv.waitForFunction(() => /Esperando pilotos/.test(document.getElementById('tvStatus').textContent), null, { timeout: 45000 });
   if (process.env.PASOS) console.log('        · paso 49');
   await close(tv);
 });

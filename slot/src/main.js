@@ -1889,6 +1889,7 @@ function crossLine(c, now) {
 }
 
 function progress(c) {
+  if (c.left) return -1e9;   // quien abandona la sala, el último
   if (c.finished) return 1e6 - c.finishTime;
   return c.lap === 0 ? c.st.s - T.L : (c.lap - 1) * T.L + c.st.s;
 }
@@ -2274,7 +2275,8 @@ function loop(now) {
   if (race && race.screen && (racing || state === 'intro')) updateTvBoard();
   if (mandoOn) return;
   updateCrowd(dt);
-  if (race && race.screen && racing && tvRenderSplit(dt)) return;
+  // (las cámaras de la tele siguen al coche con el tiempo real: si la tele va lenta, no se quedan atrás)
+  if (race && race.screen && racing && tvRenderSplit(Math.min(0.5, rawDt))) return;
   renderFrame(dt);
 }
 
@@ -3140,7 +3142,7 @@ function onRoomMessage(m) {
   } else if (m.t === 'lap' && c) {
     c.laps.push(m.time); c.last = m.time; if (m.time < c.best) c.best = m.time;
   } else if (m.t === 'left' && c) {
-    c.finished = true; c.finishTime = 9999; c.mesh.visible = false;
+    c.finished = true; c.finishTime = 9999; c.mesh.visible = false; c.left = true;
   }
 }
 function renderOnlineChamp(box, champ) {
@@ -4142,7 +4144,7 @@ function tvSplitView(rs) {
   if (v === 'partida') return true;
   return !!T && (T.big || T.L * SCALE > 14);
 }
-const tvPilots = () => cars.filter((c) => c.remote && race.online && race.online.players.some((p) => p.id === c.remote)).sort((a, b) => a.lane - b.lane);
+const tvPilots = () => cars.filter((c) => c.remote && !c.left && race.online && race.online.players.some((p) => p.id === c.remote)).sort((a, b) => a.lane - b.lane);
 function tvRects(n) {
   if (n <= 1) return [[0, 0, 1, 1]];
   if (n === 2) return [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]];
@@ -4224,7 +4226,7 @@ function updateTvSplitUI() {
       lab.style.setProperty('--car', hexOf(c.liv.color));
       const b = document.createElement('b'); b.textContent = `${order.indexOf(c) + 1}º`;
       const s = document.createElement('span'); s.textContent = c.name;
-      const e = document.createElement('em'); e.textContent = c.finished ? 'Meta' : c.crash ? '¡Fuera!' : `V ${Math.max(1, c.lap)}/${race.laps}`;
+      const e = document.createElement('em'); e.textContent = c.finished ? 'Meta' : c.crash ? '¡Fuera!' : `V ${Math.min(race.laps, Math.max(1, c.lap))}/${race.laps}`;
       lab.append(b, s, e);
     } else { lab.style.setProperty('--car', '#888'); const s = document.createElement('span'); s.textContent = 'Toda la mesa'; lab.append(s); }
     box.appendChild(lab);
@@ -4311,7 +4313,7 @@ window.__slot = {
   get actx() { return actx; }, get slotBuf() { return slotBuf; }, startRace, LIVERIES, DEFAULT_SETUP, TRACKS, get room() { return room; }, get roomState() { return roomState; },
   setPad: (p, v) => { const pad = pads.find((x) => x.player === p); if (pad) { pad.id = 'test'; pad.value = v; } },
   setCam: (m) => { camMode = m; },
-  get tvCams() { return tvCams; },
+  get tvCams() { return tvCams; }, get tvViews() { return tvViews; },
   get tvLag() { const a = [...tvLagStat].sort((x, y) => x - y); return a.length ? Math.round(a[a.length >> 1]) : null; },
   forceShot: (type, dur = 3) => { forcedShot = type ? { type, dur } : null; if (shot) shot.t = shot.dur; },
 };
