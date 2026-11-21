@@ -346,7 +346,7 @@ T('online: sala con dos jugadores, presentación igual para los dos y salida', a
 // ---------------------------------------------------------------- Modo tele (la tele muestra la carrera; los móviles son los mandos)
 async function openAt(url, vp, init) {
   const v = VIEWPORTS[vp] || vp;
-  const ctx = await browser.newContext({ viewport: { width: v.width, height: v.height }, isMobile: !!v.isMobile, hasTouch: !!v.hasTouch, deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: { width: v.width, height: v.height }, isMobile: !!v.isMobile, hasTouch: !!v.hasTouch, deviceScaleFactor: v.isMobile ? +(process.env.PHONEDPR || 1) : 1 });
   const p = await ctx.newPage();
   p.errors = [];
   p.on('pageerror', (e) => p.errors.push('pageerror: ' + e.message));
@@ -359,7 +359,7 @@ async function openAt(url, vp, init) {
   return p;
 }
 T('tele: la tele crea la sala con QR, los móviles entran como mandos y la carrera se ve en la tele', async () => {
-  const tv = await openAt(BASE + '?tele=1', { width: 640, height: 360 }, "localStorage.setItem('slot.quality','2');");
+  const tv = await openAt(BASE + '?tele=1', { width: +(process.env.TVW || 640), height: +(process.env.TVH || 360) }, "localStorage.setItem('slot.quality','2');");
   await tv.waitForFunction(() => /^[A-Z]{4}$/.test(document.getElementById('tvCode').textContent), null, { timeout: 30000 });
   if (process.env.PASOS) console.log('        · paso 2');
   const code = await tv.evaluate(() => document.getElementById('tvCode').textContent);
