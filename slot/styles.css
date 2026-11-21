@@ -791,3 +791,4 @@ body.mando .pad-label { font-size: 18px; }
   #tvQr { width: 32vw; }
 }
 #tv.open { pointer-events: auto; }
+body.mando .hud-top { justify-content: flex-end; }
