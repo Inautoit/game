@@ -539,6 +539,28 @@
 
   <div id="toast" class="toast" role="status"></div>
 
+  <script>
+    // Si el juego no arranca (navegador antiguo, error…), se dice en pantalla en vez de quedarse en la carga
+    (function () {
+      var errs = [];
+      window.addEventListener('error', function (e) { errs.push((e.message || 'Error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+      window.addEventListener('unhandledrejection', function (e) { errs.push('Promesa: ' + (e.reason && e.reason.message || e.reason)); });
+      var modern = true;
+      try { new Function('var a = {}; return a?.b ?? 1;'); } catch (x) { modern = false; }
+      if (!('noModule' in document.createElement('script'))) modern = false;
+      setTimeout(function () {
+        if (window.__slot) return;
+        var s = document.getElementById('splash'); if (!s) return;
+        var d = document.createElement('div');
+        d.style.cssText = 'position:absolute;left:5%;right:5%;bottom:6%;padding:16px;border-radius:12px;background:rgba(0,0,0,.75);color:#fff;font:16px/1.4 sans-serif;text-align:center';
+        d.innerHTML = '<b style="font-size:20px;color:#ffcc00">' + (modern ? 'El juego no ha podido arrancar' : 'Este navegador es demasiado antiguo para el juego') + '</b><br>' +
+          (modern ? 'Recarga la página. Si sigue igual, haz una foto a esta pantalla y envíanosla.' : 'Prueba a abrirlo en un móvil, tablet u ordenador y envíalo a la tele con AirPlay, Chromecast o un cable HDMI.') +
+          '<br><small style="color:#aab1c4;word-break:break-all"></small>';
+        d.querySelector('small').textContent = (errs.length ? errs.slice(0, 3).join(' · ') + ' · ' : '') + navigator.userAgent;
+        s.appendChild(d);
+      }, 15000);
+    })();
+  </script>
   <script type="module" src="src/main.js"></script>
   <script>
     if ('serviceWorker' in navigator && location.protocol !== 'file:' && location.protocol !== 'capacitor:' && !window.Capacitor) {
