@@ -12,7 +12,8 @@ en un juego comercial sin pagar ni dar atribución. Aun así, los citamos.
 | `tex/ground037_*` | Ground 037 | ambientCG | ambientcg.com | CC0 |
 | `tex/fabric086_*` | Fabric 086 | ambientCG | ambientcg.com | CC0 |
 
-Código de terceros: three.js y sus módulos de ejemplo (`vendor/`), licencia MIT.
+Código de terceros: three.js y sus módulos de ejemplo (`vendor/`), licencia MIT; qrcode-generator de Kazuhiko Arase
+(`vendor/qrcode.js`, código QR del modo tele), licencia MIT.
 Tipografía Fredoka, licencia SIL OFL.
 
 ## Coches (todos inventados, sin marcas reales; licencia CC-BY 4.0: hay que citar al autor)
