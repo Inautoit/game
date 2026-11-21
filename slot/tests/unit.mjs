@@ -43,7 +43,7 @@ const lapsOf = (def, lane, magnet, seconds) => {
   }
   return { laps, outs, vmax, meters: S.length * SCALE };
 };
-for (const t of [...TRACKS, ...PREMIUM]) for (const [lane, magnet] of [[0, 'medio'], [3, 'sin']]) test(`${t.id} carril ${lane} imán ${magnet}: la CPU da vueltas`, () => {
+for (const t of [...TRACKS, ...PREMIUM]) for (const [lane, magnet] of [[0, 'medio'], [1, 'bajo'], [3, 'sin']]) test(`${t.id} carril ${lane} imán ${magnet}: la CPU da vueltas`, () => {
   const r = lapsOf(t, lane, magnet, 90);
   const expected = Math.floor(90 * 1.2 / r.meters);   // como mínimo ~1,2 m/s de media
   assert.ok(r.laps >= Math.max(1, expected), `solo ${r.laps} vueltas en 90 s (${r.meters.toFixed(1)} m)`);

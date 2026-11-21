@@ -35,7 +35,7 @@ export const SETUP_OPTIONS = {
   gear: [{ id: 'corto', name: 'Corto (9:30)', G: 3.33 }, { id: 'medio', name: 'Medio (9:27)', G: 3.0 }, { id: 'largo', name: 'Largo (10:27)', G: 2.7 }],
   tire: [{ id: 'duro', name: 'Duro', mu: 0.95 }, { id: 'blando', name: 'Blando', mu: 1.15 }],
 };
-export const DEFAULT_SETUP = { magnet: 'medio', gear: 'medio', tire: 'blando', brake: 0.7, curve: 1.4 };
+export const DEFAULT_SETUP = { magnet: 'bajo', gear: 'medio', tire: 'blando', brake: 0.7, curve: 1.4 };   // imán bajo: derrapa algo, más divertido
 
 export function resolveSetup(s) {
   const pick = (k, id) => SETUP_OPTIONS[k].find((o) => o.id === id) || SETUP_OPTIONS[k][1];
