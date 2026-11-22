@@ -23,7 +23,7 @@ export class Renderer {
     this.c.style.width = w + 'px';
     this.c.style.height = h + 'px';
     this.w = w; this.h = h;
-    this.s = Math.max(9, Math.min(w / 40, h / 25));
+    this.s = Math.max(9, h > w ? Math.min(w / 52, h / 30) : Math.min(w / 40, h / 25));
   }
 
   P(x, y, z = 0) {

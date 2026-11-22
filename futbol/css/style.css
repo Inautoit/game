@@ -17,7 +17,8 @@ html, body {
   -webkit-user-select: none; user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
-#pitch { position: fixed; inset: 0; display: block; }
+#pitch { position: fixed; inset: 0; display: block; touch-action: none; }
+button, select, input { touch-action: manipulation; }
 .hidden { display: none !important; }
 
 .screen {

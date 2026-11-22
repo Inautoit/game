@@ -32,6 +32,16 @@ let last = performance.now();
 let helpReturn = 'menu';
 let hubTab = 'table';
 let lastKickSound = 0;
+let usingKeyboard = false;
+// iPad con teclado: si se usan teclas, ocultar los botones táctiles
+window.addEventListener('keydown', (e) => {
+  if (!isTouch || usingKeyboard || /^(INPUT|SELECT)$/.test(e.target.tagName)) return;
+  usingKeyboard = true;
+  if (match) $('#touch').classList.add('hidden');
+});
+window.addEventListener('touchstart', () => {
+  if (usingKeyboard) { usingKeyboard = false; if (match) $('#touch').classList.remove('hidden'); }
+}, { passive: true });
 
 function show(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.add('hidden'));
@@ -253,7 +263,7 @@ function beginMatch(opts, ctx) {
   paused = false; fast = false; endTimer = 0; acc = 0;
   renderer.updateCamera(match, 0, true);
   show(null);
-  $('#touch').classList.toggle('hidden', !isTouch);
+  $('#touch').classList.toggle('hidden', !isTouch || usingKeyboard);
   input.enabled = true;
 }
 
@@ -363,7 +373,7 @@ function frame(now) {
       paused = !paused;
       show(paused ? 'pause' : null);
     }
-    if (isTouch) $('#rotate').classList.toggle('hidden', window.innerWidth >= window.innerHeight);
+    if (isTouch) $('#rotate').classList.toggle('hidden', window.innerWidth >= window.innerHeight || Math.min(window.innerWidth, window.innerHeight) >= 600);
     if (!paused) {
       if (fast) {
         for (let i = 0; i < 240 && !match.finished; i++) match.step(STEP, null);
