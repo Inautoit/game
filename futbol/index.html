@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Fútbol Vida</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <canvas id="pitch"></canvas>
+
+  <!-- Menú principal -->
+  <section id="menu" class="screen">
+    <div class="menu-box">
+      <div class="logo">⚽ <span>FÚTBOL</span> VIDA</div>
+      <p class="tag">De la cantera a leyenda</p>
+      <button class="btn big" data-act="new">Nueva carrera</button>
+      <button class="btn big" data-act="continue" id="btn-continue">Continuar carrera</button>
+      <button class="btn" data-act="quick">Partido rápido</button>
+      <button class="btn ghost" data-act="help">Controles</button>
+    </div>
+  </section>
+
+  <!-- Crear jugador -->
+  <section id="create" class="screen hidden">
+    <div class="panel wide">
+      <h2>Crea tu jugador</h2>
+      <div class="form">
+        <label>Nombre en la camiseta <input id="c-name" maxlength="16" value="Rubén" /></label>
+        <label>Nacionalidad <input id="c-nation" maxlength="20" value="España" /></label>
+        <label>Dorsal <input id="c-number" type="number" min="1" max="99" value="9" /></label>
+        <label>Posición <select id="c-pos"></select></label>
+        <label class="full">Cantera <select id="c-team"></select></label>
+      </div>
+      <div id="c-preview" class="attrs"></div>
+      <div class="row">
+        <button class="btn ghost" data-act="menu">Volver</button>
+        <button class="btn big" data-act="create">Empezar carrera</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Centro de carrera -->
+  <section id="hub" class="screen hidden"><div class="hub" id="hub-body"></div></section>
+
+  <!-- Partido rápido -->
+  <section id="quick" class="screen hidden">
+    <div class="panel">
+      <h2>Partido rápido</h2>
+      <div class="form">
+        <label class="full">Tu equipo <select id="q-home"></select></label>
+        <label class="full">Rival <select id="q-away"></select></label>
+        <label>Tu posición <select id="q-pos"></select></label>
+        <label>Duración <select id="q-dur"><option value="180">3 min</option><option value="300" selected>5 min</option><option value="420">7 min</option><option value="600">10 min</option></select></label>
+      </div>
+      <div class="row">
+        <button class="btn ghost" data-act="menu">Volver</button>
+        <button class="btn big" data-act="quickgo">¡Jugar!</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Controles -->
+  <section id="help" class="screen hidden">
+    <div class="panel">
+      <h2>Controles</h2>
+      <p class="muted">Controlas solo a tu jugador (anillo amarillo). Tus compañeros juegan solos: muévete bien y pide el balón.</p>
+      <table class="keys">
+        <tr><th></th><th>Con balón</th><th>Sin balón</th></tr>
+        <tr><td><kbd>WASD</kbd>/<kbd>↑↓←→</kbd></td><td>Mover / conducir</td><td>Mover</td></tr>
+        <tr><td><kbd>Shift</kbd></td><td>Sprint</td><td>Sprint</td></tr>
+        <tr><td><kbd>J</kbd>/<kbd>Espacio</kbd></td><td>Pase raso (hacia donde apuntas)</td><td>Pedir el balón · Presión del compañero</td></tr>
+        <tr><td><kbd>K</kbd></td><td>Tiro (mantén para potencia; ↑/↓ elige palo)</td><td>Entrada · Remate de primeras / cabeza</td></tr>
+        <tr><td><kbd>L</kbd></td><td>Pase al hueco</td><td>Pedir al hueco · Entrada deslizante</td></tr>
+        <tr><td><kbd>I</kbd></td><td>Pase elevado / centro</td><td>—</td></tr>
+        <tr><td><kbd>E</kbd></td><td>Conducción larga (te la adelantas)</td><td>—</td></tr>
+        <tr><td><kbd>Esc</kbd>/<kbd>P</kbd></td><td colspan="2">Pausa</td></tr>
+      </table>
+      <p class="muted">Mando: stick izq. mover · A pase · B tiro · Y hueco · X elevado · RT/LB sprint · RB conducción. En móvil: joystick a la izquierda y botones a la derecha (gira el móvil en horizontal).</p>
+      <div class="row"><button class="btn" data-act="back">Volver</button></div>
+    </div>
+  </section>
+
+  <!-- Post partido -->
+  <section id="post" class="screen hidden"><div class="panel" id="post-body"></div></section>
+
+  <!-- Controles táctiles -->
+  <div id="touch" class="hidden">
+    <div id="stick-zone"></div>
+    <div id="stick"><div id="stick-knob"></div></div>
+    <div class="tbtns">
+      <button data-btn="lob" class="tb small">ELEV.</button>
+      <button data-btn="through" class="tb small">HUECO</button>
+      <button data-btn="sprint" class="tb sprint">SPRINT</button>
+      <button data-btn="pass" class="tb">PASE</button>
+      <button data-btn="shoot" class="tb shoot">TIRO</button>
+    </div>
+    <button data-btn="pause" class="tb pausebtn">II</button>
+  </div>
+
+  <!-- Pausa -->
+  <div id="pause" class="screen overlay hidden">
+    <div class="menu-box">
+      <h2>Pausa</h2>
+      <button class="btn big" data-act="resume">Continuar</button>
+      <button class="btn" data-act="simrest">Simular el resto</button>
+      <button class="btn" data-act="mute" id="btn-mute">Sonido: sí</button>
+      <button class="btn ghost" data-act="help">Controles</button>
+    </div>
+  </div>
+
+  <div id="rotate" class="hidden">Gira el móvil en horizontal para jugar ↻</div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
