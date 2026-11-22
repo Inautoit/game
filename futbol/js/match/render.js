@@ -379,6 +379,64 @@ export class Renderer {
     }
   }
 
+  // capa 2D sobre la vista 3D: HUD, punto de mira, potencia y flecha al balón
+  drawOverlay(m, o) {
+    const g = this.g;
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.clearRect(0, 0, this.w, this.h);
+    const u = m.user;
+    const following = o.following;
+    if (following && o.mode === 'fp') {
+      const cx = this.w / 2, cy = this.h / 2;
+      g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 2;
+      g.beginPath(); g.arc(cx, cy, 6, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = 'rgba(255,255,255,.9)';
+      g.beginPath(); g.arc(cx, cy, 1.6, 0, Math.PI * 2); g.fill();
+    }
+    if (following && u.charge > 0) {
+      const w = Math.min(320, this.w * 0.4), h = 12;
+      const x = this.w / 2 - w / 2, y = this.h * 0.62;
+      g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(x - 2, y - 2, w + 4, h + 4);
+      const c = u.charge;
+      g.fillStyle = c < 0.6 ? '#22c55e' : c < 0.85 ? '#facc15' : '#ef4444';
+      g.fillRect(x, y, w * c, h);
+      g.fillStyle = '#fff'; g.font = '700 13px system-ui'; g.textAlign = 'center'; g.textBaseline = 'bottom';
+      g.fillText('POTENCIA', this.w / 2, y - 4);
+    }
+    if (following && m.owner === u) {
+      g.font = `800 ${Math.max(12, Math.min(16, this.w / 70))}px system-ui`;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = 'rgba(255,214,10,.95)';
+      g.fillText(o.passName ? `▶ ${o.passName}` : 'Balón controlado', this.w / 2, this.h * 0.68);
+    }
+    if (m.userCall > 0 && following) {
+      g.font = '800 18px system-ui'; g.textAlign = 'center';
+      g.fillStyle = '#ffd60a'; g.fillText('¡PÁSALA!', this.w / 2, this.h * 0.38);
+    }
+    // flecha hacia el balón si está fuera de la vista
+    if (o.ballScreen && following && m.owner !== u) {
+      const bs = o.ballScreen;
+      const margin = 40;
+      const off = bs.behind || bs.x < margin || bs.x > this.w - margin || bs.y < margin || bs.y > this.h - margin;
+      if (off) {
+        let dx = bs.x - this.w / 2, dy = bs.y - this.h / 2;
+        if (bs.behind) { dx = -dx; dy = -dy; if (Math.abs(dy) < 1) dy = 1; }
+        const a = Math.atan2(dy, dx);
+        const rx = this.w / 2 - margin, ry = this.h / 2 - margin;
+        const k = Math.min(rx / Math.abs(Math.cos(a) || 1e-6), ry / Math.abs(Math.sin(a) || 1e-6));
+        const px = this.w / 2 + Math.cos(a) * k, py = this.h / 2 + Math.sin(a) * k;
+        g.save(); g.translate(px, py); g.rotate(a);
+        g.fillStyle = '#ffffff'; g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(16, 0); g.lineTo(-8, -11); g.lineTo(-8, 11); g.closePath(); g.fill(); g.stroke();
+        g.restore();
+        g.fillStyle = '#fff'; g.font = '700 11px system-ui'; g.textAlign = 'center';
+        g.fillText('BALÓN', px - Math.cos(a) * 26, py - Math.sin(a) * 26);
+      }
+    }
+    this.drawHUD(m);
+    if (o.hint && !(m.state === 'restart' && m.rs && m.rs.taker.isUser)) this.toast(o.hint, this.touchMode ? this.h * 0.3 : this.h - 60);
+  }
+
   drawHUD(m) {
     const g = this.g;
     const [h, a] = m.teams;

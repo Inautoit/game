@@ -155,6 +155,8 @@ export class Match {
     this.userCall = 0;
     this.pressCall = 0;
     this.userAI = false;
+    this.userYaw = null;   // en primera persona: hacia dónde mira el jugador (lo controla la cámara)
+    this.yawSnap = true;   // avisa a la cámara de que el jugador se ha recolocado
     this.finished = false;
     this.onEvent = opts.onEvent || (() => {});
     this.chaser = [null, null];
@@ -234,6 +236,7 @@ export class Match {
       }
     }
     const t = this.teams[sideToKick];
+    this.yawSnap = true;
     const st = this.active(t).find((p) => p.role === 'ST') || this.active(t)[9];
     const mate = this.active(t).find((p) => p.role === 'CM') || this.active(t)[6];
     st.x = L / 2 - t.dir * 0.4; st.y = W / 2;
@@ -259,6 +262,7 @@ export class Match {
     taker.x = x - Math.cos(fa) * 0.6; taker.y = y - Math.sin(fa) * 0.6;
     taker.vx = taker.vy = 0; taker.face = fa; taker.receive = null;
     this.owner = taker; taker.holding = true; taker.holdT = 99;
+    if (taker.isUser) this.yawSnap = true;
     this.lastTouch = taker;
     if (type === 'kickoff') return;
     // apartar rivales
@@ -449,7 +453,7 @@ export class Match {
       aim = Math.random() < 0.72 ? side * rand(0.55, 0.95) : -side * rand(0.3, 0.8);
     }
     const sho = p.a.sho;
-    let ty = W / 2 + clamp(aim, -1, 1) * (GOAL_HALF - 0.35);
+    let ty = W / 2 + clamp(aim, -1.5, 1.5) * (GOAL_HALF - 0.35);
     const dx = gx - b.x, dy0 = ty - b.y;
     const d = hyp(dx, dy0);
     const press = this.nearestOpp(p);
@@ -879,7 +883,7 @@ export class Match {
     if (p.shootBuf > 0) {
       p.shootBuf = 0;
       const inp = this.lastInput || {};
-      this.shoot(p, 0.72, Math.abs(inp.my || 0) > 0.3 ? inp.my : null);
+      this.shoot(p, 0.72, this.userAim(p, inp));
     } else if (p.passBuf > 0) {
       p.passBuf = 0;
       this.userPass(p, 'ground', this.lastInput || {});
@@ -1039,7 +1043,9 @@ export class Match {
       if (e > acc) { ex *= acc / e; ey *= acc / e; }
       p.vx += ex; p.vy += ey;
       const sp = p.speed;
-      if (sp > 0.4) {
+      if (p.isUser && !this.userAI && this.userYaw != null) {
+        p.face = this.userYaw;
+      } else if (sp > 0.4) {
         const ta = Math.atan2(p.vy, p.vx);
         const rate = (this.owner === p ? 6 + p.a.dri * 0.07 : 12) * dt;
         const da = angDiff(p.face, ta);
@@ -1583,7 +1589,8 @@ export class Match {
         } else if (inp.shootRelease && rs.type !== 'throw') {
           this.state = 'play'; p.holding = false; this.rs = null;
           const pw = rs.type === 'penalty' ? clamp(p.charge, 0.4, 1) : clamp(p.charge, 0.3, 1);
-          this.shoot(p, pw, Math.abs(my) > 0.25 ? my : (Math.abs(mx) > 0.25 && rs.type === 'penalty' ? 0 : null), rs.type === 'penalty');
+          const aim = this.userYaw != null ? this.userAim(p, inp) : (Math.abs(my) > 0.25 ? my : null);
+          this.shoot(p, pw, aim, rs.type === 'penalty');
           p.charge = 0;
         }
       }
@@ -1594,7 +1601,7 @@ export class Match {
     if (isOwner) {
       if (inp.shootHeld) { p.charging = true; p.charge = Math.min(1, p.charge + dt * 1.35); }
       if (inp.shootRelease && p.charging) {
-        this.shoot(p, Math.max(0.25, p.charge), Math.abs(my) > 0.3 ? my : null);
+        this.shoot(p, Math.max(0.25, p.charge), this.userAim(p, inp));
         p.charge = 0; p.charging = false;
         return desired;
       }
@@ -1603,7 +1610,7 @@ export class Match {
       if (inp.lob) { this.userPass(p, 'lob', inp); return desired; }
       if (inp.skill) {
         // conducción larga: me la adelanto
-        const a = mag > 0.2 ? Math.atan2(my, mx) : p.face;
+        const a = mag > 0.2 && this.userYaw == null ? Math.atan2(my, mx) : p.face;
         p.face = a;
         this.kick(p, Math.cos(a) * (max + 3.5), Math.sin(a) * (max + 3.5), 0);
         p.cd = 0.18;
@@ -1640,17 +1647,25 @@ export class Match {
     return desired;
   }
 
-  userPass(p, kind, inp, rsType) {
+  // apunta el tiro según hacia dónde mira el jugador (primera persona) o la dirección del stick
+  userAim(p, inp) {
+    if (this.userYaw != null) {
+      const gx = this.goalX(p.team);
+      const c = Math.cos(p.face);
+      if (c * (gx - p.x) <= 0.05) return null;
+      const t = (gx - p.x) / c;
+      const yHit = p.y + Math.sin(p.face) * t;
+      return clamp((yHit - W / 2) / (GOAL_HALF - 0.35), -1.5, 1.5);
+    }
+    const my = inp.my || 0;
+    return Math.abs(my) > 0.3 ? my : null;
+  }
+
+  // compañero al que iría un pase del usuario en la dirección (dx, dy)
+  pickUserTarget(p, kind, dx, dy) {
     const t = p.team;
-    const mx = inp.mx || 0, my = inp.my || 0;
-    let dx, dy;
-    const aimed = hyp(mx, my) > 0.2;
-    if (aimed) { const m = hyp(mx, my); dx = mx / m; dy = my / m; }
-    else { dx = Math.cos(p.face); dy = Math.sin(p.face); }
     let best = null, bs = -1e9;
-    // en saques sin dirección: el mejor compañero disponible
-    if (rsType && !aimed && rsType !== 'corner') best = this.bestPassTarget(p, { back: rsType === 'kickoff', maxD: rsType === 'throw' ? 22 : 45 });
-    for (const q of best ? [] : this.active(t)) {
+    for (const q of this.active(t)) {
       if (q === p) continue;
       const vx = q.x - p.x, vy = q.y - p.y;
       const d = hyp(vx, vy);
@@ -1660,6 +1675,21 @@ export class Match {
       const s = c * 2.2 - d / 45 + this.spaceAt(q.x, q.y, t) * 0.3 + this.laneSafety(p, q.x, q.y, t, kind) * 0.3 - (q.role === 'GK' ? 0.5 : 0);
       if (s > bs) { bs = s; best = q; }
     }
+    return best;
+  }
+
+  userPass(p, kind, inp, rsType) {
+    const t = p.team;
+    const mx = inp.mx || 0, my = inp.my || 0;
+    let dx, dy;
+    const aimed = hyp(mx, my) > 0.2 && this.userYaw == null;
+    if (aimed) { const m = hyp(mx, my); dx = mx / m; dy = my / m; }
+    else { dx = Math.cos(p.face); dy = Math.sin(p.face); }
+    let best = null, bs = -1e9;
+    // en saques sin dirección: el mejor compañero disponible
+    if (rsType && !aimed && rsType !== 'corner') best = this.bestPassTarget(p, { back: rsType === 'kickoff', maxD: rsType === 'throw' ? 22 : 45 });
+    if (!best) best = this.pickUserTarget(p, kind, dx, dy);
+    void bs;
     const k = kind === 'throw' ? 'throw' : kind;
     if (rsType === 'corner') {
       if (best) this.passTo(p, best, 'cross');

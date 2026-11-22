@@ -14,6 +14,16 @@ python3 -m http.server 8000
 ```
 Abre <http://localhost:8000/futbol/>.
 
+## Cámaras
+
+- **Primera persona** (por defecto): ves el partido desde los ojos de tu jugador.
+  ↑ avanzar, ↓ retroceder, ←/→ girar la mirada. Pases y tiros van hacia donde miras;
+  el compañero que recibiría el pase lleva un aro amarillo.
+- **Detrás del jugador**: misma forma de control, cámara a la espalda.
+- **Cenital**: la vista 2D de arriba (las flechas mueven en la dirección de la pantalla).
+
+Cambia con `C` (o el botón CÁM). `Q` (botón BALÓN) gira la mirada hacia el balón.
+
 ## Controles (teclado)
 
 | Tecla | Con balón | Sin balón |

@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="./css/style.css" />
 </head>
 <body>
+  <canvas id="gl" class="hidden"></canvas>
   <canvas id="pitch"></canvas>
 
   <!-- Menú principal -->
@@ -69,7 +70,7 @@
   <section id="help" class="screen hidden">
     <div class="panel">
       <h2>Controles</h2>
-      <p class="muted">Controlas solo a tu jugador (anillo amarillo). Tus compañeros juegan solos: muévete bien y pide el balón.</p>
+      <p class="muted">Controlas solo a tu jugador. Por defecto ves el partido <b>en primera persona</b>: <kbd>W</kbd>/<kbd>↑</kbd> avanzas, <kbd>S</kbd> retrocedes, <kbd>A</kbd>/<kbd>D</kbd> giras la mirada. Los pases y tiros van hacia donde miras (el compañero marcado con el aro amarillo recibe el pase). <kbd>Q</kbd> te gira hacia el balón y <kbd>C</kbd> cambia la cámara (primera persona, detrás del jugador o cenital). En la vista cenital las flechas mueven en la dirección de la pantalla.</p>
       <table class="keys">
         <tr><th></th><th>Con balón</th><th>Sin balón</th></tr>
         <tr><td><kbd>WASD</kbd>/<kbd>↑↓←→</kbd></td><td>Mover / conducir</td><td>Mover</td></tr>
@@ -79,9 +80,11 @@
         <tr><td><kbd>L</kbd></td><td>Pase al hueco</td><td>Pedir al hueco · Entrada deslizante</td></tr>
         <tr><td><kbd>I</kbd></td><td>Pase elevado / centro</td><td>—</td></tr>
         <tr><td><kbd>E</kbd></td><td>Conducción larga (te la adelantas)</td><td>—</td></tr>
+        <tr><td><kbd>Q</kbd></td><td colspan="2">Mirar al balón</td></tr>
+        <tr><td><kbd>C</kbd></td><td colspan="2">Cambiar cámara</td></tr>
         <tr><td><kbd>Esc</kbd>/<kbd>P</kbd></td><td colspan="2">Pausa</td></tr>
       </table>
-      <p class="muted">Mando: stick izq. mover · A pase · B tiro · Y hueco · X elevado · RT/LB sprint · RB conducción. En móvil: joystick a la izquierda y botones a la derecha (gira el móvil en horizontal).</p>
+      <p class="muted">Mando: stick izq. mover, stick der. girar · A pase · B tiro · Y hueco · X elevado · RT/LB sprint · RB conducción. En móvil: joystick a la izquierda y botones a la derecha (gira el móvil en horizontal).</p>
       <div class="row"><button class="btn" data-act="back">Volver</button></div>
     </div>
   </section>
@@ -101,6 +104,8 @@
       <button data-btn="shoot" class="tb shoot">TIRO</button>
     </div>
     <button data-btn="pause" class="tb pausebtn">II</button>
+    <button data-btn="cam" class="tb topbtn cam">CÁM</button>
+    <button data-btn="look" class="tb topbtn look">BALÓN</button>
   </div>
 
   <!-- Pausa -->
@@ -109,6 +114,7 @@
       <h2>Pausa</h2>
       <button class="btn big" data-act="resume">Continuar</button>
       <button class="btn" data-act="simrest">Simular el resto</button>
+      <button class="btn" data-act="cam" id="btn-cam">Cámara: Primera persona</button>
       <button class="btn" data-act="mute" id="btn-mute">Sonido: sí</button>
       <button class="btn ghost" data-act="help">Controles</button>
     </div>

@@ -4,6 +4,7 @@ import { TEAMS, LEAGUES, POSITIONS, teamById, leagueById, ATTR_NAMES, overallFor
 import * as C from './career.js';
 import { Match } from './match/engine.js';
 import { Renderer } from './match/render.js';
+import { Renderer3D } from './match/render3d.js';
 import { Input, heldOnly } from './match/input.js';
 import { Sound } from './sound.js';
 
@@ -20,6 +21,57 @@ const input = new Input();
 input.bindTouch($('#touch'));
 const renderer = new Renderer($('#pitch'));
 renderer.touchMode = isTouch;
+
+// ---- Vista 3D (primera persona / detrás del jugador) ----
+const CAM_NAMES = { fp: 'Primera persona', tp: 'Detrás del jugador', '2d': 'Cenital' };
+const CAM_ORDER = ['fp', 'tp', '2d'];
+let r3d = null;
+try { r3d = new Renderer3D($('#gl')); } catch (err) { console.warn('WebGL no disponible', err); }
+let camMode = 'fp';
+try { camMode = localStorage.getItem('fv-cam') || 'fp'; } catch { /* sin almacenamiento */ }
+if (!CAM_ORDER.includes(camMode) || !r3d) camMode = r3d ? 'fp' : '2d';
+let yaw = 0;
+let lookT = 0;
+
+function applyCamMode() {
+  const three = camMode !== '2d' && !!match;
+  $('#gl').classList.toggle('hidden', !three);
+  $('#pitch').classList.toggle('overlay-hud', three);
+  const b = $('#btn-cam');
+  if (b) b.textContent = `Cámara: ${CAM_NAMES[camMode]}`;
+}
+function cycleCam() {
+  if (!r3d) return;
+  camMode = CAM_ORDER[(CAM_ORDER.indexOf(camMode) + 1) % CAM_ORDER.length];
+  try { localStorage.setItem('fv-cam', camMode); } catch { /* nada */ }
+  if (match) { match.yawSnap = true; match.say(CAM_NAMES[camMode].toUpperCase(), '', 1.2); }
+  applyCamMode();
+}
+
+const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+
+// En 3D el stick es relativo a la mirada: ↑ avanzar, ↓ retroceder, ←/→ girar.
+function transformInput(inp, dt) {
+  const u = match.user;
+  if (camMode === '2d' || !u || match.userAI || u.sentOff) { match.userYaw = null; return inp; }
+  if (match.yawSnap) { yaw = u.face; match.yawSnap = false; }
+  if (inp.look) lookT = 0.5;
+  if (lookT > 0) {
+    lookT -= dt;
+    const b = match.ball;
+    const ta = Math.atan2(b.y - u.y, b.x - u.x);
+    const d = angDiff(yaw, ta);
+    yaw += Math.max(-9 * dt, Math.min(9 * dt, d));
+    if (Math.abs(d) < 0.03) lookT = 0;
+  }
+  const turn = Math.max(-1, Math.min(1, inp.mx + (inp.turn || 0)));
+  const fwd = -inp.my;
+  const owns = match.owner === u;
+  yaw += turn * (owns ? 2.3 : 2.8) * dt;
+  match.userYaw = yaw;
+  const k = fwd < 0 ? 0.55 : 1;
+  return { ...inp, mx: Math.cos(yaw) * fwd * k, my: Math.sin(yaw) * fwd * k };
+}
 const sound = new Sound();
 
 let match = null;
@@ -262,6 +314,9 @@ function beginMatch(opts, ctx) {
   else match.say(`${opts.home.short} vs ${opts.away.short}`, leagueById(opts.home.league).name, 2.5);
   paused = false; fast = false; endTimer = 0; acc = 0;
   renderer.updateCamera(match, 0, true);
+  if (r3d) { r3d.dispose(); r3d.snapCamera(); }
+  match.yawSnap = true;
+  applyCamMode();
   show(null);
   $('#touch').classList.toggle('hidden', !isTouch || usingKeyboard);
   input.enabled = true;
@@ -293,6 +348,7 @@ function finishMatch() {
     events: m.events, stats: [h.stats, a.stats], simulated: false,
   };
   match = null;
+  applyCamMode();
   if (matchCtx.mode === 'career') {
     const info = C.finishMatchday(career, result);
     showPost(result, info, 'career');
@@ -356,6 +412,7 @@ document.addEventListener('click', (e) => {
     case 'retire': C.retire(career); renderHub(); break;
     case 'resume': paused = false; show(null); break;
     case 'simrest': paused = false; fast = true; match.userAI = true; show(null); break;
+    case 'cam': cycleCam(); break;
     case 'mute': sound.setMuted(!sound.muted); b.textContent = `Sonido: ${sound.muted ? 'no' : 'sí'}`; break;
   }
 });
@@ -363,12 +420,28 @@ document.addEventListener('change', (e) => {
   if (e.target.id === 'c-pos') previewCreate();
 });
 
+function drawMatch(dt) {
+  if (camMode === '2d' || !r3d) { renderer.draw(match, dt); return; }
+  r3d.mode = camMode;
+  const u = match.user;
+  let pt = null;
+  if (u && match.owner === u && !match.userAI) pt = match.pickUserTarget(u, 'ground', Math.cos(u.face), Math.sin(u.face));
+  r3d.render(match, dt, yaw, pt);
+  const b = match.ball;
+  renderer.drawOverlay(match, {
+    mode: camMode, following: r3d.following, ballScreen: r3d.project(b.x, b.y, b.z + 0.11),
+    passName: pt ? pt.name : null,
+    hint: match.time < 8 && r3d.following ? (isTouch ? 'Stick: ↑ avanzar · ←→ girar · BALÓN para mirarlo · CÁM cambia la vista' : 'W avanzar · A/D girar · Q mirar al balón · C cambiar cámara') : null,
+  });
+}
+
 // ---------------- Bucle ----------------
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (match) {
     const inp = input.read();
+    if (inp.cam) cycleCam();
     if (inp.pause && !fast) {
       paused = !paused;
       show(paused ? 'pause' : null);
@@ -380,8 +453,9 @@ function frame(now) {
       } else {
         acc += dt;
         let first = true;
+        const tin = transformInput(inp, dt);
         while (acc >= STEP) {
-          match.step(STEP, first ? inp : heldOnly(inp));
+          match.step(STEP, first ? tin : heldOnly(tin));
           first = false;
           acc -= STEP;
         }
@@ -394,7 +468,7 @@ function frame(now) {
         if (endTimer > (fast ? 0.3 : 2.8)) finishMatch();
       }
     }
-    if (match) renderer.draw(match, dt);
+    if (match) drawMatch(dt);
   } else if (!$('#rotate').classList.contains('hidden')) {
     $('#rotate').classList.add('hidden');
   }

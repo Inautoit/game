@@ -11,8 +11,9 @@ const KEYMAP = {
   KeyI: 'lob',
   KeyE: 'skill',
   Escape: 'pause', KeyP: 'pause',
+  KeyC: 'cam', KeyQ: 'look',
 };
-const BUTTONS = ['pass', 'shoot', 'through', 'lob', 'skill', 'pause', 'sprint'];
+const BUTTONS = ['pass', 'shoot', 'through', 'lob', 'skill', 'pause', 'sprint', 'cam', 'look'];
 
 export class Input {
   constructor() {
@@ -86,7 +87,8 @@ export class Input {
       return {
         mx: Math.abs(ax) > 0.18 ? ax : (b(15) ? 1 : b(14) ? -1 : 0),
         my: Math.abs(ay) > 0.18 ? ay : (b(13) ? 1 : b(12) ? -1 : 0),
-        pass: b(0), shoot: b(1), lob: b(2), through: b(3), skill: b(5), sprint: b(7) || b(4), pause: b(9),
+        pass: b(0), shoot: b(1), lob: b(2), through: b(3), skill: b(5), sprint: b(7) || b(4), pause: b(9), cam: b(8), look: b(6) || b(10),
+        turn: Math.abs(g.axes[2] || 0) > 0.2 ? g.axes[2] : 0,
       };
     }
     return null;
@@ -105,9 +107,10 @@ export class Input {
       if (gp.mx || gp.my) { mx = gp.mx; my = gp.my; }
       for (const n of BUTTONS) held[n] = held[n] || gp[n];
     }
+    const turn = gp ? gp.turn : 0;
     const m = Math.hypot(mx, my);
     if (m > 1) { mx /= m; my /= m; }
-    const out = { mx, my, sprint: held.sprint, shootHeld: held.shoot };
+    const out = { mx, my, turn, sprint: held.sprint, shootHeld: held.shoot };
     for (const n of BUTTONS) out[n] = held[n] && !this.prev[n];
     out.shootRelease = !held.shoot && !!this.prev.shoot;
     this.prev = held;
