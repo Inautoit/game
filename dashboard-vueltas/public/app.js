@@ -167,7 +167,7 @@ async function cambiarMes() {
   store(kp('mes'), mes);
   aplicarRango();
   $('stBbdd').textContent = 'Cargando BBDD…';
-  bbdd = await api(urlBbdd('mes=' + encodeURIComponent(mes)));
+  bbdd = normBb(await api(urlBbdd('mes=' + encodeURIComponent(mes))));
   const camps = Object.keys(bbdd.campanas);
   $('campana').innerHTML = camps.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
   if (camps.includes(load(kp('campana')))) $('campana').value = load(kp('campana'));
@@ -231,6 +231,19 @@ const TO_AVISOS = [
   { hoja: /^\s*BENEFIOK\s*$/i, camp: 'Referido · BENEFIOK', id: 'insno', fecha: 'fechaapertura' },
 ];
 const TO_CESION = 'Cesión (BENEFINA + TAKOS VACÍA)';
+// Duplicados: una instalación de TAKOS VACÍA que también está en BENEFINA o en BENEFIOK cuenta solo en esa
+// (no en VACÍA), y «Cesión» juntas = BENEFINA + VACÍA sin esos duplicados. Vale para Sets (al leer el Excel)
+// y para arrays (BBDD ya guardadas, que se ajustan al cargarlas).
+function dedupTO(campanas) {
+  const [NA, VA, OK] = TO_AVISOS.map((a) => campanas[a.camp]);
+  if (!VA || (!NA && !OK)) return campanas;
+  const otras = new Set([...(NA || []), ...(OK || [])].map((x) => String(x).trim().replace(/^0+/, '')));
+  const limpia = [...VA].filter((x) => !otras.has(String(x).trim().replace(/^0+/, '')));
+  campanas[TO_AVISOS[1].camp] = VA instanceof Set ? new Set(limpia) : limpia;
+  if (NA) campanas[TO_CESION] = VA instanceof Set ? new Set([...NA, ...limpia]) : [...new Set([...NA, ...limpia])];
+  return campanas;
+}
+const normBb = (bb) => { if (PROG === 'to' && bb?.campanas) dedupTO(bb.campanas); return bb; };
 function leerAvisosTO(wb, nombreFichero) {
   const campanas = {}, cargas = {};
   let min = '', max = '';
@@ -257,6 +270,7 @@ function leerAvisosTO(wb, nombreFichero) {
   if (campanas[TO_AVISOS[0].camp] && campanas[TO_AVISOS[1].camp]) {
     campanas[TO_CESION] = new Set([...campanas[TO_AVISOS[0].camp], ...campanas[TO_AVISOS[1].camp]]);
   }
+  dedupTO(campanas);
   // Mes de la BBDD: el del nombre del fichero (AvisosOctubre…) o el de la última fecha.
   const mes = mesDeNombre(String(nombreFichero).replace(/avisos/i, ' ')) || max.slice(0, 7);
   const todas = new Set(Object.values(campanas).flatMap((x) => [...x]));
@@ -2010,7 +2024,7 @@ const sumarMeses = (iso, n) => {
 const fDia = (iso) => iso.split('-').reverse().join('/');
 const cacheBbdd = {};
 const cacheParsed = {};
-const bbddDe = (mes) => (cacheBbdd[PROG + '|' + mes] ||= api(urlBbdd('mes=' + mes)));
+const bbddDe = (mes) => (cacheBbdd[PROG + '|' + mes] ||= api(urlBbdd('mes=' + mes)).then(normBb));
 // Se cachea por informe: Second Attempt clasifica distinto que el resto.
 const logsParseados = (mes) => (cacheParsed[PROG + '|' + mes] ||= logsDeMes(mes).then((l) => l.map(aLog)));
 
