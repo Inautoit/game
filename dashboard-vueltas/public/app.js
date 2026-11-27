@@ -227,7 +227,7 @@ let cargaTO = null;
 // Cada instalación cuenta desde su fecha (si está en varias pestañas, la primera).
 const TO_AVISOS = [
   { hoja: /^\s*BENEFINA\s*$/i, camp: 'Cesión · BENEFINA', id: 'insno', fecha: 'fechaapertura' },
-  { hoja: /^\s*BBDD\s*TAKOS/i, camp: 'Cesión · BBDD TAKOS VACÍA', id: 'insnopadre', fecha: 'fechacarga' },
+  { hoja: /^\s*BBDD\s*TAKOS/i, camp: 'Cesión · BBDD TAKOS VACÍA', id: 'insnopadre', id2: 'insno', fecha: 'fechacarga' },
   { hoja: /^\s*BENEFIOK\s*$/i, camp: 'Referido · BENEFIOK', id: 'insno', fecha: 'fechaapertura' },
 ];
 const TO_CESION = 'Cesión (BENEFINA + TAKOS VACÍA)';
@@ -253,11 +253,13 @@ function leerAvisosTO(wb, nombreFichero) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { defval: '', raw: true });
     const cols = Object.keys(rows[0] || {});
     const ci = cols.find((c) => normCol(c) === a.id), cf = cols.find((c) => normCol(c) === a.fecha);
+    const ci2 = a.id2 && cols.find((c) => normCol(c) === a.id2);   // sin Ins_no_padre, el Ins_no
     if (!ci || !cf) throw new Error(`en la pestaña ${hoja} no encuentro las columnas de instalación y fecha`);
     const ids = new Set();
     let filas = 0, sinFecha = 0;
     for (const r of rows) {
-      const id = String(r[ci] ?? '').replace(/\u00a0/g, '').trim().replace(/\.0+$/, ''), d = parseFecha(r[cf]);
+      const limpio = (v) => String(v ?? '').replace(/\u00a0/g, '').trim().replace(/\.0+$/, '');
+      const id = limpio(r[ci]) || (ci2 ? limpio(r[ci2]) : ''), d = parseFecha(r[cf]);
       if (!id) continue;
       filas++;
       ids.add(id);   // sin fecha también entra: cuenta desde el inicio de la BBDD
