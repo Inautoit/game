@@ -245,7 +245,7 @@ function dedupTO(campanas) {
 }
 const normBb = (bb) => { if (PROG === 'to' && bb?.campanas) dedupTO(bb.campanas); return bb; };
 function leerAvisosTO(wb, nombreFichero) {
-  const campanas = {}, cargas = {};
+  const campanas = {}, cargas = {}, info = [];
   let min = '', max = '';
   for (const a of TO_AVISOS) {
     const hoja = wb.SheetNames.find((n) => a.hoja.test(n));
@@ -255,16 +255,20 @@ function leerAvisosTO(wb, nombreFichero) {
     const ci = cols.find((c) => normCol(c) === a.id), cf = cols.find((c) => normCol(c) === a.fecha);
     if (!ci || !cf) throw new Error(`en la pestaña ${hoja} no encuentro las columnas de instalación y fecha`);
     const ids = new Set();
+    let filas = 0, sinFecha = 0;
     for (const r of rows) {
       const id = String(r[ci] ?? '').replace(/\u00a0/g, '').trim().replace(/\.0+$/, ''), d = parseFecha(r[cf]);
-      if (!id || !d || d.getFullYear() < 2000) continue; // fecha vacía (Excel la da como 30/12/1899)
+      if (!id) continue;
+      filas++;
+      ids.add(id);   // sin fecha también entra: cuenta desde el inicio de la BBDD
+      if (!d || d.getFullYear() < 2000) { sinFecha++; continue; } // fecha vacía (Excel la da como 30/12/1899)
       const dia = isoDia(d);
-      ids.add(id);
       if (!cargas[id] || dia < cargas[id]) cargas[id] = dia;
       if (!min || dia < min) min = dia;
       if (dia > max) max = dia;
     }
     campanas[a.camp] = ids;
+    info.push(`${hoja}: ${fmt(filas)} filas, ${fmt(ids.size)} instalaciones${filas > ids.size ? ` (${fmt(filas - ids.size)} repetidas)` : ''}${sinFecha ? `, ${fmt(sinFecha)} sin fecha` : ''}`);
   }
   if (!Object.keys(campanas).length) return null;
   if (campanas[TO_AVISOS[0].camp] && campanas[TO_AVISOS[1].camp]) {
@@ -275,7 +279,8 @@ function leerAvisosTO(wb, nombreFichero) {
   const mes = mesDeNombre(String(nombreFichero).replace(/avisos/i, ' ')) || max.slice(0, 7);
   const todas = new Set(Object.values(campanas).flatMap((x) => [...x]));
   return { [mes]: { ids: todas, cargas, desde: min, nombre: `${nombreMes(mes)} (avisos ${fDia(min).slice(0, 5)}–${fDia(max).slice(0, 5)})`,
-    campanas: Object.fromEntries(Object.entries(campanas).map(([c, x]) => [c, [...x]])) } };
+    campanas: Object.fromEntries(Object.entries(campanas).map(([c, x]) => [c, [...x]])),
+    info: info.join(' · ') + ` · ${fmt([...(campanas[TO_AVISOS[1].camp] || [])].length)} de TAKOS VACÍA tras quitar las que están en BENEFINA o BENEFIOK` } };
 }
 async function leerTakeOver(f) {
   const wb = XLSX.read(await f.arrayBuffer(), { dense: true, cellDates: true });
@@ -314,7 +319,7 @@ $('fBbdd').addEventListener('change', async (e) => {
         ? `Sustituirá la BBDD de TakeOver de ${Object.keys(cargaTO).map(nombreMes).join(', ')} (los demás meses se quedan): `
         : 'Sustituirá todo TakeOver con una BBDD por mes de carga: ') +
         Object.entries(cargaTO).sort().map(([m, x]) => `${x.nombre || nombreMes(m)} ${x.campanas
-          ? Object.entries(x.campanas).map(([c, v]) => `${c} ${fmt(v.length)}`).join(', ') : fmt(x.ids.size)}`).join(' · ');
+          ? Object.entries(x.campanas).map(([c, v]) => `${c} ${fmt(v.length)}`).join(', ') + (x.info ? ` (${x.info})` : '') : fmt(x.ids.size)}`).join(' · ');
       $('btnGuardar').disabled = false;
     } catch (err) {
       $('stCarga').textContent = 'Error leyendo el fichero: ' + err.message;
