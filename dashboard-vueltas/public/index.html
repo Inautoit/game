@@ -244,13 +244,23 @@
       <div class="section-title hidden" id="repTit"><h2>Reporte de contactación</h2><span>Primeros días de cada BBDD, como el cuadro que reportamos.</span></div>
       <section class="card hidden" id="repCard">
         <div class="row" style="align-items:flex-end">
-          <div class="seg"><button id="repAcum">Acumulado</button><button class="sec" id="repSemanas">Por semanas</button><button class="sec" id="repDias">Por días</button></div>
+          <div class="seg" id="repModos"><button id="repAcum">Acumulado</button><button class="sec" id="repSemanas">Por semanas</button><button class="sec" id="repDias">Por días</button></div>
+          <div class="seg hidden" id="rgModos"><button id="rgDias">Por días</button><button class="sec" id="rgSem">Semanas (acumulado)</button><button class="sec" id="rgMes">Meses (acumulado)</button></div>
           <label><span id="repSemTxt">Semana</span> <select id="repSem"><option value="1">S1</option><option value="2">S2</option><option value="3">S3</option><option value="4">S4</option><option value="5">S5</option></select></label>
           <label>Días <select id="repN"><option value="1">Solo el lunes</option><option value="2">Hasta el martes</option><option value="3">Hasta el miércoles</option><option value="4">Hasta el jueves</option><option value="5" selected>Semana entera (lun–vie)</option></select></label>
           <button class="sec" id="repVer" style="margin-left:auto">Ver N</button>
           <button class="sec" id="repCopiar">Copiar para Excel</button>
+          <button class="sec" id="repVisual">Visual</button>
         </div>
         <div id="repMeses" style="margin:8px 0 4px; font-size:13px; display:flex; flex-wrap:wrap; gap:6px 14px"></div>
+        <div id="repGraf" class="hidden">
+          <div class="row" style="margin:6px 0 4px; align-items:center">
+            <div class="seg" id="rgMeds"><button id="rgTrat">En base a tratado</button><button class="sec" id="rgUni">Contacto único</button></div>
+            <div class="leyenda" id="rgLey" style="margin:0"></div>
+          </div>
+          <h3 class="chart-t" id="rgTit"></h3>
+          <div class="chart" id="rgChart"></div>
+        </div>
         <div id="repTablas"></div>
         <p class="status" id="repNota" style="margin-top:8px"></p>
       </section>

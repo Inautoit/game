@@ -105,7 +105,8 @@ const CORTES = [{ mes: '2026-11', camp: 'Tmk 400', de: 'TMK', tramos: [['2026-11
 // Referido, de Referido (R_LEA008 / R_SEG008); juntas, los dos.
 const grupoTO = (c) => (/^\s*CESI[OÓ]N/i.test(c) ? 'cesion' : /^\s*REFERIDO/i.test(c) ? 'referido' : '');
 function ventanas(bb, nombres) {
-  const desde = { ...(bb.cargas || {}) }, fuera = {};
+  // Una fecha de carga absurda (celda vacía leída como 1899) no limita nada.
+  const desde = Object.fromEntries(Object.entries(bb.cargas || {}).filter(([, d]) => d >= '2000')), fuera = {};
   const gr = PROG === 'to' ? new Set(nombres.map(grupoTO).filter(Boolean)) : null;
   for (const k of CORTES) {
     if (mesBase(bb.mes || '') !== k.mes || !bb.campanas[k.camp] || !bb.campanas[k.de]) continue;
@@ -133,9 +134,10 @@ const ayerIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return
 function rangoBbdd(id, hoy) {
   // TakeOver (hastaHoy): desde el día 1 del mes de carga hasta ayer, sin cortar a fin de mes;
   // además cada instalación solo cuenta desde su propio día de carga (bbdd.cargas).
-  if (indiceBbdd[id]?.hastaHoy) return { desde: indiceBbdd[id].desde || mesBase(id) + '-01', hasta: ayerIso() };
+  const d0 = indiceBbdd[id]?.desde >= sumarDias(mesBase(id) + '-01', -62) ? indiceBbdd[id].desde : '';
+  if (indiceBbdd[id]?.hastaHoy) return { desde: d0 || mesBase(id) + '-01', hasta: ayerIso() };
   const r = rangoPorDefecto(mesBase(id), hoy);
-  const desde = indiceBbdd[id]?.desde;
+  const desde = d0;
   if (desde) r.desde = desde;
   return r;
 }
@@ -242,7 +244,7 @@ function leerAvisosTO(wb, nombreFichero) {
     const ids = new Set();
     for (const r of rows) {
       const id = String(r[ci] ?? '').replace(/\u00a0/g, '').trim().replace(/\.0+$/, ''), d = parseFecha(r[cf]);
-      if (!id || !d) continue;
+      if (!id || !d || d.getFullYear() < 2000) continue; // fecha vacía (Excel la da como 30/12/1899)
       const dia = isoDia(d);
       ids.add(id);
       if (!cargas[id] || dia < cargas[id]) cargas[id] = dia;
@@ -273,7 +275,7 @@ async function leerTakeOver(f) {
     const porMes = {};
     for (const r of rows) {
       const id = String(r[ci] ?? '').trim().replace(/\.0+$/, ''), d = parseFecha(r[cf]);
-      if (!id || !d) continue;
+      if (!id || !d || d.getFullYear() < 2000) continue; // fecha vacía (Excel la da como 30/12/1899)
       const dia = isoDia(d), m = (porMes[dia.slice(0, 7)] ||= { ids: new Set(), cargas: {} });
       m.ids.add(id);
       if (!m.cargas[id] || dia < m.cargas[id]) m.cargas[id] = dia; // primera carga del mes
@@ -1127,6 +1129,23 @@ function gruposRep(campanas) {
   }
   return g;
 }
+// Grupos del reporte de una BBDD: {clave: [campañas]}. RBE: con/sin OPC por mundo y sus totales.
+// TakeOver: cada campaña por separado y el total.
+function gruposDeBb(bb) {
+  const out = {};
+  if (PROG === 'to') {
+    for (const c of Object.keys(bb.campanas)) out['k:' + c] = [c];
+    out.tot = Object.keys(bb.campanas);
+    return out;
+  }
+  const grupoDe = gruposRep(bb.campanas);
+  for (const c of Object.keys(bb.campanas)) {
+    const g = grupoDe[c];
+    if (g) for (const k of [g, g[0] + 'tot']) (out[k] ||= []).push(c);
+  }
+  return out;
+}
+const filasRep = (campsTO) => (PROG === 'to' ? [...campsTO.map((c) => ['k:' + c, c]), ['tot', 'Total TakeOver', true]] : REP_FILAS);
 function inicioBbdd(mes) {
   const [y, m] = mes.split('-').map(Number);
   const d = new Date(y, m - 1, 0);
@@ -1196,8 +1215,14 @@ async function pintarReporte() {
     pintarReporte();
   }));
   const k = +$('repSem').value, n = +$('repN').value, ayer = ayerIso();
+  for (const id of ['repModos', 'repVer', 'repCopiar']) $(id).classList.toggle('hidden', repVisualOn || (id === 'repVer' && repModo === 'dias'));
+  $('rgModos').classList.toggle('hidden', !repVisualOn);
+  $('repGraf').classList.toggle('hidden', !repVisualOn);
+  $('repTablas').classList.toggle('hidden', repVisualOn);
+  $('repVisual').textContent = repVisualOn ? 'Tablas' : 'Visual';
+  if (repVisualOn) { $('repNota').textContent = ''; return pintarVisual(elegidos, k, n); }
   $('repTablas').innerHTML = '<p class="status">Calculando…</p>';
-  const cols = [];
+  const cols = [], campsTO = [];
   for (const mes of elegidos) {
     const lunes = sumarDias(inicioBbdd(mes), 7 * (k - 1));
     const diasSem = (j, m) => Array.from({ length: m }, (_, i) => sumarDias(sumarDias(inicioBbdd(mes), 7 * (j - 1)), i)).filter((d) => d <= ayer);
@@ -1210,14 +1235,9 @@ async function pintarReporte() {
     // Solo días laborables (el global abarca fines de semana entre medias).
     const laborable = new Set(dias);
     const logs = [].concat(...porMes).filter((c) => !pers || (c.fecha && laborable.has(isoDia(c.fecha))));
-    const grupos = {}, nombresGrupo = {}, grupoDe = gruposRep(bb.campanas);
-    for (const [c, ids] of Object.entries(bb.campanas)) {
-      const g = grupoDe[c];
-      if (!g) continue;
-      for (const key of [g, g[0] + 'tot']) (nombresGrupo[key] ||= []).push(c);
-      for (const key of [g, g[0] + 'tot']) (grupos[key] ||= new Set()); 
-      for (const id of ids) { grupos[g].add(id); grupos[g[0] + 'tot'].add(id); }
-    }
+    const grupos = {}, nombresGrupo = gruposDeBb(bb);
+    for (const [g, cs] of Object.entries(nombresGrupo)) grupos[g] = new Set(cs.flatMap((c) => bb.campanas[c]));
+    campsTO.push(...Object.keys(bb.campanas));
     const res = {};
     for (const [g, set] of Object.entries(grupos)) {
       const ids = [...set], v = ventanas(bb, nombresGrupo[g]);
@@ -1239,6 +1259,7 @@ async function pintarReporte() {
     }
     cols.push({ mes, dias, res, pers });
   }
+  const REP_FILAS = filasRep([...new Set(campsTO)]);
   const pc = (x) => (x && x.t ? `${fmt((100 * x.c) / x.t, 1)} %` : '—');
   const nn = (x) => (x && x.t ? `${fmt(x.c)} / ${fmt(x.t)}` : '');
   const val = (x) => (repModo === 'dias' ? (x && x.t ? `${pc(x)}<br><span style="color:var(--muted); font-size:12px">${nn(x)}</span>` : '—')
@@ -1295,7 +1316,132 @@ async function pintarReporte() {
   repBloques = bloques;
   $('repNota').textContent = (repModo === 'semanas' ? 'Por semanas: cada semana de lunes a viernes y, a la derecha de cada mes, el Global de todas juntas (el contacto único global cuenta cada instalación una vez en todo el periodo). ' : '') +
     'Cada BBDD empieza el último lunes del mes anterior (la BBDD de noviembre, el 26/10). Solo días de lunes a viernes y hasta ayer. ' +
-    '«Sin separar» son las BBDD que no distinguen con/sin OPC (p. ej. septiembre y octubre); TMK incluye TMK PILOTO. % = contactadas / tratadas; con «Ver N» se ven contactadas / tratadas.';
+    (PROG === 'to' ? 'TakeOver: cada campaña cuenta sus commlogs (Cesión: key2 R_LEA007 / R_SEG007; Referido: R_LEA008 / R_SEG008), cada instalación desde su fecha de carga. '
+      : '«Sin separar» son las BBDD que no distinguen con/sin OPC (p. ej. septiembre y octubre); TMK incluye TMK PILOTO. ') +
+    '% = contactadas / tratadas; con «Ver N» se ven contactadas / tratadas.';
+}
+
+// ---------- visual del reporte: % de contactación en líneas ----------
+// Campañas en gris; los totales (todo COMPE, todo TMK / total TakeOver) en rojo y con su %.
+// Modos: por días (los días de la semana elegida de cada mes), semanas acumuladas (S1…Sk de cada mes, cada punto
+// acumula desde la S1) y meses acumulados (cada BBDD del año entera, solo los totales).
+let repVisualOn = false, rgModo = leerLs('rg.modo', 'sem'), rgMed = leerLs('rg.med', 'trat');
+$('repVisual').addEventListener('click', () => { repVisualOn = !repVisualOn; pintarReporte(); });
+for (const [btn, m] of [['rgDias', 'dias'], ['rgSem', 'sem'], ['rgMes', 'mes']]) $(btn).addEventListener('click', () => { rgModo = m; store('rg.modo', m); pintarReporte(); });
+for (const [btn, m] of [['rgTrat', 'trat'], ['rgUni', 'unico']]) $(btn).addEventListener('click', () => { rgMed = m; store('rg.med', m); pintarReporte(); });
+const cacheRg = {};
+// % por grupo de una BBDD en unos días laborables concretos.
+async function datosRg(mes, dias) {
+  const key = PROG + '|' + mes + '|' + dias.join(',');
+  if (cacheRg[key]) return cacheRg[key];
+  const [bb, ...porMes] = await Promise.all([bbddDe(mes), ...mesesEntre(dias[0], dias.at(-1)).map(logsParseados)]);
+  const lab = new Set(dias);
+  const logs = [].concat(...porMes).filter((c) => c.fecha && lab.has(isoDia(c.fecha)));
+  const res = {};
+  for (const [g, cs] of Object.entries(gruposDeBb(bb))) {
+    const ids = [...new Set(cs.flatMap((c) => bb.campanas[c]))], v = ventanas(bb, cs);
+    const u = calcular(ids, logs, dias[0], dias.at(-1), ...v).resumen, sd = sumaDiaria(ids, logs, dias[0], dias.at(-1), ...v);
+    const tu = u.contactadas + u.ilocalizadas;
+    res[g] = { trat: sd.tratadasDia ? (100 * sd.contactadasDia) / sd.tratadasDia : null, unico: tu ? (100 * u.contactadas) / tu : null,
+      ntrat: [sd.contactadasDia, sd.tratadasDia], nunico: [u.contactadas, tu] };
+  }
+  return (cacheRg[key] = { res, camps: Object.keys(bb.campanas) });
+}
+const laborables = (a, b) => { const out = []; for (let d = a; d <= b; d = sumarDias(d, 1)) { const w = parseFecha(d).getDay(); if (w && w < 6) out.push(d); } return out; };
+async function pintarVisual(elegidos, k, n) {
+  for (const [btn, m] of [['rgDias', 'dias'], ['rgSem', 'sem'], ['rgMes', 'mes']]) $(btn).classList.toggle('sec', rgModo !== m);
+  for (const [btn, m] of [['rgTrat', 'trat'], ['rgUni', 'unico']]) $(btn).classList.toggle('sec', rgMed !== m);
+  $('rgMeds').classList.toggle('hidden', rgModo === 'dias');
+  $('rgChart').innerHTML = '<p class="status">Calculando…</p>';
+  const ayer = ayerIso(), corto = (m) => nombreMes(m).replace(/ de \d{4}$/, '').slice(0, 3);
+  const DS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const puntos = [];   // {etq, sub, mes, dias}
+  if (rgModo === 'dias') {
+    for (const mes of elegidos) for (const d of laborables(sumarDias(inicioBbdd(mes), 7 * (k - 1)), sumarDias(inicioBbdd(mes), 7 * (k - 1) + n - 1)))
+      if (d <= ayer) puntos.push({ etq: `${DS[parseFecha(d).getDay()]} ${fDia(d).slice(0, 5)}`, sub: corto(mes), mes, dias: [d] });
+  } else if (rgModo === 'sem') {
+    for (const mes of elegidos) for (let j = 1; j <= k; j++) {
+      const fin = sumarDias(inicioBbdd(mes), 7 * (j - 1) + (j === k ? n : 5) - 1);
+      const dias = laborables(inicioBbdd(mes), fin < ayer ? fin : ayer);
+      if (dias.length && sumarDias(inicioBbdd(mes), 7 * (j - 1)) <= ayer) puntos.push({ etq: `S${j}`, sub: corto(mes), mes, dias });
+    }
+  } else {
+    const anyo = ayer.slice(0, 4);
+    for (const mes of Object.keys(indiceBbdd).filter((m) => /^\d{4}-\d{2}$/.test(m) && m.startsWith(anyo)).sort()) {
+      const [y, mm] = mes.split('-').map(Number), finMes = isoDia(new Date(y, mm, 0));
+      const dias = laborables(inicioBbdd(mes), finMes < ayer ? finMes : ayer);
+      if (dias.length) puntos.push({ etq: corto(mes), sub: '', mes, dias });
+    }
+  }
+  if (!puntos.length) { $('rgChart').innerHTML = '<p class="status">No hay días con datos para esa selección.</p>'; $('rgLey').innerHTML = ''; return; }
+  const datos = await Promise.all(puntos.map((p) => datosRg(p.mes, p.dias)));
+  const med = rgModo === 'dias' ? 'trat' : rgMed;
+  const filas = filasRep([...new Set(datos.flatMap((d) => d.camps))]).filter(([g, , neg]) => rgModo !== 'mes' || neg)
+    .filter(([g]) => datos.some((d) => d.res[g]?.[med] != null));
+  $('rgTit').innerHTML = `% de contactación ${med === 'trat' ? 'en base a tratado' : 'contacto único'} <small>· ${
+    rgModo === 'dias' ? `días de la S${k} de cada mes` : rgModo === 'sem' ? 'acumulado de cada mes, de la S1 a cada semana' : `acumulado de cada BBDD de ${ayer.slice(0, 4)}`}</small>`;
+  const rojos = filas.filter((f) => f[2]);
+  const estilo = (g, i) => (g === 'ctot' || (PROG === 'to' && g === 'tot') ? { c: 'var(--brand)', w: 3.2, d: '' }
+    : g === 'ttot' ? { c: 'var(--brand-ink)', w: 3.2, d: '7 4' } : { c: 'var(--s2)', w: 1.6, d: '', gris: true });
+  $('rgLey').innerHTML = filas.map(([g, nombre], i) => { const e = estilo(g, i);
+    return `<span style="white-space:nowrap"><i style="background:${e.c}; height:${e.gris ? 2 : 4}px; width:18px; vertical-align:3px"></i>${escapeHtml(nombre)}</span>`; }).join('');
+  graficaRg($('rgChart'), puntos, datos, filas, med, estilo);
+}
+function graficaRg(el, puntos, datos, filas, med, estilo) {
+  const W = Math.max(640, el.clientWidth || 1000), H = 360, ml = 44, mr = 205, mt = 22, mb = puntos.length > 14 ? 70 : 52;
+  const vals = filas.flatMap(([g]) => datos.map((d) => d.res[g]?.[med])).filter((v) => v != null);
+  const lo = Math.max(0, Math.floor((Math.min(...vals) - 3) / 5) * 5), hi = Math.min(100, Math.ceil((Math.max(...vals) + 3) / 5) * 5);
+  const paso = hi - lo > 40 ? 10 : 5;
+  const x = (i) => ml + (puntos.length === 1 ? (W - ml - mr) / 2 : ((W - ml - mr) * i) / (puntos.length - 1));
+  const y = (v) => mt + (H - mt - mb) * (1 - (v - lo) / (hi - lo));
+  let s = '';
+  for (let v = lo; v <= hi; v += paso) s += `<line x1="${ml}" x2="${W - mr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)"/>` +
+    `<text x="${ml - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${v} %</text>`;
+  // Separación entre meses.
+  puntos.forEach((p, i) => { if (i && p.mes !== puntos[i - 1].mes && p.sub) s += `<line x1="${(x(i) + x(i - 1)) / 2}" x2="${(x(i) + x(i - 1)) / 2}" y1="${mt}" y2="${H - mb}" stroke="var(--border)" stroke-dasharray="3 3"/>`; });
+  const giro = puntos.length > 14;
+  puntos.forEach((p, i) => {
+    s += giro ? `<text transform="translate(${x(i)},${H - mb + 14}) rotate(-40)" text-anchor="end" font-size="10.5" fill="var(--muted)">${escapeHtml(p.sub ? p.sub + ' ' + p.etq : p.etq)}</text>`
+      : `<text x="${x(i)}" y="${H - mb + 16}" text-anchor="middle" font-size="11" fill="var(--text-2)">${escapeHtml(p.etq)}</text>` +
+        (p.sub && (i === 0 || p.mes !== puntos[i - 1].mes) ? `<text x="${x(i)}" y="${H - mb + 32}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--muted)">${escapeHtml(p.sub)}</text>` : '');
+  });
+  // Primero las grises y encima las rojas; las rojas llevan su % en cada punto.
+  const orden = [...filas].sort((a, b) => !!a[2] - !!b[2]);
+  for (const [g, nombre, neg] of orden) {
+    const e = estilo(g);
+    let d = '', seguir = false;
+    datos.forEach((dt, i) => { const v = dt.res[g]?.[med]; if (v == null) { seguir = false; return; } d += `${seguir ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)} `; seguir = true; });
+    s += `<path d="${d}" fill="none" stroke="${e.c}" stroke-width="${e.w}" stroke-linejoin="round" stroke-linecap="round"${e.d ? ` stroke-dasharray="${e.d}"` : ''}/>`;
+    if (!neg) {
+      datos.forEach((dt, i) => { const v = dt.res[g]?.[med]; if (v != null) s += `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${e.c}"/>`; });
+      continue;
+    }
+    const abajo = g === 'ttot';
+    datos.forEach((dt, i) => { const v = dt.res[g]?.[med]; if (v == null) return;
+      s += `<circle cx="${x(i)}" cy="${y(v)}" r="3.5" fill="${e.c}" stroke="var(--surface)" stroke-width="1.5"/>` +
+        `<text x="${x(i)}" y="${y(v) + (abajo ? 16 : -8)}" text-anchor="middle" font-size="11" font-weight="700" fill="${e.c}">${fmt(v, 0)}%</text>`; });
+  }
+  // Nombre de cada línea al final (en su último punto), separando las etiquetas para que no se monten.
+  const fin = filas.map(([g, nombre, neg]) => {
+    let i = datos.length - 1; while (i >= 0 && datos[i].res[g]?.[med] == null) i--;
+    return i < 0 ? null : { g, nombre, neg, i, v: datos[i].res[g][med], y: y(datos[i].res[g][med]) };
+  }).filter(Boolean).sort((a, b) => a.y - b.y);
+  for (let j = 1; j < fin.length; j++) if (fin[j].y - fin[j - 1].y < 13) fin[j].y = fin[j - 1].y + 13;
+  for (const f of fin) {
+    const e = estilo(f.g);
+    s += `<text x="${W - mr + 10}" y="${f.y + 4}" font-size="${f.neg ? 11.5 : 10.5}" font-weight="${f.neg ? 700 : 500}" fill="${f.neg ? e.c : 'var(--text-2)'}">${escapeHtml(f.nombre.replace(' (sin separar)', ' sin separar'))} ${f.neg ? '' : fmt(f.v, 0) + '%'}</text>`;
+  }
+  const bw = puntos.length > 1 ? (W - ml - mr) / (puntos.length - 1) : W - ml - mr;
+  puntos.forEach((p, i) => { s += `<rect class="hit" data-i="${i}" x="${x(i) - bw / 2}" y="${mt}" width="${bw}" height="${H - mt - mb}" fill="transparent"/>`; });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del % de contactación">${s}</svg>`;
+  const nk = med === 'trat' ? 'ntrat' : 'nunico';
+  el.querySelectorAll('.hit').forEach((h) => {
+    const i = +h.dataset.i, p = puntos[i];
+    const txt = `${p.sub ? p.sub + ' · ' : ''}${p.etq}  (${fDia(p.dias[0]).slice(0, 5)}–${fDia(p.dias.at(-1)).slice(0, 5)})\n` +
+      filas.map(([g, nombre]) => { const r = datos[i].res[g]; return `${nombre}: ${r?.[med] == null ? '—' : `${fmt(r[med], 1)} % (${fmt(r[nk][0])} / ${fmt(r[nk][1])})`}`; }).join('\n');
+    h.addEventListener('pointermove', (ev) => tip(txt, ev));
+    h.addEventListener('pointerleave', () => tip(''));
+  });
 }
 
 const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20);
@@ -1646,7 +1792,8 @@ async function recalcular() {
   $('res').classList.remove('hidden');
   pintarCampana();
   if (ESP === 'up') pintarFranjas(desde, hasta, logs);
-  if (!ESP && !PROG) pintarReporte();
+  if (!ESP && (!PROG || PROG === 'to')) pintarReporte();
+  else { $('repTit').classList.add('hidden'); $('repCard').classList.add('hidden'); }
 }
 $('btnCalc').addEventListener('click', recalcular);
 
@@ -1801,6 +1948,7 @@ addEventListener('hashchange', () => {
   const nuevo = progDeHash();
   if (nuevo === PROG) return;
   PROG = nuevo;
+  $('repTit').classList.add('hidden'); $('repCard').classList.add('hidden');
   pintarInforme();
   cacheComp = {};
   resultados = {};
